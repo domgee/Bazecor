@@ -30,6 +30,7 @@ import ToastMessage from "@Renderer/components/atoms/ToastMessage";
 import { IconClose, IconPlus } from "@Renderer/components/atoms/icons";
 import Callout from "@Renderer/components/molecules/Callout/Callout";
 import ListModifier from "@Renderer/components/molecules/ListModifiers/ListModifiers";
+import KeyLabel from "@Renderer/components/molecules/KeyTags/KeyLabel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@Renderer/components/atoms/Select";
 import { PageHeader } from "@Renderer/modules/PageHeader";
 import { KeyPickerKeyboard } from "@Renderer/modules/KeyPickerKeyboard";
@@ -425,6 +426,12 @@ function ComboEditor(props: ComboEditorProps) {
   const onActionKeySelect = (keyCode: number) => {
     const combo = combos[selected];
     if (!combo) return;
+
+    // Ignore a picker tab re-sending the current output, so opening the picker doesn't mark the combo modified
+    if (keyCode === combo.action) {
+      return;
+    }
+
     log.info(`[Combos] combo ${selected} action -> ${keyCode}`);
     updateCombo(selected, { ...combo, action: keyCode, flags: combo.flags || COMBO_FLAG_ENABLED });
   };
@@ -515,15 +522,20 @@ function ComboEditor(props: ComboEditorProps) {
     setPickTarget(nextSlot < visibleSlots ? { kind: "member", slot: nextSlot } : null);
   };
 
-  const labelForPosition = (position: number): string => {
-    if (position === COMBO_POSITION_UNUSED || !layerData[position]) return "";
-    return String(layerData[position].label ?? "");
+  const labelForPosition = (position: number) => {
+    if (position === COMBO_POSITION_UNUSED || !layerData[position]) {
+      return null;
+    }
+
+    return <KeyLabel keyData={layerData[position]} />;
   };
 
-  const actionLabel = (item: ComboType): string => {
-    if (!item || !item.action) return "";
-    const key = withName(keymapDB.parse(item.action));
-    return String(key.label ?? "");
+  const actionLabel = (item: ComboType) => {
+    if (!item || !item.action) {
+      return null;
+    }
+
+    return <KeyLabel keyData={withName(keymapDB.parse(item.action))} />;
   };
 
   const combo = combos[selected];
@@ -741,7 +753,7 @@ function ComboEditor(props: ComboEditorProps) {
                   /* The modifiers ride along as the same badges the Layout
                    * Editor shows, as the label alone ("A") hides them. */
                   <span className="flex flex-col items-center gap-0.5">
-                    <span>{actionLabel(combo)}</span>
+                    {actionLabel(combo)}
                     <ListModifier keyCode={combo.action} size="xs" />
                   </span>
                 ) : (
