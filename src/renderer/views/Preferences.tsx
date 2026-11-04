@@ -62,6 +62,7 @@ import { useDevice } from "@Renderer/DeviceContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@Renderer/components/atoms/Tabs";
 import { Badge } from "@Renderer/components/atoms/Badge";
 import { KBDataPref, PrefState, PreferencesProps } from "@Renderer/types/preferences";
+import { DEFAULT_COMBO_WINDOW } from "@Renderer/types/combos";
 import { WirelessInterface } from "@Renderer/types/wireless";
 import LogoLoader from "@Renderer/components/atoms/loader/LogoLoader";
 import { Neuron } from "@Renderer/types/neurons";
@@ -125,7 +126,7 @@ const initialKBData = {
   SuperOverlapThreshold: 0,
   autoshiftTimeout: 175,
   capswordTimeout: 5000,
-  combosWindow: 10,
+  combosWindow: DEFAULT_COMBO_WINDOW,
   combosIdleTime: 100,
   mouseSpeed: 1,
   mouseSpeedDelay: 2,
@@ -296,7 +297,7 @@ const Preferences = (props: PreferencesProps) => {
         await state.currentDevice.command("combos.window").then((window: string) => {
           log.info(`[Combos] focus combos.window ->`, JSON.stringify(window));
           if (!window) log.warn("[Combos] empty reply: this firmware does not support combos.window");
-          newKbData.combosWindow = window ? parseInt(window, 10) : 10;
+          newKbData.combosWindow = window ? parseInt(window, 10) : DEFAULT_COMBO_WINDOW;
         });
 
         await state.currentDevice.command("combos.idleTime").then((idleTime: string) => {

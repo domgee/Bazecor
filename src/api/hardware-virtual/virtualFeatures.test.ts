@@ -56,6 +56,10 @@ describe("virtual keyboards support Combos, Autoshift and CapsWord", () => {
     expect(SonseiWireless.virtual["capsword.timeout"].data).toBe("5000");
   });
 
+  test("the combo window starts at the firmware's 50 ms default", () => {
+    expect(SonseiWireless.virtual["combos.window"].data).toBe("50");
+  });
+
   test("the Raise 1 has none of them", () => {
     FEATURE_COMMANDS.forEach(c => expect(RaiseANSI.virtual[c]).toBeUndefined());
   });

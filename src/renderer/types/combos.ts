@@ -32,7 +32,7 @@ export const LEGACY_COMBO_MEMBERS = 4;
 /** Match window bounds, mirrored from CombosDygma::MIN/MAX_MATCH_WINDOW_MS. */
 export const MIN_COMBO_WINDOW = 5;
 export const MAX_COMBO_WINDOW = 500;
-export const DEFAULT_COMBO_WINDOW = 10;
+export const DEFAULT_COMBO_WINDOW = 50;
 
 /** Idle time bounds, mirrored from CombosDygma::DEFAULT/MAX_IDLE_TIME_MS. 0
  * turns the requirement off. */
