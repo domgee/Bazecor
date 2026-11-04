@@ -56,7 +56,7 @@ import {
 import { KeymapDB } from "../../api/keymap";
 import Backup from "../../api/backup";
 import {
-  comboBreakReason,
+  blockedComboPositions,
   comboMembers,
   duplicateComboIndex,
   emptyCombo,
@@ -475,17 +475,16 @@ function ComboEditor(props: ComboEditorProps) {
 
   const colormap = colormaps[comboLayer - customOffset] ?? colormaps[0] ?? [];
 
-  /* Keys of this layer holding a complex superkey: the firmware can't use one
-   * as a combo member (the superkey takes the key over), so the board doesn't
-   * offer them while a slot is being picked. Superkeys that run as Qukeys
-   * (TAP + a modifier or layer on HOLD) are fine and stay selectable. */
-  const blockedPositions = useMemo(() => {
-    const blocked = new Set<number>();
-    layerData.forEach((key, position) => {
-      if (key && comboBreakReason(key.keyCode, superkeys) === "superkey") blocked.add(position);
-    });
-    return blocked;
-  }, [layerData, superkeys]);
+  /* Keys of this layer holding a Layer Lens key or a complex superkey can't be a combo member, so the board doesn't offer them while
+   * a slot is being picked. Superkeys that run as Qukeys (TAP + a modifier or layer on HOLD) stay selectable. */
+  const blockedPositions = useMemo(
+    () =>
+      blockedComboPositions(
+        layerData.map(key => key?.keyCode),
+        superkeys,
+      ),
+    [layerData, superkeys],
+  );
 
   const onKeyboardKeySelect = (event: React.MouseEvent<Element>) => {
     if (!pickTarget || pickTarget.kind !== "member") return;
@@ -559,9 +558,8 @@ function ComboEditor(props: ComboEditorProps) {
       `.comboEditor .comboKeyboard.comboPicking .keyItem:hover { opacity: 1; }`,
       `.comboEditor .comboKeyboard.comboIdle .keyItem, .comboEditor .comboKeyboard.comboIdle #neuronWrapper { opacity: 0.4; }`,
     ];
-    /* Complex superkeys: greyed out and unclickable while picking. Before the
-     * member rules, so a combo that already holds one (saved before this check
-     * existed) still shows that key lit. */
+    /* Grey out blocked keys and make them unclickable while picking. Add these rules before the member rules, so a combo that
+     * already holds one (saved before this check existed) still shows that key lit. */
     if (picking) {
       blockedPositions.forEach(position => {
         rules.push(
@@ -812,7 +810,8 @@ function ComboEditor(props: ComboEditorProps) {
                 : "Select a slot above, then assign a key"}
             </Heading>
             <p className="mb-2 text-center text-ssm text-gray-400 dark:text-gray-300">
-              Note: Superkeys can&apos;t be part of a combo unless configured only with TAP and a modifier or layer on HOLD.
+              Note: Layer Lens keys can&apos;t be part of a combo, and neither can Superkeys unless configured only with TAP and a
+              modifier or layer on HOLD.
             </p>
             {KeyboardComponent && layerData.length > 0 ? (
               <div

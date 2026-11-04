@@ -1,7 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 import { COMBO_POSITION_UNUSED, ComboType, MAX_COMBO_MEMBERS, MAX_COMBOS } from "@Renderer/types/combos";
 import { comboBadgeLabels, comboBadgeStyles } from "@Renderer/modules/KeyboardCanvas/comboBadges";
+import { SuperkeysType } from "@Renderer/types/superkeys";
+import { OverlayCodes } from "../../hw/overlay";
 import {
+  blockedComboPositions,
   combosAtPosition,
   duplicateComboIndex,
   emptyCombo,
@@ -156,5 +159,28 @@ describe("combos per layer", () => {
 
     expect(rules).toHaveLength(3);
     expect(rules.filter(rule => rule.includes('"C1 C2"'))).toHaveLength(1);
+  });
+});
+
+describe("combo member blocking", () => {
+  test("Layer Lens keys and complex superkeys are blocked, Qukey-type superkeys and plain keys are not", () => {
+    const superkeys: SuperkeysType[] = [
+      { id: 0, name: "complex", actions: [4, 5, 6, 0, 0] },
+      // TAP a, HOLD Left Ctrl, so the firmware runs it as a Qukey
+      { id: 1, name: "qukey", actions: [4, 224, 0, 0, 0] },
+    ];
+    const keyCodes = [
+      53980, // complex superkey
+      53981, // Qukey-type superkey
+      OverlayCodes.OVERLAY_KEY,
+      OverlayCodes.OVERLAY_TAP,
+      OverlayCodes.OVERLAY_HOLD,
+      4, // a
+      undefined, // empty position
+    ];
+
+    const blockedPositions = blockedComboPositions(keyCodes, superkeys);
+
+    expect(blockedPositions).toEqual(new Set([0, 2, 3, 4]));
   });
 });

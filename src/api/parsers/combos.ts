@@ -324,6 +324,19 @@ export const comboBreakReason = (keyCode: number, superkeys: SuperkeysType[] = [
   return null;
 };
 
+/** Positions of `keyCodes`, one layer's keys by position, that can't be a combo member. */
+export const blockedComboPositions = (keyCodes: (number | undefined)[], superkeys: SuperkeysType[] = []): Set<number> => {
+  const blocked = new Set<number>();
+
+  keyCodes.forEach((keyCode, position) => {
+    if (keyCode !== undefined && comboBreakReason(keyCode, superkeys) !== null) {
+      blocked.add(position);
+    }
+  });
+
+  return blocked;
+};
+
 /** Indexes of the combos that use `position` on `layer`. A combo works on its
  * own layer only, so a key can be in different combos on different layers. */
 export const combosAtPosition = (combos: ComboType[], position: number, layer: number): number[] =>
