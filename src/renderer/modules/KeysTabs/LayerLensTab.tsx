@@ -26,8 +26,8 @@ function LayerLensTab(props: LayerLensTabProps) {
   const isSuperkeyContext = activeTab === "super";
   // SK-LENS (OVERLAY_KEY) re-implements the tap/hold/double-tap gestures
   // that a superkey action slot already represents, so it can't be nested inside one.
-  // Hide it entirely from the Superkeys menu instead of just disabling it.
-  const hideSuperKey = isSuperkeyContext;
+  // Hide it entirely from the Superkeys menu instead of just disabling it. Keep it out of combo outputs as well
+  const hideSuperKey = isSuperkeyContext || activeTab === "combo";
   // Toggle Layer Lens (OVERLAY_TAP) makes sense on the tap-triggered slots and on Hold.
   const toggleDisabled = disabled || (isSuperkeyContext && !TOGGLE_LENS_ALLOWED_SLOTS.includes(action));
   // Hold Layer Lens (OVERLAY_HOLD) is the inverse: a Tap/2Tap slot already only

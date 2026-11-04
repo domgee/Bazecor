@@ -329,9 +329,9 @@ const LayersTab = ({
                 disabled={false}
                 className=""
               />
-              {activeTab === "editor" && (
+              {(activeTab === "editor" || activeTab === "combo") && (
                 <>
-                  {!sk20 && (
+                  {!sk20 && activeTab === "editor" && (
                     <CustomRadioCheckBox
                       label={<div className="pl-0.5">Add a key on tap</div>}
                       disabled={activeLayerNumber >= 9}

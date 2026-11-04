@@ -351,7 +351,7 @@ const ModifiersTab = ({
           </div>
           <div className="flex flex-col gap-2 mt-1">
             <div className="flex flex-wrap gap-6">
-              {!sk20 && (
+              {!sk20 && activeTab !== "combo" && (
                 <CustomRadioCheckBox
                   label={<div className="pl-0.5">Add a key on tap</div>}
                   checked={activeModifierTab === "dualModifier"}

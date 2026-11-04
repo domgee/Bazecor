@@ -517,7 +517,7 @@ function KeyPickerKeyboard(props: Props) {
                         ""
                       )}
                     </div>
-                    {actTab !== "super" ? (
+                    {actTab !== "super" && actTab !== "combo" ? (
                       <div className="flex flex-wrap gap-2 items-center">
                         <NoKeyTransparentTab keyCode={code} onKeySelect={onKeySelect} disabled={disable} />
                         <Separator orientation="vertical" className="mx-1 bg-gray-100 dark:bg-gray-600 block h-9" />

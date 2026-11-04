@@ -115,8 +115,8 @@ function ComboEditor(props: ComboEditorProps) {
   const [colormaps, setColormaps] = useState<number[][]>([]);
   const [layerNames, setLayerNames] = useState<string[]>([]);
   const [macros, setMacros] = useState<MacrosType[]>([]);
-  /* Only to tell complex superkeys, which cannot be a combo member, from the
-   * ones the firmware runs as Qukeys, which can. See comboBreakReason(). */
+  /* Offer them as combo outputs, and tell complex superkeys, which cannot be a combo member, from the ones run as Qukeys, which can.
+   * See comboBreakReason(). */
   const [superkeys, setSuperkeys] = useState<SuperkeysType[]>([]);
   const [isWireless, setIsWireless] = useState(false);
   const [deviceName, setDeviceName] = useState("");
@@ -792,9 +792,9 @@ function ComboEditor(props: ComboEditorProps) {
               onKeySelect={onActionKeySelect}
               code={keymapDB.keySegmentor(combo?.action ?? 0) as SegmentedKeyType}
               macros={macros}
-              superkeys={[]}
+              superkeys={superkeys}
               action={0}
-              actTab="super"
+              actTab="combo"
               selectedlanguage={currentLanguageLayout}
               keyIndex={0}
               isWireless={isWireless}
