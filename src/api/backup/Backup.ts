@@ -33,7 +33,9 @@ import {
   stripRaise2OnlySuperkeyActions,
 } from "../parsers";
 import { isLegacyCombosReply, upgradeLegacyCombosReply } from "../parsers/combos";
-import { ALT_REPEAT_COMMAND, needsAltRepeatClear, restoreAltRepeat, writeAltRepeatRules } from "../parsers/altRepeat";
+import { needsAltRepeatClear, writeAltRepeatRules } from "../parsers/altRepeat";
+import { needsKeyOverridesClear, writeKeyOverrides } from "../parsers/keyOverrides";
+import restoreCommand from "./restoreCommand";
 import { fitPaletteToFormat } from "../parsers/palette";
 import { rgb2w } from "../color";
 import { isSupportedLensProduct } from "../../lens/shared/constants";
@@ -391,10 +393,15 @@ export default class Backup {
     // firmware's backup carries some, so only send what the target lists in `help`.
     data = await Backup.keepSupportedCommands(data, device);
     data = data.filter(c => typeof c.command === "string" && c.command.trim().length > 0);
-    /* Clear the rules when the backup predates them */
+    /* Clear the rules and the key overrides when the backup predates them */
+    const supported = await Backup.supportedCommands(device);
     const clearAltRepeat = needsAltRepeatClear(
       data.map(c => c.command),
-      await Backup.supportedCommands(device),
+      supported,
+    );
+    const clearKeyOverrides = needsKeyOverridesClear(
+      data.map(c => c.command),
+      supported,
     );
     data = data.map(c => (typeof c.data === "string" ? { ...c, data: fitCommandToDevice(c.command, c.data, targetProduct) } : c));
     // Reorder to ensure superkeys are restored before keymap
@@ -441,18 +448,20 @@ export default class Backup {
           }
           log.info(`Going to send ${data[i].command} to keyboard`);
 
-          /* Validate and read back the rules write so a rejection fails the restore */
-          if (data[i].command === ALT_REPEAT_COMMAND) {
-            // eslint-disable-next-line no-await-in-loop
-            await restoreAltRepeat(device, String(val).trim(), device.device.keyboard.rows * device.device.keyboard.columns);
-          } else {
-            // eslint-disable-next-line no-await-in-loop
-            await device.command(data[i].command, String(val).trim());
-          }
+          /* Validate and read back the rules and key overrides writes so a rejection fails the restore */
+          const { command } = data[i];
+          const value = String(val).trim();
+          const keysPerLayer = () => device.device.keyboard.rows * device.device.keyboard.columns;
+          // eslint-disable-next-line no-await-in-loop
+          await restoreCommand(device, command, value, keysPerLayer, () => device.command(command, value));
         }
 
         if (clearAltRepeat) {
           await writeAltRepeatRules(device, [], 0, 0);
+        }
+
+        if (clearKeyOverrides) {
+          await writeKeyOverrides(device, []);
         }
 
         await device.noCacheCommand("led.mode 0");
@@ -572,21 +581,21 @@ export default class Backup {
 
               log.warn(`Going to send ${command} to keyboard`);
 
-              if (command === ALT_REPEAT_COMMAND) {
-                const keysPerLayer = device.device.keyboard.rows * device.device.keyboard.columns;
-                // eslint-disable-next-line no-await-in-loop
-                await restoreAltRepeat(device, commandData, keysPerLayer);
-              } else {
-                // eslint-disable-next-line no-await-in-loop
-                await device.command(command, commandData);
-              }
+              const keysPerLayer = () => device.device.keyboard.rows * device.device.keyboard.columns;
+              const sendData = commandData;
+              // eslint-disable-next-line no-await-in-loop
+              await restoreCommand(device, command, sendData, keysPerLayer, () => device.command(command, sendData));
             }
           }
         }
 
-        /* Clear the rules when the file predates them */
+        /* Clear the rules and the key overrides when the file predates them */
         if (needsAltRepeatClear(Object.keys(data), supported)) {
           await writeAltRepeatRules(device, [], 0, 0);
+        }
+
+        if (needsKeyOverridesClear(Object.keys(data), supported)) {
+          await writeKeyOverrides(device, []);
         }
 
         log.info("Settings restored OK");

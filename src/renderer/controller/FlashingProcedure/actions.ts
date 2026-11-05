@@ -15,7 +15,7 @@ import SonseiFlash from "../../../api/flash/sonseiFlasher/Sonsei-flasher";
 import { FlashRaise } from "../../../api/flash";
 import { delay } from "../../../main/utils/delay";
 import Backup from "../../../api/backup";
-import { ALT_REPEAT_COMMAND, restoreAltRepeat } from "../../../api/parsers/altRepeat";
+import restoreCommand from "../../../api/backup/restoreCommand";
 import * as Context from "./context";
 
 const stateUpdate = (stage: string, percentage: number, context: Context.ContextType) => {
@@ -92,11 +92,13 @@ const restoreSettings = async (
       const val = commands[i].data;
       log.info(`Going to send ${commands[i].command} to keyboard`);
 
-      /* Validate and read back the rules write so a rejection fails the restore */
-      if (commands[i].command === ALT_REPEAT_COMMAND && device) {
-        await restoreAltRepeat(device, String(val).trim(), device.device.keyboard.rows * device.device.keyboard.columns);
-      } else {
-        await device?.command(`${commands[i].command} ${val}`.trim());
+      /* Validate and read back the rules and key overrides writes so a rejection fails the restore */
+      const target = device;
+
+      if (target) {
+        const { command } = commands[i];
+        const keysPerLayer = () => target.device.keyboard.rows * target.device.keyboard.columns;
+        await restoreCommand(target, command, String(val).trim(), keysPerLayer, () => target.command(`${command} ${val}`.trim()));
       }
 
       stateUpd("restore", (i / commands.length) * 90);

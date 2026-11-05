@@ -69,6 +69,7 @@ function NavigationMenu(props: NavigationMenuProps) {
   const store = Store.getStore();
   const sk20 = Boolean(store.get("capabilities.sk20"));
   const combos = Boolean(store.get("capabilities.combos"));
+  const keyOverrides = Boolean(store.get("capabilities.keyOverrides"));
 
   const getGitHubFW = useCallback(
     async (product: any) => {
@@ -283,6 +284,24 @@ function NavigationMenu(props: NavigationMenuProps) {
                       icoSVG={<IconKeyboard2Stroke />}
                       showNotif
                       notifText="BETA"
+                      disabled={fwUpdate || loading}
+                    />
+                  </Link>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence mode="popLayout">
+              {connected && pages.keymap && keyOverrides && (
+                <motion.div initial={linkVariants.hidden} animate={linkVariants.visible} exit={linkVariants.hidden}>
+                  <Link
+                    to="/key-overrides"
+                    onClick={linkHandler}
+                    className={`list-link flex hover:no-underline ${fwUpdate || loading ? "disabled pointer-events-none" : ""}`}
+                  >
+                    <NavigationButton
+                      selected={currentPage === "/key-overrides"}
+                      buttonText={i18n.app.menu.keyOverrides}
+                      icoSVG={<IconKeyboard2Stroke />}
                       disabled={fwUpdate || loading}
                     />
                   </Link>

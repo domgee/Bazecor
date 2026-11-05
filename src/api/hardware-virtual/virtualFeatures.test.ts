@@ -151,3 +151,33 @@ describe("previous-key rules", () => {
     expect(vk.virtual.help.data.split("\r\n")).toContain("altrepeat.map");
   });
 });
+
+describe("key overrides", () => {
+  test("the Sonsei lists keyoverrides.map in help, erasable and empty", () => {
+    expect(SonseiWireless.virtual.help.data.split("\r\n")).toContain("keyoverrides.map");
+    expect(SonseiWireless.virtual["keyoverrides.map"].eraseable).toBe(true);
+    expect(SonseiWireless.virtual["keyoverrides.map"].data).toBe("0");
+  });
+
+  test.each([
+    ["Defy wireless", DefyWireless],
+    ["Raise 2 ANSI", Raise2ANSI],
+  ])("the %s does not", (_, template) => {
+    expect(template.virtual.help.data.split("\r\n")).not.toContain("keyoverrides.map");
+    expect(template.virtual["keyoverrides.map"]).toBeUndefined();
+  });
+
+  test("addMissingVirtualCommands adds it to a Sonsei file saved before it", () => {
+    const vk: VirtualType = JSON.parse(JSON.stringify(SonseiWireless));
+    delete vk.virtual["keyoverrides.map"];
+    vk.virtual.help.data = vk.virtual.help.data
+      .split("\r\n")
+      .filter(c => c !== "keyoverrides.map")
+      .join("\r\n");
+
+    const added = addMissingVirtualCommands(vk);
+
+    expect(added).toEqual(["keyoverrides.map"]);
+    expect(vk.virtual.help.data.split("\r\n")).toContain("keyoverrides.map");
+  });
+});
