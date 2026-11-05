@@ -391,7 +391,7 @@ export default class Backup {
     // firmware's backup carries some, so only send what the target lists in `help`.
     data = await Backup.keepSupportedCommands(data, device);
     data = data.filter(c => typeof c.command === "string" && c.command.trim().length > 0);
-    /* A backup from before the rules existed must not leave the keyboard's current rules behind */
+    /* Clear the rules when the backup predates them */
     const clearAltRepeat = needsAltRepeatClear(
       data.map(c => c.command),
       await Backup.supportedCommands(device),
@@ -441,7 +441,7 @@ export default class Backup {
           }
           log.info(`Going to send ${data[i].command} to keyboard`);
 
-          /* The rules write is validated and read back, and a rejection fails the restore */
+          /* Validate and read back the rules write so a rejection fails the restore */
           if (data[i].command === ALT_REPEAT_COMMAND) {
             // eslint-disable-next-line no-await-in-loop
             await restoreAltRepeat(device, String(val).trim(), device.device.keyboard.rows * device.device.keyboard.columns);
@@ -584,7 +584,7 @@ export default class Backup {
           }
         }
 
-        /* A file from before the rules existed must not leave the keyboard's current rules behind */
+        /* Clear the rules when the file predates them */
         if (needsAltRepeatClear(Object.keys(data), supported)) {
           await writeAltRepeatRules(device, [], 0, 0);
         }

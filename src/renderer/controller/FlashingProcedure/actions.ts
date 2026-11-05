@@ -92,7 +92,7 @@ const restoreSettings = async (
       const val = commands[i].data;
       log.info(`Going to send ${commands[i].command} to keyboard`);
 
-      /* The rules write is validated and read back, and a rejection fails the restore */
+      /* Validate and read back the rules write so a rejection fails the restore */
       if (commands[i].command === ALT_REPEAT_COMMAND && device) {
         await restoreAltRepeat(device, String(val).trim(), device.device.keyboard.rows * device.device.keyboard.columns);
       } else {

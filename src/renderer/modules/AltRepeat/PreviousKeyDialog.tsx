@@ -92,6 +92,7 @@ const PreviousKeyDialog = (props: PreviousKeyDialogProps) => {
               allowAutoshift={false}
               allowLayerHold={false}
               allowAltGr={false}
+              idPrefix="previousKey-"
             />
             {valid && (
               <span className="font-semibold">

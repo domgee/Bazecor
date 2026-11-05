@@ -9,7 +9,7 @@ vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
 }));
 
-/* Stand in for the on-screen keyboard, whose module graph vitest cannot load. Its only job here is to emit a base key */
+/* Stand in for the on-screen keyboard, whose module graph vitest cannot load, and emit a base key */
 vi.mock("@Renderer/modules/KeyPickerKeyboard", () => ({
   Picker: ({ onKeySelect }: { onKeySelect: (code: number) => void }) => (
     <button type="button" onClick={() => onKeySelect(6)}>
@@ -46,8 +46,8 @@ describe("PreviousKeyDialog", () => {
   test("offers no AltGr", () => {
     renderDialog(6);
 
-    expect(document.querySelector("#input-addModAltGr-radio")).toBeNull();
-    expect(document.querySelector("#input-addModAlt-radio")).not.toBeNull();
+    expect(document.querySelector("#input-previousKey-addModAltGr-radio")).toBeNull();
+    expect(document.querySelector("#input-previousKey-addModAlt-radio")).not.toBeNull();
   });
 
   test("a modifier alone cannot be confirmed", () => {
@@ -74,7 +74,7 @@ describe("PreviousKeyDialog", () => {
     const { onConfirm } = renderDialog(0);
 
     fireEvent.click(screen.getByRole("button", { name: "pick c" }));
-    fireEvent.click(document.querySelector("#input-addModControl-radio"));
+    fireEvent.click(document.querySelector("#input-previousKey-addModControl-radio"));
     fireEvent.click(confirmButton());
 
     expect(onConfirm).toHaveBeenCalledWith(0x106);

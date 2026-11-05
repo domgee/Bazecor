@@ -16,8 +16,8 @@
 
 import { AltRepeatRule } from "@Renderer/types/altRepeat";
 
-/* An "A2" chip in the top-left corner of every key with previous-key rules, built the same way as the combo
- * badge (see comboBadges.ts). The combo badge uses ::after, so this one uses ::before */
+/* Put an "A2" chip in the top-left corner of every key with previous-key rules, built like the combo badge in comboBadges.ts.
+ * Use ::before, since the combo badge takes ::after */
 
 /** Static half of the badge, visible only once a generated rule supplies its content. */
 export const altRepeatBadgeBaseStyles = `

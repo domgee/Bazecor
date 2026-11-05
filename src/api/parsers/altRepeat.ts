@@ -27,7 +27,7 @@ import { SuperkeysType } from "@Renderer/types/superkeys";
 export const ALT_REPEAT_COMMAND = "altrepeat.map";
 export const MAX_ALT_REPEAT_RULES = 128;
 
-/* The firmware keeps the layer state in a uint32 and checks the real layer count itself */
+/* Bound the layer by the firmware's uint32 layer state and leave the real layer count to the firmware */
 export const LAYER_COUNT_BOUND = 32;
 
 const DUM_FIRST = 49169;

@@ -177,6 +177,12 @@ function NavigationMenu(props: NavigationMenuProps) {
     }
   };
   const saveChangesAndRedirect = () => {
+    /* Stay on the page when Save is off, since leaving would lose the changes */
+    if (saveButtonRef.current?.disabled) {
+      setShowAlertModal(false);
+      return;
+    }
+
     if (saveButtonRef.current) {
       saveButtonRef.current.click();
       setShowAlertModal(false);

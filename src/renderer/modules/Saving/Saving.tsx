@@ -23,7 +23,7 @@ interface SavingProps {
   destroyContext: () => Promise<void> | void;
   inContext: boolean;
   isSaving: boolean;
-  /* Keep Save off while something the save needs could not be loaded */
+  /* Turn Save off while something the save needs could not be loaded */
   saveDisabled?: boolean;
   saveButtonRef?: React.RefObject<HTMLButtonElement>;
   discardChangesButtonRef?: React.RefObject<HTMLButtonElement>;

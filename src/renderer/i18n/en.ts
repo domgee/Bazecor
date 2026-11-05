@@ -554,7 +554,7 @@ const English = {
         undo: "Undo change",
         keep: "Keep it anyway",
       },
-      importCleared: "The file has no previous-key tabs, so the tabs on the layers it replaces were removed.",
+      importCleared: "Previous-key tabs on the imported layers were cleared because the file has none for this keyboard.",
       importDropped: "Some previous-key tabs in the file were not valid on this keyboard and were left out.",
       capacityRefused: "This would need more than 128 previous-key tabs. Nothing was changed.",
       saveFailed: "The keyboard did not store the previous-key tabs.",

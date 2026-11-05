@@ -154,7 +154,7 @@ ${keyboardCanvasStyles}
 
 type ModeType = "keyboard" | "color";
 
-/* What "Undo" puts back when a new default turns off a key's previous-key tabs */
+/* Hold what "Undo" puts back when a new default turns off a key's previous-key tabs */
 type AltRepeatBreakType = {
   layer: number;
   keyIndex: number;
@@ -239,17 +239,17 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   } | null>(null);
   const [altRepeatRules, setAltRepeatRules] = useState<AltRepeatRule[]>([]);
   const [altRepeatState, setAltRepeatState] = useState<AltRepeatState>("unsupported");
-  /* The table as the keyboard holds it, so Save only writes a changed table */
+  /* Remember the table the keyboard holds so Save only writes a changed table */
   const savedAltRepeat = useRef("0");
-  /* Index into the selected key's tabs, -1 for Default */
+  /* Index the selected key's tabs, with -1 for Default */
   const [altRepeatTab, setAltRepeatTab] = useState(-1);
-  /* ruleIndex is the rule whose previous key changes, null for a new tab */
+  /* Point ruleIndex at the rule whose previous key changes, or null for a new tab */
   const [previousDialog, setPreviousDialog] = useState<{ open: boolean; ruleIndex: number | null }>({
     open: false,
     ruleIndex: null,
   });
   const [altRepeatBreak, setAltRepeatBreak] = useState<AltRepeatBreakType | null>(null);
-  /* Waits for the combo warning to close when one key change raises both */
+  /* Hold the rules warning until the combo warning closes */
   const [pendingAltRepeatBreak, setPendingAltRepeatBreak] = useState<AltRepeatBreakType | null>(null);
 
   const [modified, setModified] = useState(false);
@@ -584,7 +584,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           }
         }
 
-        /* A failed read keeps the rules unknown, so Save stays off until they load */
+        /* Mark a failed read so Save stays off until the rules load */
         if (!store.get("capabilities.altRepeat")) {
           setAltRepeatState("unsupported");
           setAltRepeatRules([]);
@@ -928,7 +928,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     let nextRules: AltRepeatRule[] | null = null;
 
     if (altRepeatState === "ready") {
-      /* Default layers are read-only and carry no rules of their own */
+      /* Copy no rules from a default layer, which is read-only and has none */
       const sourceIsCustom = keymap.onlyCustom ? layer >= 0 : layer >= keymap.default.length;
       const copied = copyLayerRules(altRepeatRules, sourceIsCustom ? layer : null, currentLayer);
 
@@ -1087,7 +1087,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       let positions: Set<number> | undefined;
 
       if (chooseYourKeyboardSide !== "BOTH") {
-        /* The same row ranges the fill above clears */
+        /* Use the row ranges the fill above clears */
         const rows = chooseYourKeyboardSide === "LEFT" ? layerMap.keys.left : layerMap.keys.right;
         positions = new Set<number>();
 
@@ -1409,6 +1409,12 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   };
 
   const toExport = async () => {
+    /* Refuse the export, since a file without the unknown rules would clear them on import */
+    if (altRepeatState === "failed") {
+      showAltRepeatToast(i18n.editor.altRepeat.loadFailed);
+      return;
+    }
+
     let localLayerData;
     let localIsReadOnly;
     if (keymap.onlyCustom) {
@@ -1915,7 +1921,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     allowLayerHold={currentLayer !== 0}
                   />
                 )}
-                {/* A rule output runs like a combo action, so it gets the combo picker without Autoshift or layer hold */}
+                {/* Offer the combo picker without Autoshift or layer hold, since a rule output runs like a combo action */}
                 {selectedRule !== null && defaultBlock === null && (
                   <KeyPickerKeyboard
                     key={`ar-${currentLayer}-${currentKeyIndex}-${selectedRuleIdx}`}

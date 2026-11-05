@@ -32,7 +32,7 @@ interface PreviousKeyLabelProps {
   keymapDB: KeymapDB;
 }
 
-/* KeymapDB labels a shortcut by its base key only, so name the modifiers here to tell `c` and Cmd+c apart */
+/* Name the modifiers to tell `c` and Cmd+c apart, since KeymapDB labels a shortcut by its base key only */
 const PreviousKeyLabel = ({ code, keymapDB }: PreviousKeyLabelProps) => (
   <span className="previousKeyLabel inline-flex items-center gap-0.5">
     {previousModifiers(code).map(mod => (

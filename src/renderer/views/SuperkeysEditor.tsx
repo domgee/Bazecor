@@ -55,9 +55,11 @@ import Keymap, { KeymapDB } from "../../api/keymap";
 import Backup from "../../api/backup";
 import { parseMacrosRaw, parseSuperkeysRaw, serializeKeymap, serializeSuperkeys } from "../../api/parsers";
 import {
+  SUPERKEY_FIRST,
   firmwareLayerCount,
   readAltRepeatRules,
   remapSuperkeyOutputs,
+  rulesUsingOutput,
   serializeAltRepeat,
   writeAltRepeatRules,
 } from "../../api/parsers/altRepeat";
@@ -313,6 +315,8 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
     const nIdx = localNeurons.findIndex(n => n.id === neuronID);
     localNeurons[nIdx].superkeys = superkeys;
     log.info("Loaded neurons: ", JSON.stringify(localNeurons));
+    let rulesFailed = false;
+
     try {
       store.set("neurons", localNeurons);
       // Send superkeys map first (Superkeys Editor requirement)
@@ -328,7 +332,9 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
 
       if (state.altRepeatState === "ready" && keymap && serializedRules !== state.altRepeatSaved) {
         const keysPerLayer = currentDevice.device.keyboard.rows * currentDevice.device.keyboard.columns;
+        rulesFailed = true;
         await writeAltRepeatRules(currentDevice, state.altRepeatRules, firmwareLayerCount(keymap), keysPerLayer);
+        rulesFailed = false;
         state.altRepeatSaved = serializedRules;
       }
 
@@ -346,8 +352,15 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
       cancelContext();
       setLoading(false);
     } catch (error) {
-      toast.error(error);
-      cancelContext();
+      log.error(error);
+      const content = rulesFailed ? i18n.editor.altRepeat.saveFailed : (error?.message ?? String(error));
+      toast.error(<ToastMessage title="Error when saving" content={content} icon={<IconFloppyDisk />} />, { icon: "" });
+
+      /* Keep the changes and the context so Save can retry the rules, which hold the Superkey renumbering */
+      if (!rulesFailed) {
+        cancelContext();
+      }
+
       setLoading(false);
     }
     setIsSaving(false);
@@ -421,7 +434,7 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
           .filter(x => x !== undefined),
       )
       .flat();
-    if (LOK.length > 0) {
+    if (LOK.length > 0 || rulesUsingOutput(state.altRepeatRules, SKC) > 0) {
       state.showDeleteModal = true;
       state.listToDelete = LOK;
       state.futureSK = localNewSuper;
@@ -590,9 +603,19 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
   const tempkey = tempKC === -1 ? keymapDB.parse(0) : keymapDB.parse(tempKC);
   const code = keymapDB.keySegmentor(tempkey.keyCode);
 
-  const listOfSKK = listToDelete.map(({ layer, pos, superIdx }) => (
-    <li key={`${layer}-${pos}-${superIdx}`} className="titles alignvert">{`Key in layer ${layer + 1} and pos ${pos}`}</li>
-  ));
+  const listOfSKK = listToDelete
+    .map(({ layer, pos, superIdx }) => (
+      <li key={`${layer}-${pos}-${superIdx}`} className="titles alignvert">{`Key in layer ${layer + 1} and pos ${pos}`}</li>
+    ))
+    .concat(
+      state.altRepeatRules
+        .filter(rule => showDeleteModal && rule.output === SUPERKEY_FIRST + selectedSuper)
+        .map(rule => (
+          <li key={`altrepeat-${rule.layer}-${rule.position}-${rule.previous}`} className="titles alignvert">
+            {`Previous-key tab in layer ${rule.layer + 1} and pos ${rule.position}`}
+          </li>
+        )),
+    );
   // if (loading || !Array.isArray(superkeys)) return <LogoLoaderCentered />;
   if (loading || !Array.isArray(superkeys)) return <LogoLoader centered />;
   return (

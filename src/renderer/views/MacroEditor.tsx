@@ -251,6 +251,8 @@ function MacroEditor(props: MacroEditorProps) {
     const localNeurons = [...neurons];
     localNeurons[localNeurons.findIndex(n => n.id === neuronID)].macros = newMacros;
     store.set("neurons", localNeurons);
+    let rulesFailed = false;
+
     try {
       await currentDevice.command("macros.map", serializeMacros(newMacros, state.totalMemory));
       log.info(keymap.custom);
@@ -261,7 +263,9 @@ function MacroEditor(props: MacroEditorProps) {
 
       if (state.altRepeatState === "ready" && serializedRules !== state.altRepeatSaved) {
         const keysPerLayer = currentDevice.device.keyboard.rows * currentDevice.device.keyboard.columns;
+        rulesFailed = true;
         await writeAltRepeatRules(currentDevice, state.altRepeatRules, firmwareLayerCount(keymap), keysPerLayer);
+        rulesFailed = false;
         state.altRepeatSaved = serializedRules;
       }
 
@@ -282,6 +286,18 @@ function MacroEditor(props: MacroEditorProps) {
     } catch (error) {
       log.info("error when writing macros");
       log.error(error);
+
+      /* Keep the changes and the context so Save can retry the rules, which hold the macro renumbering */
+      if (rulesFailed) {
+        toast.error(
+          <ToastMessage title="Error when saving" content={i18n.editor.altRepeat.saveFailed} icon={<IconFloppyDisk />} />,
+          { icon: "" },
+        );
+        setLoading(false);
+        setIsSaving(false);
+        return;
+      }
+
       toast.error(<ToastMessage title="Error when sending macros to the device" icon={<IconFloppyDisk />} />, { icon: "" });
       cancelContext();
       setLoading(false);

@@ -101,3 +101,31 @@ describe("ModPicker AltGr", () => {
     expect(container.querySelector("#input-addModAlt-radio")).not.toBeNull();
   });
 });
+
+describe("ModPicker idPrefix", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  test("a label click in a prefixed ModPicker only changes that picker", () => {
+    const editorSelect = vi.fn();
+    const dialogSelect = vi.fn();
+    const { container } = render(
+      <>
+        <ModPicker keyCode={{ base: 6, modified: 0 }} onKeySelect={editorSelect} isStandardView={false} />
+        <ModPicker keyCode={{ base: 7, modified: 0 }} onKeySelect={dialogSelect} isStandardView={false} idPrefix="dialog-" />
+      </>,
+    );
+
+    fireEvent.click(container.querySelector('label[for="input-dialog-addModControl-radio"]'));
+
+    expect(dialogSelect).toHaveBeenCalledWith(0x107);
+    expect(editorSelect).not.toHaveBeenCalled();
+  });
+
+  test("without a prefix the ids stay as they were", () => {
+    const { container } = render(<ModPicker keyCode={{ base: 6, modified: 0 }} onKeySelect={vi.fn()} isStandardView={false} />);
+
+    expect(container.querySelector("#input-addModControl-radio")).not.toBeNull();
+  });
+});

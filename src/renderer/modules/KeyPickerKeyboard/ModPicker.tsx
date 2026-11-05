@@ -27,10 +27,20 @@ interface ModPickerProps {
   allowLayerHold?: boolean;
   /* Hide AltGr where the firmware folds it into Alt */
   allowAltGr?: boolean;
+  /* Keep the checkbox ids unique when a second ModPicker is mounted, since the labels find their checkbox by id */
+  idPrefix?: string;
 }
 
 function ModPicker(props: ModPickerProps) {
-  const { keyCode, onKeySelect, isStandardView, allowAutoshift = true, allowLayerHold = false, allowAltGr = true } = props;
+  const {
+    keyCode,
+    onKeySelect,
+    isStandardView,
+    allowAutoshift = true,
+    allowLayerHold = false,
+    allowAltGr = true,
+    idPrefix = "",
+  } = props;
   const [modifs, setModifs] = useState([]);
   const previousKeyCode = usePrevious({ base: keyCode.base, modified: keyCode.modified });
 
@@ -181,8 +191,8 @@ function ModPicker(props: ModPickerProps) {
             onClick={() => SelectModif(0)}
             checked={modifs.includes(0)}
             type="radio"
-            name="addModShift"
-            id="addModShift"
+            name={`${idPrefix}addModShift`}
+            id={`${idPrefix}addModShift`}
             disabled={setModifierVisibility()}
           />
           <CustomRadioCheckBox
@@ -190,8 +200,8 @@ function ModPicker(props: ModPickerProps) {
             onClick={() => SelectModif(1)}
             checked={modifs.includes(1)}
             type="radio"
-            name="addModControl"
-            id="addModControl"
+            name={`${idPrefix}addModControl`}
+            id={`${idPrefix}addModControl`}
             disabled={setModifierVisibility()}
           />
           <CustomRadioCheckBox
@@ -199,8 +209,8 @@ function ModPicker(props: ModPickerProps) {
             onClick={() => SelectModif(4)}
             checked={modifs.includes(4)}
             type="radio"
-            name="addModOS"
-            id="addModOS"
+            name={`${idPrefix}addModOS`}
+            id={`${idPrefix}addModOS`}
             disabled={setModifierVisibility()}
           />
           <CustomRadioCheckBox
@@ -208,8 +218,8 @@ function ModPicker(props: ModPickerProps) {
             onClick={() => SelectModif(2)}
             checked={modifs.includes(2)}
             type="radio"
-            name="addModAlt"
-            id="addModAlt"
+            name={`${idPrefix}addModAlt`}
+            id={`${idPrefix}addModAlt`}
             disabled={setModifierVisibility()}
           />
           {allowAltGr && (
@@ -218,8 +228,8 @@ function ModPicker(props: ModPickerProps) {
               onClick={() => SelectModif(3)}
               checked={modifs.includes(3)}
               type="radio"
-              name="addModAltGr"
-              id="addModAltGr"
+              name={`${idPrefix}addModAltGr`}
+              id={`${idPrefix}addModAltGr`}
               disabled={setModifierVisibility()}
             />
           )}
@@ -233,8 +243,8 @@ function ModPicker(props: ModPickerProps) {
               onClick={() => toggleAutoshift()}
               checked={autoshifted}
               type="checkbox"
-              name="makeAutoshiftable"
-              id="makeAutoshiftable"
+              name={`${idPrefix}makeAutoshiftable`}
+              id={`${idPrefix}makeAutoshiftable`}
               disabled={!autoshiftAvailable}
               tooltip={
                 <>
@@ -260,8 +270,8 @@ function ModPicker(props: ModPickerProps) {
               onClick={() => onKeySelect(layerHeld ? shortcutCode : toLayerHold(currentCode))}
               checked={layerHeld}
               type="checkbox"
-              name="holdUntilLayerChange"
-              id="holdUntilLayerChange"
+              name={`${idPrefix}holdUntilLayerChange`}
+              id={`${idPrefix}holdUntilLayerChange`}
               disabled={!layerHoldAvailable}
               tooltip={
                 <>

@@ -55,10 +55,10 @@ export interface MacroEditorInitialStateType {
   kbtype: string;
   scrollPos: number;
   altRepeatRules: AltRepeatRule[];
-  /* The table as the keyboard holds it, so a save only writes a changed table */
+  /* Remember the table the keyboard holds so a save only writes a changed table */
   altRepeatSaved: string;
   altRepeatState: AltRepeatState;
-  /* The macro the delete modal is about, so its confirmation can renumber rule outputs */
+  /* Remember the macro the delete modal is about so its confirmation can renumber rule outputs */
   deletedMacroIdx: number;
 }
 
