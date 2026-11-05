@@ -537,7 +537,7 @@ const English = {
       previousDuplicate: "This key already has a tab for that previous key.",
       outputTitle: "Output after this previous key",
       repeat: "Apply on key repeat",
-      repeatHint: "Keep sending this output on each press of this key until another key is typed.",
+      repeatHint: "Keep sending this output on each press of this key until another key is typed or the layer changes.",
       confirm: "Confirm",
       cancel: "Cancel",
       blocked: {
