@@ -1947,7 +1947,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     allowLayerHold={currentLayer !== 0}
                   />
                 )}
-                {/* Offer the combo picker without Autoshift or layer hold, since a rule output runs like a combo action */}
+                {/* Offer the combo picker without Autoshift, since a rule output runs like a combo action. Layer hold works as on Default */}
                 {selectedRule !== null && defaultBlock === null && (
                   <KeyPickerKeyboard
                     key={`ar-${currentLayer}-${currentKeyIndex}-${selectedRuleIdx}`}
@@ -1963,6 +1963,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     selectedlanguage={currentLanguageLayout}
                     isWireless={isWireless}
                     allowAutoshift={false}
+                    allowLayerHold={currentLayer !== 0}
                     fullMouse
                   />
                 )}

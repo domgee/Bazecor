@@ -133,7 +133,26 @@ describe("isAllowedOutput", () => {
     expect(isAllowedOutput(code)).toBe(true);
   });
 
-  test.each([[0], [65535], [49169], [53266], [54115], [54370], [0x2006], [0x3fff]])("%i is not allowed", code => {
+  test.each([[0], [65535], [49169], [53266], [54115], [54370]])("%i is not allowed", code => {
+    expect(isAllowedOutput(code)).toBe(false);
+  });
+
+  /* Mirror the shape LayerHoldMods registers, a modifier and a keycode from a to the last HID key */
+  test.each([
+    [0x302b], // Cmd+Tab held until layer change
+    [0x2404], // AltGr+a
+    [0x3fdd], // all modifiers with the last HID key
+  ])("layer hold code %i is allowed", code => {
+    expect(isAllowedOutput(code)).toBe(true);
+  });
+
+  test.each([
+    [0x2006], // no modifier
+    [0x3003], // keycode below a
+    [0x30e3], // modifier-only keycode Gui
+    [0x30de], // keycode above the last HID key
+    [0x3fff], // keycode 0xff
+  ])("layer hold code %i is not allowed", code => {
     expect(isAllowedOutput(code)).toBe(false);
   });
 });

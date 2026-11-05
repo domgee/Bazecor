@@ -55,6 +55,7 @@ const FIRST_TYPING_KEY = 0x04;
 const LAST_TYPING_KEY = 0xdd;
 const LAYER_HOLD_MASK = 0xe000;
 const LAYER_HOLD_BITS = 0x2000;
+const LAYER_HOLD_MODS = 0x1f;
 
 const isSuperkeyCode = (code: number) => code >= SUPERKEY_FIRST && code < SUPERKEY_FIRST + SUPERKEY_COUNT;
 
@@ -102,8 +103,13 @@ export const isAllowedOutput = (code: number): boolean => {
     return false;
   }
 
-  /* A layer hold shortcut needs its layer key, which an output does not have */
-  return (code & LAYER_HOLD_MASK) !== LAYER_HOLD_BITS;
+  if ((code & LAYER_HOLD_MASK) !== LAYER_HOLD_BITS) {
+    return true;
+  }
+
+  /* Take a layer hold shortcut only in the shape LayerHoldMods registers, with a modifier and a typing key */
+  const keycode = code & 0xff;
+  return ((code >> 8) & LAYER_HOLD_MODS) !== 0 && keycode >= FIRST_TYPING_KEY && keycode <= LAST_TYPING_KEY;
 };
 
 /** The modifiers of a previous key, in the order a shortcut is usually read. */
