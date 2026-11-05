@@ -53,6 +53,7 @@ import { Neuron } from "@Types/neurons";
 import { hasLayerHoldMarker } from "../hw/layerhold";
 import { hasAltRepeatCommand } from "../api/parsers/altRepeat";
 import { hasKeyOverridesCommand } from "../api/parsers/keyOverrides";
+import { hasQuickTapCommand } from "../api/parsers/quickTap";
 import { version } from "../../package.json";
 import "../api/keymap";
 import "../api/colormap";
@@ -68,8 +69,8 @@ const store = Store.getStore();
 // (SK 2.0, Layer Lens, Combos, Autoshift, CapsWord, layer hold and key repeat on previous-key rules). Runs on connect and again
 // after a firmware update, since the keyboard stays connected through it.
 // The minimum FW per product for each capability lives in src/versionRules.json.
-// Also reads help for capabilities.layerHold, capabilities.altRepeat and capabilities.keyOverrides, which official firmware of the same
-// version lacks.
+// Also reads help for capabilities.layerHold, capabilities.altRepeat, capabilities.keyOverrides and capabilities.quickTap, which official
+// firmware of the same version lacks.
 const detectFirmwareCapabilities = async (currentDevice: Device) => {
   try {
     const versionStr = (await currentDevice.noCacheCommand("version")) as string;
@@ -86,8 +87,8 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     log.info("[Capabilities] all disabled due to firmware version read/parse error");
   }
 
-  /* Detect Hold until layer change, previous-key rules and key overrides through help, because official firmware of the same version
-   * lacks them */
+  /* Detect Hold until layer change, previous-key rules, key overrides and quick tap through help, because official firmware of the same
+   * version lacks them */
   try {
     const help = await currentDevice.noCacheCommand("help");
     const available = hasLayerHoldMarker(help);
@@ -99,11 +100,15 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     const keyOverrides = hasKeyOverridesCommand(help);
     store.set("capabilities.keyOverrides", keyOverrides);
     log.info(`[Capabilities] keyOverrides -> available: ${keyOverrides}`);
+    const quickTap = hasQuickTapCommand(help);
+    store.set("capabilities.quickTap", quickTap);
+    log.info(`[Capabilities] quickTap -> available: ${quickTap}`);
   } catch (e) {
-    log.warn("Error reading help for layerHold, altRepeat and keyOverrides", e);
+    log.warn("Error reading help for layerHold, altRepeat, keyOverrides and quickTap", e);
     store.set("capabilities.layerHold", false);
     store.set("capabilities.altRepeat", false);
     store.set("capabilities.keyOverrides", false);
+    store.set("capabilities.quickTap", false);
   }
 };
 

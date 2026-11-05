@@ -704,6 +704,13 @@ export interface Qukeys {
   holdTimeoutTip3: string;
   holdTimeoutTip4: string;
   superkeysAffectsNote: string;
+  quickTapTerm: string;
+  quickTapTermOff: string;
+  quickTapTermReadError: string;
+  quickTapTermTip1: string;
+  quickTapTermTip2: string;
+  quickTapTermTip3: string;
+  quickTapTermTipDefault: string;
 }
 
 export interface ResetEEPROM {

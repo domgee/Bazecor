@@ -46,6 +46,8 @@ export interface KBDataPref {
   qukeysOverlapThreshold: number;
   qukeysMinHold: number;
   qukeysMinPrior: number;
+  /** Quick tap term in ms, 0 = off. -1 = not read, which means the read failed when capabilities.quickTap is true. */
+  qukeysQuickTapTerm: number;
   SuperTimeout: number;
   SuperRepeat: number;
   SuperWaitfor: number;

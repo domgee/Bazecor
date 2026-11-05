@@ -171,6 +171,7 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
   const autoshift = Boolean(store.get("capabilities.autoshift"));
   const combos = Boolean(store.get("capabilities.combos"));
   const capsword = Boolean(store.get("capabilities.capsword"));
+  const quickTap = Boolean(store.get("capabilities.quickTap"));
 
   useEffect(() => {
     const { kbData: newKBData } = props;
@@ -213,6 +214,14 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
       qukeysMinPrior: value[0],
     }));
     setKbData({ ...localKBData, qukeysMinPrior: value[0] });
+  };
+
+  const setQuickTapTerm = (value: number[]) => {
+    setLocalKBData(data => ({
+      ...data,
+      qukeysQuickTapTerm: value[0],
+    }));
+    setKbData({ ...localKBData, qukeysQuickTapTerm: value[0] });
   };
 
   const setSuperTimeout = (value: number[]) => {
@@ -302,6 +311,7 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
     qukeysOverlapThreshold,
     qukeysMinHold,
     qukeysMinPrior,
+    qukeysQuickTapTerm,
     SuperTimeout,
     SuperHoldstart,
     // SuperOverlapThreshold,
@@ -558,6 +568,60 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
                       <span className="tagsfix">Safer</span>
                     </div>
                   </div>
+                </div>
+              )}
+              {quickTap && (
+                <div className="w-full">
+                  <div className="w-full flex gap-2">
+                    <div className="w-full">
+                      <Heading headingLevel={3} renderAs="paragraph-sm" className="flex items-center gap-2">
+                        {sk20
+                          ? labelWithFastSuper(i18n.keyboardSettings.qukeys.quickTapTerm).replace("Superkeys - ", "").trim()
+                          : labelWithFastSuper(i18n.keyboardSettings.qukeys.quickTapTerm)}
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger className="[&_svg]:text-purple-100 [&_svg]:dark:text-purple-200">
+                              <IconInformation />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <Heading headingLevel={4} renderAs="h4" className="text-gray-600 dark:text-gray-25 mb-3 leading-6">
+                                {i18n.keyboardSettings.qukeys.quickTapTermTip1}
+                              </Heading>
+                              <ul className="list-disc pl-4">
+                                <li className="text-left">{i18n.keyboardSettings.qukeys.quickTapTermTip2}</li>
+                                <li className="text-left">{i18n.keyboardSettings.qukeys.quickTapTermTip3}</li>
+                                {sk20 && <li className="text-left">{i18n.keyboardSettings.qukeys.superkeysAffectsNote}</li>}
+                                <li className="text-left">{i18n.keyboardSettings.qukeys.quickTapTermTipDefault}</li>
+                              </ul>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </Heading>
+                    </div>
+                    <div className="flex items-center text-right">
+                      {/* Show the failed read instead of a slider, so a save never turns quick tap off by mistake */}
+                      {qukeysQuickTapTerm < 0 ? (
+                        <span className="tagsfix">{i18n.keyboardSettings.qukeys.quickTapTermReadError}</span>
+                      ) : (
+                        <span className="tagsfix whitespace-nowrap">
+                          {qukeysQuickTapTerm === 0 ? i18n.keyboardSettings.qukeys.quickTapTermOff : `${qukeysQuickTapTerm} ms`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {qukeysQuickTapTerm >= 0 && (
+                    <div className="w-full flex gap-2">
+                      <div className="flex max-w-12 p-0 text-center items-center">
+                        <span className="tagsfix">{i18n.keyboardSettings.qukeys.quickTapTermOff}</span>
+                      </div>
+                      <div className="w-full flex items-center p-0">
+                        <Slider min={0} max={255} step={5} value={[qukeysQuickTapTerm]} onValueChange={setQuickTapTerm} />
+                      </div>
+                      <div className="flex max-w-12 p-0 text-center items-center">
+                        <span className="tagsfix">Longer</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {SuperHoldstart >= 0 && !sk20 && (

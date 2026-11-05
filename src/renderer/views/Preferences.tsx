@@ -68,6 +68,7 @@ import LogoLoader from "@Renderer/components/atoms/loader/LogoLoader";
 import { Neuron } from "@Renderer/types/neurons";
 import Backup from "../../api/backup";
 import { delay } from "../../api/flash/delay";
+import { readQuickTapTerm, writeQuickTapTerm } from "../../api/parsers/quickTap";
 import { confirmBox } from "../utils/messageBox";
 
 const store = Store.getStore();
@@ -119,6 +120,7 @@ const initialKBData = {
   qukeysOverlapThreshold: 0,
   qukeysMinHold: 0,
   qukeysMinPrior: 0,
+  qukeysQuickTapTerm: -1,
   SuperTimeout: 0,
   SuperRepeat: 20,
   SuperWaitfor: 500,
@@ -249,6 +251,15 @@ const Preferences = (props: PreferencesProps) => {
         const minPriorParsed = minimumPriorInterval ? parseInt(minimumPriorInterval, 10) : undefined;
         newKbData.qukeysMinPrior = minPriorParsed;
       });
+
+      /* Quick tap is fork-only. -1 hides the slider and skips the save, so a failed read never turns quick tap off */
+      newKbData.qukeysQuickTapTerm = -1;
+
+      if (store.get("capabilities.quickTap")) {
+        const term = await readQuickTapTerm(state.currentDevice);
+        log.info("[QuickTap] read term ->", term);
+        newKbData.qukeysQuickTapTerm = term ?? -1;
+      }
 
       // SuperKeys variables commands
       await state.currentDevice.command("superkeys.timeout").then((timeout: string) => {
@@ -464,6 +475,12 @@ const Preferences = (props: PreferencesProps) => {
         "qukeys.minimumPriorInterval",
         kbData.qukeysMinPrior ? kbData.qukeysMinPrior.toString() : "",
       );
+
+      if (store.get("capabilities.quickTap") && kbData.qukeysQuickTapTerm >= 0) {
+        log.info(`[QuickTap] saving term=${kbData.qukeysQuickTapTerm}`);
+        await writeQuickTapTerm(state.currentDevice, kbData.qukeysQuickTapTerm);
+      }
+
       // SUPER KEYS
       await state.currentDevice.command("superkeys.timeout", kbData.SuperTimeout.toString());
       await state.currentDevice.command("superkeys.repeat", kbData.SuperRepeat.toString());

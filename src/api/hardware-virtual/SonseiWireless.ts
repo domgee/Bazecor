@@ -48,10 +48,10 @@ const SonseiWireless: VirtualType = {
   },
   virtual: {
     ...DefyWireless.virtual,
-    /* Only the Sonsei firmware has LayerHoldMods, AltRepeat and KeyOverrides. Their help lines turn on the options */
+    /* Only the Sonsei firmware has LayerHoldMods, AltRepeat, KeyOverrides and quick tap. Their help lines turn on the options */
     help: {
       ...DefyWireless.virtual.help,
-      data: `${DefyWireless.virtual.help.data}\r\nlayerhold.state\r\naltrepeat.map\r\nkeyoverrides.map`,
+      data: `${DefyWireless.virtual.help.data}\r\nlayerhold.state\r\naltrepeat.map\r\nkeyoverrides.map\r\nqukeys.quickTapTerm`,
     },
     "layerhold.state": {
       data: "0 0",
@@ -123,6 +123,10 @@ const SonseiWireless: VirtualType = {
     },
     "qukeys.minimumPriorInterval": {
       data: "75",
+      eraseable: true,
+    },
+    "qukeys.quickTapTerm": {
+      data: "0",
       eraseable: true,
     },
     "superkeys.map": {

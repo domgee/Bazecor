@@ -839,6 +839,14 @@ const English = {
         "If the value is high, the hold function won't be triggered if you press this key shortly after pressing another key.",
       minPriorTipDefault: "Default value: 75",
       superkeysAffectsNote: "Only affects superkeys with Layers or Modifiers on Hold.",
+      quickTapTerm: "Add Key on Tap - Quick Tap Term",
+      quickTapTermOff: "Off",
+      quickTapTermReadError: "Could not read the quick tap term",
+      quickTapTermTip1:
+        "Tap a dual-function key and press it again within this time to get its tap key at once. Hold the second press to repeat it.",
+      quickTapTermTip2: "While this is on, a tap followed quickly by a hold gives the tap key, not the modifier or layer.",
+      quickTapTermTip3: "The keyboard never uses more than the hold timeout.",
+      quickTapTermTipDefault: "Default value: Off",
     },
     superkeys: {
       title: "Typing",
