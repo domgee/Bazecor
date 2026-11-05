@@ -78,10 +78,10 @@ describe("restoreCommand", () => {
     expect(sendPlain).not.toHaveBeenCalled();
   });
 
-  test("rejects when the keyboard keeps its old quick tap term", async () => {
+  test("rejects when the keyboard replies error to the quick tap write", async () => {
     const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "error" : "0"));
 
-    await expect(restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, "120", () => 60, vi.fn())).rejects.toThrow();
+    await expect(restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, "120", () => 60, vi.fn())).rejects.toThrow("rejected");
   });
 
   test("rejects when the quick tap write returns an Error", async () => {
@@ -96,27 +96,20 @@ describe("restoreCommand", () => {
     /* Accept the write but keep the stored 0 */
     const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "" : "0"));
 
-    await expect(restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, "120", () => 60, vi.fn())).rejects.toThrow();
+    await expect(restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, "120", () => 60, vi.fn())).rejects.toThrow(
+      "did not store",
+    );
   });
 
   test.each([
     ["a fraction", " 1.5 "],
     ["a term above 1000", "1001"],
-  ])("rejects %s from a virtual backup and keeps the stored term", async (_, data) => {
-    /* Store and echo the args, as Device.virtualRequest does */
-    const tables: Record<string, string> = { [QUICK_TAP_COMMAND]: "0" };
-    const noCacheCommand = vi.fn(async (cmd: string, ...args: string[]): Promise<unknown> => {
-      if (args.length > 0) {
-        tables[cmd] = args.join(" ");
-      }
-
-      return tables[cmd];
-    });
-    const sendPlain = vi.fn(async () => "");
+  ])("rejects %s from a virtual backup without sending anything", async (_, data) => {
+    const noCacheCommand = vi.fn();
+    const sendPlain = vi.fn();
 
     await expect(restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, data, () => 60, sendPlain)).rejects.toThrow("Malformed");
     expect(noCacheCommand).not.toHaveBeenCalled();
     expect(sendPlain).not.toHaveBeenCalled();
-    expect(tables[QUICK_TAP_COMMAND]).toBe("0");
   });
 });

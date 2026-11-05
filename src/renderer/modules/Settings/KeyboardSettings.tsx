@@ -615,7 +615,13 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
                         <span className="tagsfix">{i18n.keyboardSettings.qukeys.quickTapTermOff}</span>
                       </div>
                       <div className="w-full flex items-center p-0">
-                        <Slider min={0} max={255} step={5} value={[qukeysQuickTapTerm]} onValueChange={setQuickTapTerm} />
+                        <Slider
+                          min={0}
+                          max={255}
+                          step={5}
+                          value={[Math.min(qukeysQuickTapTerm, 255)]}
+                          onValueChange={setQuickTapTerm}
+                        />
                       </div>
                       <div className="flex max-w-12 p-0 text-center items-center">
                         <span className="tagsfix">Longer</span>

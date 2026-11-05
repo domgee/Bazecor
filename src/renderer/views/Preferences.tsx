@@ -68,7 +68,7 @@ import LogoLoader from "@Renderer/components/atoms/loader/LogoLoader";
 import { Neuron } from "@Renderer/types/neurons";
 import Backup from "../../api/backup";
 import { delay } from "../../api/flash/delay";
-import { readQuickTapTerm, writeQuickTapTerm } from "../../api/parsers/quickTap";
+import { readQuickTapTerm, saveQuickTapTerm } from "../../api/parsers/quickTap";
 import { confirmBox } from "../utils/messageBox";
 
 const store = Store.getStore();
@@ -252,7 +252,7 @@ const Preferences = (props: PreferencesProps) => {
         newKbData.qukeysMinPrior = minPriorParsed;
       });
 
-      /* Quick tap is fork-only. -1 hides the slider and skips the save, so a failed read never turns quick tap off */
+      /* Reset the shared initialKBData. Keep -1 on a failed read to hide the slider, so a save never turns quick tap off */
       newKbData.qukeysQuickTapTerm = -1;
 
       if (store.get("capabilities.quickTap")) {
@@ -475,12 +475,6 @@ const Preferences = (props: PreferencesProps) => {
         "qukeys.minimumPriorInterval",
         kbData.qukeysMinPrior ? kbData.qukeysMinPrior.toString() : "",
       );
-
-      if (store.get("capabilities.quickTap") && kbData.qukeysQuickTapTerm >= 0) {
-        log.info(`[QuickTap] saving term=${kbData.qukeysQuickTapTerm}`);
-        await writeQuickTapTerm(state.currentDevice, kbData.qukeysQuickTapTerm);
-      }
-
       // SUPER KEYS
       await state.currentDevice.command("superkeys.timeout", kbData.SuperTimeout.toString());
       await state.currentDevice.command("superkeys.repeat", kbData.SuperRepeat.toString());
@@ -559,6 +553,12 @@ const Preferences = (props: PreferencesProps) => {
     try {
       await saveKeymapChanges();
       await saveWirelessChanges();
+
+      /* Save quick tap last, so a rejection skips only the backup */
+      if (store.get("capabilities.quickTap")) {
+        log.info(`[QuickTap] saving term=${kbData.qukeysQuickTapTerm}`);
+        await saveQuickTapTerm(state.currentDevice, kbData.qukeysQuickTapTerm);
+      }
 
       const commands = await Backup.Commands(state.currentDevice);
       const backup = await bkp.DoBackup(commands, preferencesState.neuronID, state.currentDevice);

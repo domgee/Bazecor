@@ -8,10 +8,11 @@ import {
   parseQuickTapTerm,
   readQuickTapTerm,
   restoreQuickTap,
+  saveQuickTapTerm,
   writeQuickTapTerm,
 } from "./quickTap";
 
-/* A keyboard that stores the term it is sent, or replies `error` to every write when it rejects */
+/* Store the term sent, or reply `error` to every write when `reject` is set */
 const fakeDevice = (initial = "0", reject = false) => {
   let term = initial;
   const noCacheCommand = vi.fn(async (cmd: string, ...args: string[]): Promise<unknown> => {
@@ -164,6 +165,15 @@ describe("writeQuickTapTerm", () => {
     expect(noCacheCommand.mock.calls).toEqual([[QUICK_TAP_COMMAND, "120"], [QUICK_TAP_COMMAND]]);
   });
 
+  test("rejects an Error read-back and reads the term again", async () => {
+    const noCacheCommand = vi.fn(
+      async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "" : new Error("timeout")),
+    );
+
+    await expect(writeQuickTapTerm({ noCacheCommand }, 120)).rejects.toThrow("timeout");
+    expect(noCacheCommand.mock.calls).toEqual([[QUICK_TAP_COMMAND, "120"], [QUICK_TAP_COMMAND], [QUICK_TAP_COMMAND]]);
+  });
+
   test("rejects a read-back that differs from the term sent", async () => {
     const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "" : "0"));
 
@@ -185,5 +195,56 @@ describe("restoreQuickTap", () => {
 
     await expect(restoreQuickTap(device, "abc")).rejects.toThrow("Malformed");
     expect(noCacheCommand).not.toHaveBeenCalled();
+  });
+});
+
+/* Keep the keyboard's term apart from a cache that stores every reply and every sent value, as Device.noCacheCommand does */
+const cachingDevice = (initial: unknown) => {
+  const keyboard = { term: initial };
+  const memoryMap = new Map<string, unknown>();
+  const noCacheCommand = vi.fn(async (cmd: string, ...args: string[]): Promise<unknown> => {
+    if (args.length > 0) {
+      keyboard.term = args.join(" ");
+      memoryMap.set(cmd, keyboard.term);
+      return "";
+    }
+
+    memoryMap.set(cmd, keyboard.term);
+    return keyboard.term;
+  });
+
+  /* Answer from the cache, as Device.command does for the backup */
+  const command = async (cmd: string) => memoryMap.get(cmd);
+  return { device: { noCacheCommand }, keyboard, noCacheCommand, command };
+};
+
+describe("saveQuickTapTerm", () => {
+  test("replaces a cached failed read with the keyboard's term before the backup", async () => {
+    const { device, keyboard, command } = cachingDevice(new Error("timeout"));
+
+    expect(await readQuickTapTerm(device)).toBeNull();
+    expect(await command(QUICK_TAP_COMMAND)).toBeInstanceOf(Error);
+
+    keyboard.term = "120";
+    await saveQuickTapTerm(device, -1);
+
+    expect(await command(QUICK_TAP_COMMAND)).toBe("120");
+  });
+
+  test("throws when the term still cannot be read, so the save takes no backup", async () => {
+    const { device, noCacheCommand } = cachingDevice(new Error("timeout"));
+
+    await expect(saveQuickTapTerm(device, -1)).rejects.toThrow("Could not read");
+    expect(noCacheCommand.mock.calls).toEqual([[QUICK_TAP_COMMAND]]);
+  });
+
+  test("writes a term that was read and leaves it in the cache", async () => {
+    const { device, keyboard, noCacheCommand, command } = cachingDevice("0");
+
+    await saveQuickTapTerm(device, 80);
+
+    expect(noCacheCommand.mock.calls).toEqual([[QUICK_TAP_COMMAND, "80"], [QUICK_TAP_COMMAND]]);
+    expect(keyboard.term).toBe("80");
+    expect(await command(QUICK_TAP_COMMAND)).toBe("80");
   });
 });
