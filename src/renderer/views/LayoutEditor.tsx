@@ -87,6 +87,7 @@ import {
   copyLayerRules,
   firmwareLayerCount,
   isAllowedOutput,
+  AltRepeatDevice,
   readAltRepeatRules,
   replaceAllRules,
   replaceLayerRules,
@@ -287,6 +288,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     handleSetRestoredOk,
     saveButtonRef,
     discardChangesButtonRef,
+    capabilitiesRefresh,
   } = props;
 
   const layoutEditorContainerRef = useRef(null);
@@ -472,6 +474,27 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     [defaultLayerNames, state],
   );
 
+  /* Mark a failed read so Save stays off until the rules load */
+  const loadAltRepeatRules = useCallback(async (currentDevice: AltRepeatDevice) => {
+    if (!store.get("capabilities.altRepeat")) {
+      setAltRepeatState("unsupported");
+      setAltRepeatRules([]);
+      return;
+    }
+
+    const rules = await readAltRepeatRules(currentDevice);
+
+    if (rules === null) {
+      log.error("[LayoutEditor] altrepeat.map could not be read");
+      setAltRepeatState("failed");
+      setAltRepeatRules([]);
+    } else {
+      setAltRepeatState("ready");
+      setAltRepeatRules(rules);
+      savedAltRepeat.current = serializeAltRepeat(rules);
+    }
+  }, []);
+
   const scanKeyboard = useCallback(
     async (lang: string) => {
       log.info("Scanning KEYBOARD");
@@ -584,24 +607,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           }
         }
 
-        /* Mark a failed read so Save stays off until the rules load */
-        if (!store.get("capabilities.altRepeat")) {
-          setAltRepeatState("unsupported");
-          setAltRepeatRules([]);
-        } else {
-          const rules = await readAltRepeatRules(currentDevice);
-
-          if (rules === null) {
-            log.error("[LayoutEditor] altrepeat.map could not be read");
-            setAltRepeatState("failed");
-            setAltRepeatRules([]);
-          } else {
-            setAltRepeatState("ready");
-            setAltRepeatRules(rules);
-            savedAltRepeat.current = serializeAltRepeat(rules);
-          }
-        }
-
+        await loadAltRepeatRules(currentDevice);
         setAltRepeatTab(-1);
 
         setScanningStep(9);
@@ -642,7 +648,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         onDisconnect();
       }
     },
-    [state, setLoading, AnalizeChipID, restoredOk, getColormap, handleSetRestoredOk, keymapDB, onDisconnect],
+    [state, setLoading, AnalizeChipID, restoredOk, getColormap, handleSetRestoredOk, keymapDB, onDisconnect, loadAltRepeatRules],
   );
 
   const assignKey = (layer: number, keyIndex: number, keyCode: number) => {
@@ -1685,6 +1691,26 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   useEffect(() => {
     setAltRepeatTab(-1);
   }, [currentLayer, currentKeyIndex]);
+
+  /* Reload the rules when App reads the capabilities again after the scan, as after a firmware update, and they disagree with
+   * what the scan found. Skip the mount, where the scan loads them */
+  const seenCapabilitiesRefresh = useRef(capabilitiesRefresh);
+
+  useEffect(() => {
+    if (capabilitiesRefresh === seenCapabilitiesRefresh.current) {
+      return;
+    }
+
+    seenCapabilitiesRefresh.current = capabilitiesRefresh;
+    const { currentDevice } = state;
+    const supported = Boolean(store.get("capabilities.altRepeat"));
+
+    if (supported === (altRepeatState !== "unsupported") || !currentDevice || currentDevice.isClosed) {
+      return;
+    }
+
+    loadAltRepeatRules(currentDevice);
+  }, [capabilitiesRefresh, altRepeatState, state, loadAltRepeatRules]);
 
   const onReloadAltRepeat = async () => {
     cancelContext();

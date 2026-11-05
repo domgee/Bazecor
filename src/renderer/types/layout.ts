@@ -25,6 +25,8 @@ export interface LayoutEditorProps {
   handleSetRestoredOk: (status: boolean) => void;
   saveButtonRef: React.RefObject<HTMLButtonElement>;
   discardChangesButtonRef: React.RefObject<HTMLButtonElement>;
+  /* Count App's capability reads after a firmware update, so the editor can load what became available */
+  capabilitiesRefresh: number;
 }
 
 export interface KeyType {

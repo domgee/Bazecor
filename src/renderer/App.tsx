@@ -420,7 +420,7 @@ function App() {
   // refresh the version-dependent capabilities once the update is over
   const wasUpdatingFw = useRef(false);
   // Capabilities are read from the store while rendering, so re-render once they change
-  const [, setCapabilitiesRefresh] = useState(0);
+  const [capabilitiesRefresh, setCapabilitiesRefresh] = useState(0);
   useEffect(() => {
     if (fwUpdate) {
       wasUpdatingFw.current = true;
@@ -529,6 +529,7 @@ function App() {
                 handleSetRestoredOk={handleSetRestoredOk}
                 saveButtonRef={saveButtonRef}
                 discardChangesButtonRef={discardChangesButtonRef}
+                capabilitiesRefresh={capabilitiesRefresh}
               />
             }
           />
