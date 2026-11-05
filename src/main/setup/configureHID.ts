@@ -21,7 +21,7 @@ const onDeviceSelect = (event: Event, details: any, callback: any) => {
   if (details.deviceList && details.deviceList.length > 0) {
     log.info("HID Devices:", details.deviceList);
     const filteredDevices = details.deviceList.filter(
-      (device: any) => [18, 33].includes(device.productId) && device.vendorId === 13807,
+      (device: any) => [18, 33, 49].includes(device.productId) && device.vendorId === 13807,
     );
     log.verbose("Filtered list");
     log.verbose(filteredDevices);

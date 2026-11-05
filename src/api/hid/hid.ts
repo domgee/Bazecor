@@ -2,9 +2,11 @@ import log from "electron-log/renderer";
 import { DygmaDeviceType } from "@Renderer/types/dygmaDefs";
 import { ExtHIDInterface } from "../comms/types";
 import Hardware from "../hardware";
+import { OVERLAY_MAGIC_BYTE } from "../../lens/shared/constants";
 
 const DygmavendorID = 13807;
-const DygmaproductID = [18, 33];
+// Defy, Raise 2 and Sonsei
+const DygmaproductID = [18, 33, 49];
 const HIDReportID = 5;
 const DygmaUsage = 1;
 const DygmaUsagePage = 65280;
@@ -91,20 +93,12 @@ class HID {
 
     const connectPromise = Promise.race([
       navigator.hid.requestDevice({
-        filters: [
-          {
-            vendorId: DygmavendorID,
-            productId: DygmaproductID[0],
-            usage: DygmaUsage,
-            usagePage: DygmaUsagePage,
-          },
-          {
-            vendorId: DygmavendorID,
-            productId: DygmaproductID[1],
-            usage: DygmaUsage,
-            usagePage: DygmaUsagePage,
-          },
-        ],
+        filters: DygmaproductID.map(productId => ({
+          vendorId: DygmavendorID,
+          productId,
+          usage: DygmaUsage,
+          usagePage: DygmaUsagePage,
+        })),
       }),
       timeoutPromise,
     ]);
@@ -241,6 +235,11 @@ class HID {
         const { data, device, reportId } = event;
 
         if (!DygmaproductID.includes(device.productId) && reportId !== HIDReportID) return;
+
+        // Skip Layer Lens packets, which share this report with Focus replies
+        if (data.byteLength > 0 && data.getUint8(0) === OVERLAY_MAGIC_BYTE) {
+          return;
+        }
 
         const decodedData = HID.decoder.decode(data);
         if (decodedData.includes("\r\n.\r\n")) {
