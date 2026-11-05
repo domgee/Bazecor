@@ -10,7 +10,9 @@ import OSKey from "@Renderer/components/molecules/KeyTags/OSKey";
 import { IconInformation } from "@Renderer/components/atoms/icons";
 import CustomRadioCheckBox from "@Renderer/components/molecules/Form/CustomRadioCheckBox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@Renderer/components/atoms/Tooltip";
+import { i18n } from "@Renderer/i18n";
 import { autoshiftBaseCode, canBeAutoshifted, isAutoshift, toAutoshift } from "../../../hw/autoshift";
+import { canHoldUntilLayerChange, fromLayerHold, isLayerHold, keepLayerHold, toLayerHold } from "../../../hw/layerhold";
 
 interface ModPickerProps {
   keyCode: SegmentedKeyType;
@@ -21,10 +23,12 @@ interface ModPickerProps {
    * Autoshift code as an action outright. Offering the checkbox there would
    * let the user build something the firmware silently drops. */
   allowAutoshift?: boolean;
+  /* Offer "Hold until layer change" only on a layer above the default, with firmware that lists the marker */
+  allowLayerHold?: boolean;
 }
 
 function ModPicker(props: ModPickerProps) {
-  const { keyCode, onKeySelect, isStandardView, allowAutoshift = true } = props;
+  const { keyCode, onKeySelect, isStandardView, allowAutoshift = true, allowLayerHold = false } = props;
   const [modifs, setModifs] = useState([]);
   const previousKeyCode = usePrevious({ base: keyCode.base, modified: keyCode.modified });
 
@@ -74,6 +78,12 @@ function ModPicker(props: ModPickerProps) {
     return state;
   }
 
+  const currentCode = keyCode === undefined ? 0 : keyCode.base + keyCode.modified;
+  /* The hold flag rides on top of the shortcut, so the modifier buttons work on the plain shortcut */
+  const layerHeld = isLayerHold(currentCode);
+  const shortcutCode = layerHeld ? fromLayerHold(currentCode) : currentCode;
+  const layerHoldAvailable = layerHeld || canHoldUntilLayerChange(currentCode);
+
   function SelectModif(data: number) {
     let mod = [...modifs];
     if (mod.includes(data)) {
@@ -82,12 +92,11 @@ function ModPicker(props: ModPickerProps) {
       mod.push(data);
     }
     setModifs(mod);
-    onKeySelect(keyCode.base + applyModif(mod));
+    onKeySelect(keepLayerHold(keyCode.base + applyModif(mod), layerHeld && allowLayerHold));
   }
 
   /* Autoshift replaces the whole keycode rather than adding flags, so it is
    * derived from the current code instead of kept in state. */
-  const currentCode = keyCode === undefined ? 0 : keyCode.base + keyCode.modified;
   const autoshifted = isAutoshift(currentCode);
   const plainCode = autoshifted ? autoshiftBaseCode(currentCode) : currentCode;
   const autoshiftAvailable = autoshifted || canBeAutoshifted(plainCode);
@@ -105,10 +114,10 @@ function ModPicker(props: ModPickerProps) {
       // (keyCode != undefined &&
       //   keyCode.base + keyCode.modified >= 224 &&
       //   keyCode.base + keyCode.modified <= 255) ||
-      (keyCode !== undefined && keyCode.base + keyCode.modified >= 53852 && keyCode.base + keyCode.modified <= 53852 + 128) ||
-      keyCode.base + keyCode.modified === 0 ||
-      (keyCode.base + keyCode.modified >= 17492 && keyCode.base + keyCode.modified <= 17501) ||
-      keyCode.base + keyCode.modified >= 8192
+      (keyCode !== undefined && shortcutCode >= 53852 && shortcutCode <= 53852 + 128) ||
+      shortcutCode === 0 ||
+      (shortcutCode >= 17492 && shortcutCode <= 17501) ||
+      shortcutCode >= 8192
     ) {
       return true;
     }
@@ -116,8 +125,8 @@ function ModPicker(props: ModPickerProps) {
   }
 
   useEffect(() => {
-    if (keyCode.base + keyCode.modified > 10000) return;
-    setModifs(parseModifs(keyCode.base + keyCode.modified));
+    if (shortcutCode > 10000) return;
+    setModifs(parseModifs(shortcutCode));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -125,14 +134,14 @@ function ModPicker(props: ModPickerProps) {
     if (previousKeyCode !== undefined) {
       const { base, modified } = previousKeyCode;
       if (typeof keyCode === "object" && keyCode.base + keyCode.modified !== base + modified) {
-        if (keyCode.base + keyCode.modified > 10000) {
+        if (shortcutCode > 10000) {
           setModifs([]);
         } else {
-          setModifs(parseModifs(keyCode.base + keyCode.modified));
+          setModifs(parseModifs(shortcutCode));
         }
       }
     }
-  }, [keyCode, previousKeyCode]);
+  }, [keyCode, previousKeyCode, shortcutCode]);
 
   return (
     <div className="h-[inherit]">
@@ -233,6 +242,33 @@ function ModPicker(props: ModPickerProps) {
                   </p>
                   <p className="description text-ssm font-medium text-gray-400 dark:text-gray-200">
                     It only works for letters, numbers and punctuation.
+                  </p>
+                </>
+              }
+              className="mt-0"
+            />
+          </div>
+        )}
+        {allowLayerHold && (
+          <div className="layerHoldPicker flex items-center ml-12">
+            <CustomRadioCheckBox
+              label={<div className="pl-0.5">{i18n.editor.standardView.keys.layerHold}</div>}
+              onClick={() => onKeySelect(layerHeld ? shortcutCode : toLayerHold(currentCode))}
+              checked={layerHeld}
+              type="checkbox"
+              name="holdUntilLayerChange"
+              id="holdUntilLayerChange"
+              disabled={!layerHoldAvailable}
+              tooltip={
+                <>
+                  <Heading headingLevel={4} renderAs="h4" className="text-gray-600 dark:text-gray-25 mb-1 leading-6 text-base">
+                    {i18n.editor.standardView.keys.layerHold}
+                  </Heading>
+                  <p className="description text-ssm font-medium text-gray-400 dark:text-gray-200">
+                    {i18n.editor.standardView.keys.layerHoldDescription}
+                  </p>
+                  <p className="description text-ssm font-medium text-gray-400 dark:text-gray-200">
+                    {i18n.editor.standardView.keys.layerHoldRequirement}
                   </p>
                 </>
               }

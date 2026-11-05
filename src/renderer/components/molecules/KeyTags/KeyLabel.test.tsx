@@ -14,6 +14,7 @@ describe("KeyLabel", () => {
     [49162], // OneShot layer 2
     [49154], // OneShot Left Shift
     [4], // a
+    [12331], // Cmd+Tab hold until layer change
   ])("keycode %i renders a visible label", keyCode => {
     const keyData = new KeymapDB().parse(keyCode);
 

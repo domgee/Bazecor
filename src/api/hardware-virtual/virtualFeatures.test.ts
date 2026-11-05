@@ -92,3 +92,32 @@ describe("addMissingVirtualCommands", () => {
     expect(addMissingVirtualCommands(vk)).toEqual([]);
   });
 });
+
+describe("Hold until layer change marker", () => {
+  test("the Sonsei lists layerhold.state in help and never erases it", () => {
+    expect(SonseiWireless.virtual.help.data.split("\r\n")).toContain("layerhold.state");
+    expect(SonseiWireless.virtual["layerhold.state"].eraseable).toBe(false);
+  });
+
+  test.each([
+    ["Defy wireless", DefyWireless],
+    ["Raise 2 ANSI", Raise2ANSI],
+  ])("the %s does not", (_, template) => {
+    expect(template.virtual.help.data.split("\r\n")).not.toContain("layerhold.state");
+    expect(template.virtual["layerhold.state"]).toBeUndefined();
+  });
+
+  test("addMissingVirtualCommands adds it to a Sonsei file saved before it", () => {
+    const vk: VirtualType = JSON.parse(JSON.stringify(SonseiWireless));
+    delete vk.virtual["layerhold.state"];
+    vk.virtual.help.data = vk.virtual.help.data
+      .split("\r\n")
+      .filter(c => c !== "layerhold.state")
+      .join("\r\n");
+
+    const added = addMissingVirtualCommands(vk);
+
+    expect(added).toEqual(["layerhold.state"]);
+    expect(vk.virtual.help.data.split("\r\n")).toContain("layerhold.state");
+  });
+});

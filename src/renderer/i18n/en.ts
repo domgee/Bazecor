@@ -297,6 +297,10 @@ const English = {
         addDualFunction: "Add a dual-function",
         dualFunctionDescription:
           "Dual-function keys have two functionalities. 1. When tapped, they send a character. 2. When held, they send a modifier or a layer key.",
+        layerHold: "Hold until layer change",
+        layerHoldDescription:
+          "The modifiers stay pressed after you release the key, until the layer this key is on turns off. Hold a layer key, tap Cmd+Tab to pick an app, and release the layer key to switch to it.",
+        layerHoldRequirement: "Needs at least one modifier. Not available on the default layer.",
       },
       layers: {
         title: "Layers",

@@ -4,6 +4,7 @@ import log from "electron-log/renderer";
 import { AnimatePresence, motion } from "framer-motion";
 import { KeyType } from "@Renderer/types/layout";
 import OSKey from "../KeyTags/OSKey";
+import { fromLayerHold, isLayerHold } from "../../../../hw/layerhold";
 
 interface ListModifiersProps {
   keyCode: number;
@@ -12,7 +13,9 @@ interface ListModifiersProps {
 }
 type Modifier = number;
 
-const ListModifiersKey = ({ keyCode, size = "xs", selectedKey }: ListModifiersProps) => {
+const ListModifiersKey = ({ keyCode: rawKeyCode, size = "xs", selectedKey }: ListModifiersProps) => {
+  /* Show a hold key's modifiers like its plain shortcut's. The HOLD label marks the difference */
+  const keyCode = isLayerHold(rawKeyCode) ? fromLayerHold(rawKeyCode) : rawKeyCode;
   const [modifiersState, setModifiersState] = useState({ isMeh: false, isHyper: false, altVisual: false });
 
   // Define a type for modifiers

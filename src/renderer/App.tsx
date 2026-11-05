@@ -49,6 +49,7 @@ import { VersionUpdateDialog } from "@Renderer/components/molecules/CustomModal/
 import UdevPolkitErrorDialog from "@Renderer/components/molecules/CustomModal/UdevPolkitErrorDialog";
 import getTranslator from "@Renderer/utils/translator";
 import { Neuron } from "@Types/neurons";
+import { hasLayerHoldMarker } from "../hw/layerhold";
 import { version } from "../../package.json";
 import "../api/keymap";
 import "../api/colormap";
@@ -78,6 +79,17 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     log.warn("Error reading or parsing firmware version", e);
     VERSION_FEATURES.forEach(feature => store.set(`capabilities.${feature}`, false));
     log.info("[Capabilities] all disabled due to firmware version read/parse error");
+  }
+
+  /* Detect Hold until layer change through help, because official firmware of the same version lacks it */
+  try {
+    const help = await currentDevice.noCacheCommand("help");
+    const available = hasLayerHoldMarker(help);
+    store.set("capabilities.layerHold", available);
+    log.info(`[Capabilities] layerHold -> available: ${available}`);
+  } catch (e) {
+    log.warn("Error reading help for layerHold", e);
+    store.set("capabilities.layerHold", false);
   }
 };
 

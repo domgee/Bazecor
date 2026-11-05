@@ -38,8 +38,7 @@ import { KeymapDB } from "../../../api/keymap";
 import { Picker } from ".";
 
 import ModPicker from "./ModPicker";
-import { AutoshiftCodes } from "../../../hw/autoshift";
-import { CapsWordCodes } from "../../../hw/capsword";
+import { detectTab } from "./detectTab";
 import ModifiersTab from "../KeysTabs/ModifiersTab";
 
 // Icons
@@ -258,6 +257,8 @@ interface Props {
   isWireless: boolean;
   /* Passed straight to ModPicker; see the note on its own prop. */
   allowAutoshift?: boolean;
+  /* Passed to ModPicker when the firmware supports it */
+  allowLayerHold?: boolean;
   /* Show mouse movement and wheel keys, which the Mouse tab otherwise keeps to
    * the Layout Editor. */
   fullMouse?: boolean;
@@ -284,6 +285,7 @@ function KeyPickerKeyboard(props: Props) {
     mouseWheel,
     resetScroll,
     allowAutoshift = true,
+    allowLayerHold = false,
     fullMouse = false,
   } = props;
   const prevProps = useRef(props);
@@ -301,6 +303,7 @@ function KeyPickerKeyboard(props: Props) {
   const store = Store.getStore();
   const sk20 = Boolean(store.get("capabilities.sk20"));
   const autoshiftAvailable = Boolean(store.get("capabilities.autoshift"));
+  const layerHoldAvailable = Boolean(store.get("capabilities.layerHold"));
   // Layer Lens is available for Sonsei (fw >= 1.0.0), Defy (fw >= 2.3.0) and Raise2
   // (fw >= 1.5.0) — see App.tsx, which writes capabilities.lens on connect. Raise
   // (Raise1) never sets the flag, so the Layer Lens tab stays hidden for it in both
@@ -329,49 +332,10 @@ function KeyPickerKeyboard(props: Props) {
     lstate.disable = actTab === "super" ? false : keyIndex === -1;
     // Initialize current tab based on the initial key
     const initialKeyNum = code != null ? code.modified + code.base : -1;
-    lstate.currentTab = detectTab(initialKeyNum);
+    lstate.currentTab = detectTab(initialKeyNum, state.currentTab);
     setState(lstate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const detectTab = (keyCode: number) => {
-    let tab = "";
-    if (keyCode < 256 || keyCode === 65535) tab = "tabKeys";
-    if (keyCode >= 256 && keyCode <= 8192) tab = "tabKeys";
-    if (keyCode >= 17408 && keyCode <= 17501) tab = "tabLayers";
-    if (keyCode >= 49161 && keyCode <= 49168) tab = "tabLayers";
-    if (keyCode >= 51218 && keyCode <= 53266) tab = "tabLayers";
-    if (keyCode >= 49153 && keyCode <= 49160) tab = "tabLayers";
-    if (keyCode >= 49169 && keyCode <= 50961) tab = "tabLayers";
-    if (keyCode >= 17152 && keyCode <= 17154) tab = "tabMedia";
-    if ([19682, 18552, 18834, 20865, 20866].includes(keyCode)) tab = "tabMedia";
-    if (keyCode >= 22709 && keyCode <= 22733) tab = "tabMedia";
-    if (keyCode >= 23663 && keyCode <= 23786) tab = "tabMedia";
-    if (keyCode >= 20481 && keyCode <= 20488) tab = "tabMouse";
-    if (keyCode >= 20497 && keyCode <= 20504) tab = "tabMouse";
-    if (keyCode >= 20545 && keyCode <= 20560) tab = "tabMouse";
-    if (keyCode >= 53852 && keyCode <= 53979) tab = "tabMacro";
-    if (keyCode >= 53980 && keyCode <= 54109) tab = "tabSuperKeys";
-    if (keyCode >= 54108 && keyCode <= 54111) tab = "tabWireless";
-    if (keyCode >= 54112 && keyCode <= 54114) tab = "tabLayerLens";
-    /* Autoshift is an ordinary key with a property, so it belongs on the Keys
-     * tab; CapsWord is assigned from Layers & modifiers. Without these two the
-     * lookup falls through with an empty string and the picker ends up with no
-     * active tab at all, which looks like the panel closing. */
-    if (keyCode >= AutoshiftCodes.AUTOSHIFT_FIRST && keyCode <= AutoshiftCodes.AUTOSHIFT_LAST) tab = "tabKeys";
-    if (keyCode === CapsWordCodes.CAPS_WORD) tab = "tabLayers";
-
-    log.info("detectedTab", keyCode, tab);
-
-    /* Any keycode we do not recognise would otherwise blank the tab strip. */
-    if (tab === "") {
-      log.warn("[KeyPicker] no tab matched keycode, falling back to tabKeys", keyCode);
-      tab = "tabKeys";
-    }
-    if (state.currentTab === "tabLayers" && tab === "tabKeys" && keyCode > 223) tab = "tabLayers";
-    /* keep Advanced Modifiers enabled regardless of sk20 */
-    return tab;
-  };
 
   useEffect(() => {
     const distinctKeyIndex = prevProps.current.keyIndex !== keyIndex;
@@ -383,7 +347,7 @@ function KeyPickerKeyboard(props: Props) {
       // log.info("This kenumOld : ", keynumOld, keynum, localdisable, keyIndex);
       const lstate = { ...state };
       lstate.disable = actTab === "super" ? false : localdisable;
-      lstate.currentTab = detectTab(keynum);
+      lstate.currentTab = detectTab(keynum, state.currentTab);
       setState(lstate);
       prevState.current = state;
     }
@@ -511,6 +475,7 @@ function KeyPickerKeyboard(props: Props) {
                             onKeySelect={onKeySelect}
                             isStandardView={false}
                             allowAutoshift={allowAutoshift && autoshiftAvailable}
+                            allowLayerHold={allowLayerHold && layerHoldAvailable}
                           />
                         </div>
                       ) : (

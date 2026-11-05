@@ -1571,6 +1571,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                   actTab="editor"
                   selectedlanguage={currentLanguageLayout}
                   isWireless={isWireless}
+                  allowLayerHold={currentLayer !== 0}
                 />
               </div>
             ) : (

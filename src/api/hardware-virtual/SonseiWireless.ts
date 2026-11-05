@@ -48,6 +48,15 @@ const SonseiWireless: VirtualType = {
   },
   virtual: {
     ...DefyWireless.virtual,
+    /* Only the Sonsei firmware has LayerHoldMods. Its help marker turns on the option */
+    help: {
+      ...DefyWireless.virtual.help,
+      data: `${DefyWireless.virtual.help.data}\r\nlayerhold.state`,
+    },
+    "layerhold.state": {
+      data: "0 0",
+      eraseable: false,
+    },
     "hardware.version": {
       data: "Dygma Sonsei",
       eraseable: false,

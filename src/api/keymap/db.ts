@@ -56,6 +56,7 @@ import Store from "../../renderer/utils/Store";
 import getLanguage from "../../renderer/utils/language";
 import { BaseKeycodeTableType, KeymapCodeTableType, LanguageType } from "./types";
 import { AUTOSHIFT_MAX_BASE, AUTOSHIFT_MIN_BASE, toAutoshift } from "../../hw/autoshift";
+import { canHoldUntilLayerChange, fromLayerHold, isLayerHold } from "../../hw/layerhold";
 
 const store = Store.getStore();
 
@@ -192,6 +193,23 @@ class KeymapDB {
     }
   }
 
+  /* Derive a hold key's entry from its plain shortcut on first use, so it keeps the shortcut's label and layout metadata */
+  layerHoldEntry(code: number): KeymapCodeTableType | undefined {
+    const shortcutCode = fromLayerHold(code);
+    if (!canHoldUntilLayerChange(shortcutCode)) {
+      return undefined;
+    }
+
+    const base = this.keymapCodeTable[shortcutCode] ?? this.keymapCodeTable[code & 0xff];
+    if (!base) {
+      return undefined;
+    }
+
+    const entry = { ...base, code, labels: { ...base.labels, top: "HOLD" } };
+    this.keymapCodeTable[code] = entry;
+    return entry;
+  }
+
   parseModifs(keycode: number) {
     const modified = preserveModifiers(keycode);
     if (keycode > 49152) {
@@ -217,6 +235,9 @@ class KeymapDB {
       case keyCode < 8192:
         // Regular key with Modifier KeyCode
         return { base: keyCode - modified, modified };
+      case isLayerHold(keyCode):
+        // Shortcut that holds its modifiers until the layer changes
+        return { base: keyCode & 0xff, modified: keyCode & 0xff00 };
       case keyCode < 17152:
         // Yet to review
         return { base: keyCode, modified: 0 };
@@ -265,6 +286,10 @@ class KeymapDB {
 
     if (localKeyCode < this.keymapCodeTable.length) {
       key = this.keymapCodeTable[localKeyCode];
+    }
+
+    if (!key && isLayerHold(localKeyCode)) {
+      key = this.layerHoldEntry(localKeyCode);
     }
 
     if (!key) {
