@@ -27,7 +27,14 @@ describe("KeymapDB hold until layer change keys", () => {
   test("a hold key keeps the shortcut's layout metadata", () => {
     const db = new KeymapDB();
 
-    expect(db.parse(0x302b).alt).toBe(db.parse(0x102b).alt);
+    // Shift+- is "_" with alt set, so the hold entry must carry alt over
+    const shiftMinus = db.parse(0x282d);
+
+    expect({ label: shiftMinus.label, extraLabel: shiftMinus.extraLabel, alt: shiftMinus.alt }).toEqual({
+      label: "_",
+      extraLabel: "HOLD",
+      alt: true,
+    });
   });
 
   test("keySegmentor splits a hold key into its key and the modifier byte", () => {

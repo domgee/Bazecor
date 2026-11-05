@@ -65,6 +65,7 @@ const store = Store.getStore();
 // (SK 2.0, Layer Lens, Combos, Autoshift, CapsWord). Runs on connect and again after a firmware
 // update, since the keyboard stays connected through it.
 // The minimum FW per product for each capability lives in src/versionRules.json.
+// Also reads help for capabilities.layerHold, which official firmware of the same version lacks.
 const detectFirmwareCapabilities = async (currentDevice: Device) => {
   try {
     const versionStr = (await currentDevice.noCacheCommand("version")) as string;

@@ -1,10 +1,9 @@
 /* eslint-disable no-bitwise */
 /* "Hold until layer change" key codes.
  *
- * A shortcut whose modifiers stay pressed after the key is released, until the
- * layer the key sits on turns off. The firmware encodes it as the plain shortcut
- * with Key flag bit 5 set, 0x2000 | mods << 8 | keycode. Firmware without the
- * LayerHoldMods plugin ignores the bit and sends the plain shortcut.
+ * A shortcut whose modifiers stay pressed after the key is released, until the layer the key sits on turns off.
+ * The firmware encodes it as the plain shortcut with Key flag bit 5 set, 0x2000 | mods << 8 | keycode.
+ * Firmware without the LayerHoldMods plugin ignores the bit and sends the plain shortcut.
  */
 
 export const LAYER_HOLD_FLAG = 0x2000;
