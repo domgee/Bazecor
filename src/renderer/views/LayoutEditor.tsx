@@ -23,7 +23,9 @@ import Styled from "styled-components";
 
 import { keyboardCanvasStyles } from "@Renderer/modules/KeyboardCanvas/keyboardCanvasStyles";
 import { comboBadgeStyles } from "@Renderer/modules/KeyboardCanvas/comboBadges";
+import { altRepeatBadgeStyles } from "@Renderer/modules/KeyboardCanvas/altRepeatBadges";
 import { ComboType } from "@Renderer/types/combos";
+import { AltRepeatBlock, AltRepeatLayerEntry, AltRepeatRule, AltRepeatState } from "@Renderer/types/altRepeat";
 import { motion } from "framer-motion";
 import { toast } from "react-toastify";
 import { ipcRenderer } from "electron";
@@ -45,6 +47,8 @@ import { DeviceClass } from "@Renderer/types/devices";
 import { PageHeader } from "@Renderer/modules/PageHeader";
 import ColorEditor from "@Renderer/modules/ColorEditor";
 import { KeyPickerKeyboard } from "@Renderer/modules/KeyPickerKeyboard";
+import AltRepeatTabs from "@Renderer/modules/AltRepeat/AltRepeatTabs";
+import PreviousKeyDialog from "@Renderer/modules/AltRepeat/PreviousKeyDialog";
 
 // Components
 import LayerSelector from "@Renderer/components/organisms/Select/LayerSelector";
@@ -57,6 +61,7 @@ import Store from "@Renderer/utils/Store";
 import getLanguage from "@Renderer/utils/language";
 import { ClearLayerDialog } from "@Renderer/components/molecules/CustomModal/ClearLayerDialog";
 import { ComboBreakDialog } from "@Renderer/components/molecules/CustomModal/ComboBreakDialog";
+import { AltRepeatBreakDialog } from "@Renderer/components/molecules/CustomModal/AltRepeatBreakDialog";
 import { DygmaDeviceInfoType } from "@Renderer/types/dygmaDefs";
 import BlankTable from "../../api/keymap/db/blanks";
 import Keymap, { KeymapDB } from "../../api/keymap";
@@ -75,6 +80,21 @@ import {
   serializeKeymap,
 } from "../../api/parsers";
 import { ComboBreakReason, comboBreakReason, combosAtPosition, isLegacyCombosReply } from "../../api/parsers/combos";
+import {
+  MAX_ALT_REPEAT_RULES,
+  altRepeatDefaultBlock,
+  clearLayerRules,
+  copyLayerRules,
+  firmwareLayerCount,
+  isAllowedOutput,
+  readAltRepeatRules,
+  replaceAllRules,
+  replaceLayerRules,
+  replacesTap,
+  rulesAt,
+  serializeAltRepeat,
+  writeAltRepeatRules,
+} from "../../api/parsers/altRepeat";
 
 const store = Store.getStore();
 
@@ -133,6 +153,15 @@ ${keyboardCanvasStyles}
 `;
 
 type ModeType = "keyboard" | "color";
+
+/* What "Undo" puts back when a new default turns off a key's previous-key tabs */
+type AltRepeatBreakType = {
+  layer: number;
+  keyIndex: number;
+  previousKeyCode: number;
+  reason: AltRepeatBlock;
+  ruleCount: number;
+};
 
 const LayoutEditor = (props: LayoutEditorProps) => {
   const defaultLayerNames = useMemo(
@@ -208,6 +237,20 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     keyIndex: number;
     previousKeyCode: number;
   } | null>(null);
+  const [altRepeatRules, setAltRepeatRules] = useState<AltRepeatRule[]>([]);
+  const [altRepeatState, setAltRepeatState] = useState<AltRepeatState>("unsupported");
+  /* The table as the keyboard holds it, so Save only writes a changed table */
+  const savedAltRepeat = useRef("0");
+  /* Index into the selected key's tabs, -1 for Default */
+  const [altRepeatTab, setAltRepeatTab] = useState(-1);
+  /* ruleIndex is the rule whose previous key changes, null for a new tab */
+  const [previousDialog, setPreviousDialog] = useState<{ open: boolean; ruleIndex: number | null }>({
+    open: false,
+    ruleIndex: null,
+  });
+  const [altRepeatBreak, setAltRepeatBreak] = useState<AltRepeatBreakType | null>(null);
+  /* Waits for the combo warning to close when one key change raises both */
+  const [pendingAltRepeatBreak, setPendingAltRepeatBreak] = useState<AltRepeatBreakType | null>(null);
 
   const [modified, setModified] = useState(false);
   const [modeselect, setModeselect] = useState<ModeType>("keyboard");
@@ -541,6 +584,26 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           }
         }
 
+        /* A failed read keeps the rules unknown, so Save stays off until they load */
+        if (!store.get("capabilities.altRepeat")) {
+          setAltRepeatState("unsupported");
+          setAltRepeatRules([]);
+        } else {
+          const rules = await readAltRepeatRules(currentDevice);
+
+          if (rules === null) {
+            log.error("[LayoutEditor] altrepeat.map could not be read");
+            setAltRepeatState("failed");
+            setAltRepeatRules([]);
+          } else {
+            setAltRepeatState("ready");
+            setAltRepeatRules(rules);
+            savedAltRepeat.current = serializeAltRepeat(rules);
+          }
+        }
+
+        setAltRepeatTab(-1);
+
         setScanningStep(9);
         let showMM = false;
         if (KeyMap.custom) {
@@ -625,19 +688,77 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
     /* Warn when the new key stops a saved combo from firing. Only on an actual
      * change, so re-picking the same key does not nag again. */
-    if (previousKeyCode === undefined || previousKeyCode === keyCode) return;
-    const reason = comboBreakReason(keyCode, superkeys);
-    if (!reason) return;
-    /* A key can be in several combos on this layer; every one of them breaks. */
-    const comboIndexes = combosAtPosition(combos, keyIndex, layer);
-    if (comboIndexes.length === 0) return;
+    if (previousKeyCode === undefined || previousKeyCode === keyCode) {
+      return;
+    }
 
-    setComboBreak({ reason, comboIndexes, layer, keyIndex, previousKeyCode });
+    const reason = comboBreakReason(keyCode, superkeys);
+    /* A key can be in several combos on this layer; every one of them breaks. */
+    const comboIndexes = reason ? combosAtPosition(combos, keyIndex, layer) : [];
+
+    if (reason && comboIndexes.length > 0) {
+      setComboBreak({ reason, comboIndexes, layer, keyIndex, previousKeyCode });
+    }
+
+    const block = altRepeatDefaultBlock(keyCode, superkeys);
+    const ruleCount = rulesAt(altRepeatRules, layer, keyIndex).length;
+
+    if (altRepeatState !== "ready" || block === null || ruleCount === 0) {
+      return;
+    }
+
+    const rulesBreak = { layer, keyIndex, previousKeyCode, reason: block, ruleCount };
+
+    /* Show one warning at a time. The combo warning goes first */
+    if (reason && comboIndexes.length > 0) {
+      setPendingAltRepeatBreak(rulesBreak);
+    } else {
+      setAltRepeatBreak(rulesBreak);
+    }
   };
 
   const undoComboBreak = () => {
     if (comboBreak) assignKey(comboBreak.layer, comboBreak.keyIndex, comboBreak.previousKeyCode);
     setComboBreak(null);
+    setPendingAltRepeatBreak(null);
+  };
+
+  const keepComboBreak = () => {
+    setComboBreak(null);
+    setAltRepeatBreak(pendingAltRepeatBreak);
+    setPendingAltRepeatBreak(null);
+  };
+
+  const undoAltRepeatBreak = () => {
+    if (altRepeatBreak) {
+      assignKey(altRepeatBreak.layer, altRepeatBreak.keyIndex, altRepeatBreak.previousKeyCode);
+    }
+
+    setAltRepeatBreak(null);
+  };
+
+  const keysPerLayer = () => state.currentDevice.device.keyboard.rows * state.currentDevice.device.keyboard.columns;
+
+  const rulesOnLayer = (layer: number) => altRepeatRules.filter(rule => rule.layer === layer).length;
+
+  /* Replace the whole table after a load, copy, clear or import */
+  const replaceRules = (next: AltRepeatRule[]) => {
+    setAltRepeatRules(next);
+    setAltRepeatTab(-1);
+  };
+
+  /* Change the table from an edit the user saves or discards */
+  const editRules = (next: AltRepeatRule[]) => {
+    setAltRepeatRules(next);
+    setModified(true);
+    startContext();
+  };
+
+  const showAltRepeatToast = (content: string) => {
+    toast.warn(<ToastMessage title={i18n.editor.altRepeat.title} content={content} icon={<IconArrowDownWithLine />} />, {
+      autoClose: 4000,
+      icon: "",
+    });
   };
 
   /**
@@ -721,6 +842,18 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
   const onApply = async () => {
     const { currentDevice } = state;
+
+    if (altRepeatState === "failed") {
+      toast.error(
+        <ToastMessage title="Error when saving" content={i18n.editor.altRepeat.loadFailed} icon={<IconArrowDownWithLine />} />,
+        {
+          autoClose: 4000,
+          icon: "",
+        },
+      );
+      return;
+    }
+
     try {
       setLoading(true);
       setIsSaving(true);
@@ -728,6 +861,20 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       log.info(`[KeyAssign] sending keymap.custom (${serializedKeymap.split(" ").length} codes)`);
       await currentDevice?.command("keymap.custom", serializedKeymap);
       await currentDevice?.command("keymap.onlyCustom", keymap.onlyCustom ? "1" : "0");
+
+      const serializedRules = serializeAltRepeat(altRepeatRules);
+
+      if (altRepeatState === "ready" && serializedRules !== savedAltRepeat.current) {
+        try {
+          await writeAltRepeatRules(currentDevice, altRepeatRules, firmwareLayerCount(keymap), keysPerLayer());
+        } catch (error) {
+          log.error("[LayoutEditor] altrepeat.map write failed", error);
+          throw new Error(i18n.editor.altRepeat.saveFailed);
+        }
+
+        savedAltRepeat.current = serializedRules;
+      }
+
       await updateColormap(currentDevice, colorMap);
       await updatePalette(currentDevice, palette);
       setCurrentLayer(currentLayer);
@@ -757,10 +904,13 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       setIsSaving(false);
       log.info("Changes saved.");
     } catch (error) {
-      toast.error(<ToastMessage title="Error when saving" content={error} icon={<IconArrowDownWithLine />} />, {
-        autoClose: 2000,
-        icon: "",
-      });
+      toast.error(
+        <ToastMessage title="Error when saving" content={error?.message ?? String(error)} icon={<IconArrowDownWithLine />} />,
+        {
+          autoClose: 2000,
+          icon: "",
+        },
+      );
       setLoading(false);
       setIsSaving(false);
     }
@@ -775,6 +925,22 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   };
 
   const copyFromLayer = (layer: number) => {
+    let nextRules: AltRepeatRule[] | null = null;
+
+    if (altRepeatState === "ready") {
+      /* Default layers are read-only and carry no rules of their own */
+      const sourceIsCustom = keymap.onlyCustom ? layer >= 0 : layer >= keymap.default.length;
+      const copied = copyLayerRules(altRepeatRules, sourceIsCustom ? layer : null, currentLayer);
+
+      if ("error" in copied) {
+        showAltRepeatToast(i18n.editor.altRepeat.capacityRefused);
+        setCopyFromOpen(false);
+        return;
+      }
+
+      nextRules = copied.rules;
+    }
+
     let newKeymap: KeyType[][];
 
     if (keymap.onlyCustom) {
@@ -797,6 +963,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       onlyCustom: keymap.onlyCustom,
       custom: newKeymap,
     });
+
+    if (nextRules !== null) {
+      replaceRules(nextRules);
+    }
   };
 
   const applyColorMapChangeBL = (side: string, colorIndex: number) => {
@@ -913,6 +1083,24 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     log.info("new clone layer", cloneLayer);
     newKeymap[idx] = cloneLayer;
 
+    if (altRepeatState === "ready") {
+      let positions: Set<number> | undefined;
+
+      if (chooseYourKeyboardSide !== "BOTH") {
+        /* The same row ranges the fill above clears */
+        const rows = chooseYourKeyboardSide === "LEFT" ? layerMap.keys.left : layerMap.keys.right;
+        positions = new Set<number>();
+
+        rows.forEach(row => {
+          for (let position = row[0]; position <= row[row.length - 1]; position += 1) {
+            positions.add(position);
+          }
+        });
+      }
+
+      replaceRules(clearLayerRules(altRepeatRules, currentLayer, positions));
+    }
+
     startContext();
     if (colorIndex >= 0) {
       applyColorMapChangeBL(chooseYourKeyboardSide, colorIndex);
@@ -1003,8 +1191,38 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     keymap: KeyType[];
     colormap: number[];
     palette: PaletteType[];
-  }) => {
+    altRepeat?: AltRepeatLayerEntry[];
+  }): boolean => {
     const { currentDevice } = state;
+    const replacesLayer =
+      data.keymap.length > 0 &&
+      data.colormap.length > 0 &&
+      (keymap.onlyCustom ? currentLayer >= 0 : currentLayer >= keymap.default.length);
+    let nextRules: AltRepeatRule[] | null = null;
+
+    /* Settle the rules first, so a refused import changes nothing */
+    if (replacesLayer && altRepeatState === "ready") {
+      const sameProduct = data.device?.product === currentDevice?.device.info.product;
+
+      if (sameProduct && Array.isArray(data.altRepeat)) {
+        const replaced = replaceLayerRules(altRepeatRules, currentLayer, data.altRepeat, keysPerLayer());
+
+        if ("error" in replaced) {
+          showAltRepeatToast(i18n.editor.altRepeat.capacityRefused);
+          return false;
+        }
+
+        nextRules = replaced.rules;
+
+        if (replaced.dropped > 0) {
+          showAltRepeatToast(i18n.editor.altRepeat.importDropped);
+        }
+      } else if (rulesOnLayer(currentLayer) > 0) {
+        nextRules = clearLayerRules(altRepeatRules, currentLayer);
+        showAltRepeatToast(i18n.editor.altRepeat.importCleared);
+      }
+    }
+
     log.info("not loading the palette: ", palette);
     // if (data.palette.length > 0) state.palette = data.palette;
     const lNames = layerNames.slice();
@@ -1060,8 +1278,14 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         setColorMap(newColormap);
       }
     }
+
+    if (nextRules !== null) {
+      replaceRules(nextRules);
+    }
+
     setModified(true);
     startContext();
+    return true;
   };
 
   const toChangeAllKeysColor = (colorIndex: number, start: number, end: number) => {
@@ -1109,7 +1333,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         // log.info(layers, Array.isArray(layers.keymap));
         if (Array.isArray(layers.keymap)) {
           // log.info(layers.keymap[0]);
-          importLayer(layers);
+          if (!importLayer(layers)) {
+            return;
+          }
+
           toast.success(
             <ToastMessage
               title={i18n.editor.importSuccessCurrentLayerTitle}
@@ -1123,11 +1350,39 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           );
         } else {
           // log.info(layers.keymap.custom[0]);
+          let nextRules: AltRepeatRule[] | null = null;
+
+          if (altRepeatState === "ready") {
+            const replaced = replaceAllRules(
+              Array.isArray(layers.altRepeat) ? layers.altRepeat : [],
+              firmwareLayerCount(keymap),
+              keysPerLayer(),
+            );
+
+            if ("error" in replaced) {
+              showAltRepeatToast(i18n.editor.altRepeat.capacityRefused);
+              return;
+            }
+
+            if (replaced.dropped > 0) {
+              showAltRepeatToast(i18n.editor.altRepeat.importDropped);
+            } else if (replaced.rules.length === 0 && altRepeatRules.length > 0) {
+              showAltRepeatToast(i18n.editor.altRepeat.importCleared);
+            }
+
+            nextRules = replaced.rules;
+          }
+
           setLayerNames(layers.layerNames);
           setKeymap(layers.keymap);
           setColorMap(layers.colormap);
           setPalette(layers.palette);
           setSuperkeys(layers.superkeys ? layers.superkeys : []);
+
+          if (nextRules !== null) {
+            replaceRules(nextRules);
+          }
+
           setModified(true);
           startContext();
           toast.success(i18n.editor.importSuccessAllLayers, {
@@ -1173,6 +1428,13 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         keymap: localLayerData,
         colormap: colorMap[currentLayer],
         palette,
+        ...(altRepeatState === "ready"
+          ? {
+              altRepeat: altRepeatRules
+                .filter(rule => rule.layer === currentLayer)
+                .map(({ position, previous, output }) => ({ position, previous, output })),
+            }
+          : {}),
       },
       null,
       2,
@@ -1414,6 +1676,17 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     setCurrentLayer(cLayer);
   }, [keymap, currentLayer, macros, superkeys]);
 
+  useEffect(() => {
+    setAltRepeatTab(-1);
+  }, [currentLayer, currentKeyIndex]);
+
+  const onReloadAltRepeat = async () => {
+    cancelContext();
+    setModified(false);
+    scanned.current = false;
+    await scanKeyboard(currentLanguageLayout);
+  };
+
   const { Layer } = getLayout();
   if (!Layer) {
     return <div />;
@@ -1464,6 +1737,54 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     code = keymapDB.keySegmentor(tempkey.keyCode);
   }
 
+  const defaultKeyCode = code.base + code.modified;
+  const keyRules = currentKeyIndex === -1 ? [] : rulesAt(altRepeatRules, currentLayer, currentKeyIndex);
+  const selectedRuleIdx = altRepeatTab >= 0 && altRepeatTab < keyRules.length ? keyRules[altRepeatTab] : -1;
+  const selectedRule = selectedRuleIdx === -1 ? null : altRepeatRules[selectedRuleIdx];
+  const defaultBlock = altRepeatDefaultBlock(defaultKeyCode, superkeys);
+  const showAltRepeat =
+    altRepeatState !== "unsupported" && !isReadOnly && currentKeyIndex !== -1 && currentKeyIndex < ledIndexStart;
+
+  const onConfirmPrevious = (previous: number) => {
+    const { ruleIndex } = previousDialog;
+    setPreviousDialog({ open: false, ruleIndex: null });
+
+    if (ruleIndex !== null) {
+      editRules(altRepeatRules.map((rule, index) => (index === ruleIndex ? { ...rule, previous } : rule)));
+      return;
+    }
+
+    if (altRepeatRules.length >= MAX_ALT_REPEAT_RULES) {
+      return;
+    }
+
+    /* Start from the default so the new tab only needs the change */
+    const output = isAllowedOutput(defaultKeyCode) ? defaultKeyCode : 4;
+    editRules(altRepeatRules.concat([{ layer: currentLayer, position: currentKeyIndex, previous, output }]));
+    setAltRepeatTab(keyRules.length);
+  };
+
+  const onDeleteRule = () => {
+    if (selectedRuleIdx === -1) {
+      return;
+    }
+
+    editRules(altRepeatRules.filter((_, index) => index !== selectedRuleIdx));
+    setAltRepeatTab(-1);
+  };
+
+  const onRuleOutputChange = (keyCode: number) => {
+    if (selectedRuleIdx === -1 || !isAllowedOutput(keyCode) || keyCode === altRepeatRules[selectedRuleIdx].output) {
+      return;
+    }
+
+    editRules(altRepeatRules.map((rule, index) => (index === selectedRuleIdx ? { ...rule, output: keyCode } : rule)));
+  };
+
+  const takenPreviousCodes = keyRules
+    .filter(index => index !== previousDialog.ruleIndex)
+    .map(index => altRepeatRules[index].previous);
+
   // log.info("execution that may not render");
   if (layerData === undefined || layerData.length < 1) return <LoaderLayout steps={scanningStep} />;
   // log.info("GOING TO RENDER!!!");
@@ -1496,6 +1817,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
        * comboBadges.ts for why this is a stylesheet rather than a prop on the
        * key component. */}
       <style>{comboBadgeStyles(combos, currentLayer)}</style>
+      <style>{altRepeatBadgeStyles(altRepeatRules, currentLayer)}</style>
       <motion.div
         className={`keyboard-editor h-[inherit] px-3 ${modeselect} ${modeselect === "color" ? "[&_.raiseKeyboard]:h-auto" : ""} singleViewMode ${
           typeof selectedPaletteColor === "number" ? "colorSelected" : ""
@@ -1551,6 +1873,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             cancelContext();
           }}
           inContext={modified}
+          saveDisabled={altRepeatState === "failed"}
           saveButtonRef={saveButtonRef}
           discardChangesButtonRef={discardChangesButtonRef}
         />
@@ -1560,19 +1883,57 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             <div className="dygma-keyboard-editor editor">{layer}</div>
             {modeselect === "keyboard" ? (
               <div className="ordinary-keyboard-editor m-0 pb-4">
-                <KeyPickerKeyboard
-                  mouseWheel={mouseWheel}
-                  resetScroll={resetScroll}
-                  onKeySelect={onKeyChange}
-                  code={code}
-                  macros={macros}
-                  superkeys={superkeys}
-                  keyIndex={currentKeyIndex}
-                  actTab="editor"
-                  selectedlanguage={currentLanguageLayout}
-                  isWireless={isWireless}
-                  allowLayerHold={currentLayer !== 0}
-                />
+                {showAltRepeat && (
+                  <AltRepeatTabs
+                    state={altRepeatState}
+                    rules={keyRules.map(index => altRepeatRules[index])}
+                    selected={selectedRuleIdx === -1 ? -1 : altRepeatTab}
+                    onSelect={setAltRepeatTab}
+                    onAdd={() => setPreviousDialog({ open: true, ruleIndex: null })}
+                    onChangePrevious={() => setPreviousDialog({ open: true, ruleIndex: selectedRuleIdx })}
+                    onDelete={onDeleteRule}
+                    onReload={onReloadAltRepeat}
+                    totalCount={altRepeatRules.length}
+                    block={defaultBlock}
+                    replacesTap={replacesTap(defaultKeyCode, superkeys)}
+                    noKeyDefault={defaultKeyCode === 0}
+                    keymapDB={keymapDB}
+                  />
+                )}
+                {selectedRule === null && (
+                  <KeyPickerKeyboard
+                    mouseWheel={mouseWheel}
+                    resetScroll={resetScroll}
+                    onKeySelect={onKeyChange}
+                    code={code}
+                    macros={macros}
+                    superkeys={superkeys}
+                    keyIndex={currentKeyIndex}
+                    actTab="editor"
+                    selectedlanguage={currentLanguageLayout}
+                    isWireless={isWireless}
+                    allowLayerHold={currentLayer !== 0}
+                  />
+                )}
+                {/* A rule output runs like a combo action, so it gets the combo picker without Autoshift or layer hold */}
+                {selectedRule !== null && defaultBlock === null && (
+                  <KeyPickerKeyboard
+                    key={`ar-${currentLayer}-${currentKeyIndex}-${selectedRuleIdx}`}
+                    mouseWheel={mouseWheel}
+                    resetScroll={resetScroll}
+                    onKeySelect={onRuleOutputChange}
+                    code={keymapDB.keySegmentor(selectedRule.output)}
+                    macros={macros}
+                    superkeys={superkeys}
+                    action={0}
+                    keyIndex={currentKeyIndex}
+                    actTab="combo"
+                    selectedlanguage={currentLanguageLayout}
+                    isWireless={isWireless}
+                    allowAutoshift={false}
+                    fullMouse
+                  />
+                )}
               </div>
             ) : (
               ""
@@ -1597,7 +1958,25 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           comboIndexes={comboBreak?.comboIndexes ?? []}
           combos={combos}
           onUndo={undoComboBreak}
-          onKeep={() => setComboBreak(null)}
+          onKeep={keepComboBreak}
+        />
+
+        <AltRepeatBreakDialog
+          open={altRepeatBreak !== null}
+          reason={altRepeatBreak?.reason ?? null}
+          ruleCount={altRepeatBreak?.ruleCount ?? 0}
+          onUndo={undoAltRepeatBreak}
+          onKeep={() => setAltRepeatBreak(null)}
+        />
+
+        <PreviousKeyDialog
+          open={previousDialog.open}
+          initialCode={previousDialog.ruleIndex === null ? 0 : (altRepeatRules[previousDialog.ruleIndex]?.previous ?? 0)}
+          takenCodes={takenPreviousCodes}
+          keymapDB={keymapDB}
+          selectedlanguage={currentLanguageLayout}
+          onConfirm={onConfirmPrevious}
+          onCancel={() => setPreviousDialog({ open: false, ruleIndex: null })}
         />
 
         <CopyFromDialog

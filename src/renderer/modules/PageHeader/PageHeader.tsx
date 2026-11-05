@@ -105,6 +105,7 @@ function PageHeader(props: PageHeaderType) {
     destroyContext,
     inContext,
     isSaving,
+    saveDisabled,
     primaryButton,
     secondaryButton,
     saveButtonRef,
@@ -128,6 +129,7 @@ function PageHeader(props: PageHeaderType) {
               destroyContext={destroyContext}
               inContext={inContext}
               isSaving={isSaving}
+              saveDisabled={saveDisabled}
               saveButtonRef={saveButtonRef}
               discardChangesButtonRef={discardChangesButtonRef}
             />

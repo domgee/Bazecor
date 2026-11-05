@@ -15,6 +15,7 @@
  */
 
 import { LanguageType } from "../../api/keymap/types";
+import { AltRepeatRule, AltRepeatState } from "./altRepeat";
 import { KeyType, KeymapType } from "./layout";
 import { MacroActionsType, MacrosType } from "./macros";
 import { Neuron } from "./neurons";
@@ -53,6 +54,12 @@ export interface MacroEditorInitialStateType {
   currentLanguageLayout: LanguageType;
   kbtype: string;
   scrollPos: number;
+  altRepeatRules: AltRepeatRule[];
+  /* The table as the keyboard holds it, so a save only writes a changed table */
+  altRepeatSaved: string;
+  altRepeatState: AltRepeatState;
+  /* The macro the delete modal is about, so its confirmation can renumber rule outputs */
+  deletedMacroIdx: number;
 }
 
 export interface ListToDeleteType {

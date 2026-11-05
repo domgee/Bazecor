@@ -25,10 +25,12 @@ interface ModPickerProps {
   allowAutoshift?: boolean;
   /* Offer "Hold until layer change" only on a layer above the default, with firmware that lists the marker */
   allowLayerHold?: boolean;
+  /* Hide AltGr where the firmware folds it into Alt */
+  allowAltGr?: boolean;
 }
 
 function ModPicker(props: ModPickerProps) {
-  const { keyCode, onKeySelect, isStandardView, allowAutoshift = true, allowLayerHold = false } = props;
+  const { keyCode, onKeySelect, isStandardView, allowAutoshift = true, allowLayerHold = false, allowAltGr = true } = props;
   const [modifs, setModifs] = useState([]);
   const previousKeyCode = usePrevious({ base: keyCode.base, modified: keyCode.modified });
 
@@ -210,15 +212,17 @@ function ModPicker(props: ModPickerProps) {
             id="addModAlt"
             disabled={setModifierVisibility()}
           />
-          <CustomRadioCheckBox
-            label={<OSKey renderKey="altGr" size={`${isStandardView ? "sm" : "sm"}`} />}
-            onClick={() => SelectModif(3)}
-            checked={modifs.includes(3)}
-            type="radio"
-            name="addModAltGr"
-            id="addModAltGr"
-            disabled={setModifierVisibility()}
-          />
+          {allowAltGr && (
+            <CustomRadioCheckBox
+              label={<OSKey renderKey="altGr" size={`${isStandardView ? "sm" : "sm"}`} />}
+              onClick={() => SelectModif(3)}
+              checked={modifs.includes(3)}
+              type="radio"
+              name="addModAltGr"
+              id="addModAltGr"
+              disabled={setModifierVisibility()}
+            />
+          )}
         </div>
         {/* Rendered conditionally rather than with `hidden`: the `flex` class
          * overrides the attribute's display:none and the checkbox stayed visible. */}

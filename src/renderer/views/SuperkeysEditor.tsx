@@ -54,6 +54,13 @@ import getLanguage from "@Renderer/utils/language";
 import Keymap, { KeymapDB } from "../../api/keymap";
 import Backup from "../../api/backup";
 import { parseMacrosRaw, parseSuperkeysRaw, serializeKeymap, serializeSuperkeys } from "../../api/parsers";
+import {
+  firmwareLayerCount,
+  readAltRepeatRules,
+  remapSuperkeyOutputs,
+  serializeAltRepeat,
+  writeAltRepeatRules,
+} from "../../api/parsers/altRepeat";
 
 const store = Store.getStore();
 
@@ -117,6 +124,9 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
     currentLanguageLayout: getLanguage(store.get("settings.language") as string),
     showStandardView: false,
     loading: true,
+    altRepeatRules: [],
+    altRepeatSaved: "0",
+    altRepeatState: "unsupported",
   };
   const [state, setState] = useState(initialState);
   const [showLimitModal, setShowLimitModal] = useState(false);
@@ -203,6 +213,21 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
       const parsedMacros = parseMacrosRaw(macrosRaw, state.storedMacros);
       const supersRaw = await currentDevice.command("superkeys.map");
       const parsedSuper = parseSuperkeysRaw(supersRaw, state.storedSuper);
+
+      if (!store.get("capabilities.altRepeat")) {
+        state.altRepeatState = "unsupported";
+        state.altRepeatRules = [];
+      } else {
+        const rules = await readAltRepeatRules(currentDevice);
+        state.altRepeatState = rules === null ? "failed" : "ready";
+        state.altRepeatRules = rules ?? [];
+
+        if (rules === null) {
+          log.error("[SuperkeysEditor] altrepeat.map could not be read");
+        }
+      }
+
+      state.altRepeatSaved = serializeAltRepeat(state.altRepeatRules);
       state.modified = false;
       state.macros = parsedMacros;
       state.superkeys = parsedSuper;
@@ -298,6 +323,15 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
         await currentDevice?.noCacheCommand("keymap.custom", serializeKeymap(keymap.custom));
         await currentDevice?.noCacheCommand("keymap.onlyCustom", keymap.onlyCustom ? "1" : "0");
       }
+
+      const serializedRules = serializeAltRepeat(state.altRepeatRules);
+
+      if (state.altRepeatState === "ready" && keymap && serializedRules !== state.altRepeatSaved) {
+        const keysPerLayer = currentDevice.device.keyboard.rows * currentDevice.device.keyboard.columns;
+        await writeAltRepeatRules(currentDevice, state.altRepeatRules, firmwareLayerCount(keymap), keysPerLayer);
+        state.altRepeatSaved = serializedRules;
+      }
+
       state.modified = false;
       state.modifiedKeymap = false;
       setState({ ...state });
@@ -327,6 +361,13 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
     setState({ ...state });
   };
 
+  /* Follow a deletion in the previous-key rules, which save with the Superkeys */
+  const remapAltRepeatOutputs = (deletedIdx: number) => {
+    if (state.altRepeatState === "ready") {
+      state.altRepeatRules = remapSuperkeyOutputs(state.altRepeatRules, deletedIdx);
+    }
+  };
+
   const SortSK = (newSuper: SuperkeysType[], newID: number) => {
     const { startContext } = props;
     const { keymap, selectedSuper, superkeys } = state;
@@ -350,6 +391,8 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
     for (let i = 0; i < listToDecrease.length; i += 1) {
       keymap.custom[listToDecrease[i].layer][listToDecrease[i].pos] = keymapDB.parse(listToDecrease[i].sk - 1);
     }
+
+    remapAltRepeatOutputs(selectedSuper);
     state.keymap = keymap;
     state.superkeys = newSuper;
     state.selectedSuper = newID;
@@ -387,6 +430,7 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
     } else if (selectedSuper !== superkeys.length - 1) {
       SortSK(localNewSuper, localNewID);
     } else {
+      remapAltRepeatOutputs(selectedSuper);
       updateSuper(localNewSuper, localNewID);
     }
   };
@@ -417,6 +461,8 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
     for (let i = 0; i < listToDecrease.length; i += 1) {
       keymap.custom[listToDecrease[i].layer][listToDecrease[i].pos] = keymapDB.parse(listToDecrease[i].superIdx - 1);
     }
+
+    remapAltRepeatOutputs(selectedSuper);
     state.keymap = keymap;
     state.superkeys = futureSK;
     state.selectedSuper = futureSSK;
@@ -432,6 +478,15 @@ function SuperkeysEditor(props: SuperkeysEditorProps) {
     if (!Array.isArray(superkeys) || superkeys.length <= 0 || selectedSuper < 0) {
       return;
     }
+
+    /* Any rule may point at a Superkey that moves down, so a delete needs the rules */
+    if (state.altRepeatState === "failed") {
+      toast.error(<ToastMessage title={i18n.editor.altRepeat.title} content={i18n.editor.altRepeat.deleteBlockedFailedLoad} />, {
+        icon: "",
+      });
+      return;
+    }
+
     let aux = JSON.parse(JSON.stringify(superkeys));
     const selected = selectedSuper;
     aux.splice(selected, 1);

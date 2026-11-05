@@ -13,6 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+import { AltRepeatRule, AltRepeatState } from "./altRepeat";
 import { KeymapType } from "./layout";
 import { MacrosType } from "./macros";
 import { Neuron } from "./neurons";
@@ -49,6 +50,10 @@ export interface SuperkeysEditorInitialStateType {
 
   showStandardView: boolean;
   loading: boolean;
+  altRepeatRules: AltRepeatRule[];
+  /* The table as the keyboard holds it, so a save only writes a changed table */
+  altRepeatSaved: string;
+  altRepeatState: AltRepeatState;
 }
 
 export interface ListToDeleteSKType {

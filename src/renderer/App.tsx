@@ -50,6 +50,7 @@ import UdevPolkitErrorDialog from "@Renderer/components/molecules/CustomModal/Ud
 import getTranslator from "@Renderer/utils/translator";
 import { Neuron } from "@Types/neurons";
 import { hasLayerHoldMarker } from "../hw/layerhold";
+import { hasAltRepeatCommand } from "../api/parsers/altRepeat";
 import { version } from "../../package.json";
 import "../api/keymap";
 import "../api/colormap";
@@ -65,7 +66,7 @@ const store = Store.getStore();
 // (SK 2.0, Layer Lens, Combos, Autoshift, CapsWord). Runs on connect and again after a firmware
 // update, since the keyboard stays connected through it.
 // The minimum FW per product for each capability lives in src/versionRules.json.
-// Also reads help for capabilities.layerHold, which official firmware of the same version lacks.
+// Also reads help for capabilities.layerHold and capabilities.altRepeat, which official firmware of the same version lacks.
 const detectFirmwareCapabilities = async (currentDevice: Device) => {
   try {
     const versionStr = (await currentDevice.noCacheCommand("version")) as string;
@@ -82,15 +83,19 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     log.info("[Capabilities] all disabled due to firmware version read/parse error");
   }
 
-  /* Detect Hold until layer change through help, because official firmware of the same version lacks it */
+  /* Detect Hold until layer change and previous-key rules through help, because official firmware of the same version lacks them */
   try {
     const help = await currentDevice.noCacheCommand("help");
     const available = hasLayerHoldMarker(help);
     store.set("capabilities.layerHold", available);
     log.info(`[Capabilities] layerHold -> available: ${available}`);
+    const altRepeat = hasAltRepeatCommand(help);
+    store.set("capabilities.altRepeat", altRepeat);
+    log.info(`[Capabilities] altRepeat -> available: ${altRepeat}`);
   } catch (e) {
-    log.warn("Error reading help for layerHold", e);
+    log.warn("Error reading help for layerHold and altRepeat", e);
     store.set("capabilities.layerHold", false);
+    store.set("capabilities.altRepeat", false);
   }
 };
 

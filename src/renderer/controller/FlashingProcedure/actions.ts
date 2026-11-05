@@ -15,6 +15,7 @@ import SonseiFlash from "../../../api/flash/sonseiFlasher/Sonsei-flasher";
 import { FlashRaise } from "../../../api/flash";
 import { delay } from "../../../main/utils/delay";
 import Backup from "../../../api/backup";
+import { ALT_REPEAT_COMMAND, restoreAltRepeat } from "../../../api/parsers/altRepeat";
 import * as Context from "./context";
 
 const stateUpdate = (stage: string, percentage: number, context: Context.ContextType) => {
@@ -90,7 +91,14 @@ const restoreSettings = async (
     for (let i = 0; i < commands.length; i += 1) {
       const val = commands[i].data;
       log.info(`Going to send ${commands[i].command} to keyboard`);
-      await device?.command(`${commands[i].command} ${val}`.trim());
+
+      /* The rules write is validated and read back, and a rejection fails the restore */
+      if (commands[i].command === ALT_REPEAT_COMMAND && device) {
+        await restoreAltRepeat(device, String(val).trim(), device.device.keyboard.rows * device.device.keyboard.columns);
+      } else {
+        await device?.command(`${commands[i].command} ${val}`.trim());
+      }
+
       stateUpd("restore", (i / commands.length) * 90);
     }
     await device?.command("led.mode 0");

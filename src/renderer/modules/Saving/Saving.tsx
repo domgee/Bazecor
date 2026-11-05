@@ -23,12 +23,22 @@ interface SavingProps {
   destroyContext: () => Promise<void> | void;
   inContext: boolean;
   isSaving: boolean;
+  /* Keep Save off while something the save needs could not be loaded */
+  saveDisabled?: boolean;
   saveButtonRef?: React.RefObject<HTMLButtonElement>;
   discardChangesButtonRef?: React.RefObject<HTMLButtonElement>;
 }
 
 function Saving(props: SavingProps) {
-  const { saveContext, destroyContext, inContext, isSaving, saveButtonRef, discardChangesButtonRef } = props;
+  const {
+    saveContext,
+    destroyContext,
+    inContext,
+    isSaving,
+    saveDisabled = false,
+    saveButtonRef,
+    discardChangesButtonRef,
+  } = props;
   return (
     <div className="savingButtons flex gap-2">
       <Button
@@ -40,7 +50,13 @@ function Saving(props: SavingProps) {
       >
         Discard&nbsp;<span className="sm:hidden md:hidden lg:inline-block">changes</span>
       </Button>
-      <Button onClick={saveContext} variant="primary" size="sm" disabled={!inContext || isSaving} ref={saveButtonRef}>
+      <Button
+        onClick={saveContext}
+        variant="primary"
+        size="sm"
+        disabled={!inContext || isSaving || saveDisabled}
+        ref={saveButtonRef}
+      >
         {isSaving ? (
           "Saving"
         ) : (

@@ -80,3 +80,24 @@ describe("ModPicker Hold until layer change", () => {
     expect(container.querySelector(HOLD_CHECKBOX).hasAttribute("disabled")).toBe(true);
   });
 });
+
+describe("ModPicker AltGr", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  test("AltGr is offered by default", () => {
+    const { container } = render(<ModPicker keyCode={{ base: 6, modified: 0 }} onKeySelect={vi.fn()} isStandardView={false} />);
+
+    expect(container.querySelector("#input-addModAltGr-radio")).not.toBeNull();
+  });
+
+  test("allowAltGr={false} hides AltGr and keeps the other modifiers", () => {
+    const { container } = render(
+      <ModPicker keyCode={{ base: 6, modified: 0 }} onKeySelect={vi.fn()} isStandardView={false} allowAltGr={false} />,
+    );
+
+    expect(container.querySelector("#input-addModAltGr-radio")).toBeNull();
+    expect(container.querySelector("#input-addModAlt-radio")).not.toBeNull();
+  });
+});

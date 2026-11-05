@@ -33,6 +33,7 @@ import {
   stripRaise2OnlySuperkeyActions,
 } from "../parsers";
 import { isLegacyCombosReply, upgradeLegacyCombosReply } from "../parsers/combos";
+import { ALT_REPEAT_COMMAND, needsAltRepeatClear, restoreAltRepeat, writeAltRepeatRules } from "../parsers/altRepeat";
 import { fitPaletteToFormat } from "../parsers/palette";
 import { rgb2w } from "../color";
 import { isSupportedLensProduct } from "../../lens/shared/constants";
@@ -390,6 +391,11 @@ export default class Backup {
     // firmware's backup carries some, so only send what the target lists in `help`.
     data = await Backup.keepSupportedCommands(data, device);
     data = data.filter(c => typeof c.command === "string" && c.command.trim().length > 0);
+    /* A backup from before the rules existed must not leave the keyboard's current rules behind */
+    const clearAltRepeat = needsAltRepeatClear(
+      data.map(c => c.command),
+      await Backup.supportedCommands(device),
+    );
     data = data.map(c => (typeof c.data === "string" ? { ...c, data: fitCommandToDevice(c.command, c.data, targetProduct) } : c));
     // Reorder to ensure superkeys are restored before keymap
     try {
@@ -434,9 +440,21 @@ export default class Backup {
             // if (data[i].command.includes("macros") || data[i].command.includes("superkeys")) continue;
           }
           log.info(`Going to send ${data[i].command} to keyboard`);
-          // eslint-disable-next-line no-await-in-loop
-          await device.command(data[i].command, String(val).trim());
+
+          /* The rules write is validated and read back, and a rejection fails the restore */
+          if (data[i].command === ALT_REPEAT_COMMAND) {
+            // eslint-disable-next-line no-await-in-loop
+            await restoreAltRepeat(device, String(val).trim(), device.device.keyboard.rows * device.device.keyboard.columns);
+          } else {
+            // eslint-disable-next-line no-await-in-loop
+            await device.command(data[i].command, String(val).trim());
+          }
         }
+
+        if (clearAltRepeat) {
+          await writeAltRepeatRules(device, [], 0, 0);
+        }
+
         await device.noCacheCommand("led.mode 0");
         log.info("Restoring all settings");
         log.info("Firmware update OK");
@@ -553,11 +571,24 @@ export default class Backup {
               commandData = fitCommandToDevice(command, commandData, deviceProduct);
 
               log.warn(`Going to send ${command} to keyboard`);
-              // eslint-disable-next-line no-await-in-loop
-              await device.command(command, commandData);
+
+              if (command === ALT_REPEAT_COMMAND) {
+                const keysPerLayer = device.device.keyboard.rows * device.device.keyboard.columns;
+                // eslint-disable-next-line no-await-in-loop
+                await restoreAltRepeat(device, commandData, keysPerLayer);
+              } else {
+                // eslint-disable-next-line no-await-in-loop
+                await device.command(command, commandData);
+              }
             }
           }
         }
+
+        /* A file from before the rules existed must not leave the keyboard's current rules behind */
+        if (needsAltRepeatClear(Object.keys(data), supported)) {
+          await writeAltRepeatRules(device, [], 0, 0);
+        }
+
         log.info("Settings restored OK");
         return true;
       } catch (e) {

@@ -68,6 +68,15 @@ import {
   serializeMacros,
   serializeSuperkeys,
 } from "../../api/parsers";
+import {
+  MACRO_FIRST,
+  firmwareLayerCount,
+  readAltRepeatRules,
+  remapMacroOutputs,
+  rulesUsingOutput,
+  serializeAltRepeat,
+  writeAltRepeatRules,
+} from "../../api/parsers/altRepeat";
 
 const store = Store.getStore();
 
@@ -141,6 +150,10 @@ function MacroEditor(props: MacroEditorProps) {
     currentLanguageLayout: getLanguage(store.get("settings.language") as string),
     kbtype: "ansi",
     scrollPos: 0,
+    altRepeatRules: [],
+    altRepeatSaved: "0",
+    altRepeatState: "unsupported",
+    deletedMacroIdx: -1,
   };
   const [state, setState] = useState(initialState);
   const { state: deviceState } = useDevice();
@@ -243,6 +256,15 @@ function MacroEditor(props: MacroEditorProps) {
       log.info(keymap.custom);
       await currentDevice.command("keymap.custom", serializeKeymap(keymap.custom));
       await currentDevice.command("superkeys.map", serializeSuperkeys(superkeys));
+
+      const serializedRules = serializeAltRepeat(state.altRepeatRules);
+
+      if (state.altRepeatState === "ready" && serializedRules !== state.altRepeatSaved) {
+        const keysPerLayer = currentDevice.device.keyboard.rows * currentDevice.device.keyboard.columns;
+        await writeAltRepeatRules(currentDevice, state.altRepeatRules, firmwareLayerCount(keymap), keysPerLayer);
+        state.altRepeatSaved = serializedRules;
+      }
+
       const commands = await Backup.Commands(currentDevice);
       const backup = await bkp.DoBackup(commands, neurons[neurons.findIndex(n => n.id === neuronID)].id, currentDevice);
       Backup.SaveBackup(backup, currentDevice);
@@ -319,6 +341,10 @@ function MacroEditor(props: MacroEditorProps) {
       return item;
     });
     // log.info("result!", macros);
+    if (state.altRepeatState === "ready") {
+      state.altRepeatRules = remapMacroOutputs(state.altRepeatRules, state.deletedMacroIdx, selectedList);
+    }
+
     state.keymap = keymap;
     state.superkeys = superkeys;
     state.macros = macros;
@@ -373,8 +399,12 @@ function MacroEditor(props: MacroEditorProps) {
     state.listToDelete = customKeymapList;
     state.listToDeleteS = customSuperList;
     state.listToDeleteM = customMacrosList;
+    state.deletedMacroIdx = keyboardIdx;
     state.showDeleteModal =
-      customKeymapList.filter(c => c.newKey === -1).length > 0 || customSuperList.length > 0 || customMacrosList.length > 0;
+      customKeymapList.filter(c => c.newKey === -1).length > 0 ||
+      customSuperList.length > 0 ||
+      customMacrosList.length > 0 ||
+      rulesUsingOutput(state.altRepeatRules, MACRO_FIRST + keyboardIdx) > 0;
     setState({ ...state });
 
     if (!state.showDeleteModal) ActUponDelete(state);
@@ -388,6 +418,15 @@ function MacroEditor(props: MacroEditorProps) {
     if (macros.length === 0) {
       return;
     }
+
+    /* Any rule may point at a macro that moves down, so a delete needs the rules */
+    if (state.altRepeatState === "failed") {
+      toast.error(<ToastMessage title={i18n.editor.altRepeat.title} content={i18n.editor.altRepeat.deleteBlockedFailedLoad} />, {
+        icon: "",
+      });
+      return;
+    }
+
     const selected = selectedMacro;
     let localMacros: MacrosType[] = JSON.parse(JSON.stringify(macros));
     localMacros.splice(selected, 1);
@@ -474,6 +513,21 @@ function MacroEditor(props: MacroEditorProps) {
       const parsedMacros = parseMacrosRaw(macrosRaw, state.storedMacros);
       const supersRaw = await currentDevice.command("superkeys.map");
       const parsedSuper = parseSuperkeysRaw(supersRaw, state.storedSuper);
+
+      if (!store.get("capabilities.altRepeat")) {
+        state.altRepeatState = "unsupported";
+        state.altRepeatRules = [];
+      } else {
+        const rules = await readAltRepeatRules(currentDevice);
+        state.altRepeatState = rules === null ? "failed" : "ready";
+        state.altRepeatRules = rules ?? [];
+
+        if (rules === null) {
+          log.error("[MacroEditor] altrepeat.map could not be read");
+        }
+      }
+
+      state.altRepeatSaved = serializeAltRepeat(state.altRepeatRules);
       state.macros = parsedMacros;
       state.superkeys = parsedSuper;
       state.keymap = keymap;
@@ -678,6 +732,15 @@ function MacroEditor(props: MacroEditorProps) {
       }
       return "";
     }),
+  );
+  ListOfDeletes = ListOfDeletes.concat(
+    state.altRepeatRules
+      .filter(rule => rule.output === MACRO_FIRST + state.deletedMacroIdx)
+      .map(rule => (
+        <li key={`altrepeat-${rule.layer}-${rule.position}-${rule.previous}`} className="text-left">
+          {`Previous-key tab in Layer ${rule.layer + 1} and pos ${rule.position + 1}`}
+        </li>
+      )),
   );
   ListOfDeletes = ListOfDeletes.concat(
     listToDeleteM.map(({ macroIdx, pos, newKey }) => {

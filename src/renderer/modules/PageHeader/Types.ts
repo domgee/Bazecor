@@ -12,6 +12,7 @@ export interface PageHeaderType {
   destroyContext?: () => Promise<void> | void;
   inContext?: boolean;
   isSaving?: boolean;
+  saveDisabled?: boolean;
   primaryButton?: React.ReactNode;
   secondaryButton?: React.ReactNode;
   saveButtonRef?: React.RefObject<HTMLButtonElement>;

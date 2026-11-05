@@ -18,6 +18,7 @@ import { css } from "styled-components";
 
 import customCursor from "@Assets/base/cursorBucket.png";
 import { comboBadgeBaseStyles } from "./comboBadges";
+import { altRepeatBadgeBaseStyles } from "./altRepeatBadges";
 
 /**
  * Every rule the device SVGs need in order to render the way they do in the
@@ -326,4 +327,7 @@ export const keyboardCanvasStyles = css`
   /* The "C1" chip. Only ever visible once a generated rule supplies its
    * content, so keys outside a combo pay nothing for it. */
   ${comboBadgeBaseStyles}
+
+  /* The "A1" chip for keys with previous-key rules */
+  ${altRepeatBadgeBaseStyles}
 `;
