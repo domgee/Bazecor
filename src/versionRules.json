@@ -60,6 +60,12 @@
         "Raise2": "1.6.0",
         "Sonsei": "1.2.0"
       }
+    },
+    "altRepeatLayerHold": {
+      "description": "Hold until layer change on previous-key rule outputs (Sonsei fork). Shown only together with capabilities.altRepeat and capabilities.layerHold, which come from help. v1.2.2 has both commands but rejects hold outputs.",
+      "minFirmware": {
+        "Sonsei": "1.2.3"
+      }
     }
   }
 }

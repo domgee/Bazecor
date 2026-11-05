@@ -81,6 +81,10 @@ describe("hasFirmwareFeature()", () => {
     { feature: "capsword", product: "Sonsei", fw: "1.1.0", expected: false },
     { feature: "capsword", product: "Sonsei", fw: "1.2.0", expected: true },
     { feature: "capsword", product: "Raise", fw: "9.9.9", expected: false },
+    { feature: "altRepeatLayerHold", product: "Sonsei", fw: "v1.2.2", expected: false },
+    { feature: "altRepeatLayerHold", product: "Sonsei", fw: "v1.2.3", expected: true },
+    { feature: "altRepeatLayerHold", product: "Sonsei", fw: "v1.3.0", expected: true },
+    { feature: "altRepeatLayerHold", product: "Defy", fw: "9.9.9", expected: false },
   ] as const)("$feature on $product $fw -> $expected", async ({ feature, product, fw, expected }) => {
     const { hasFirmwareFeature } = await loadWithBazecor("1.11.0");
     expect(hasFirmwareFeature(feature, product, fw)).toBe(expected);

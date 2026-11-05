@@ -242,6 +242,9 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const [altRepeatState, setAltRepeatState] = useState<AltRepeatState>("unsupported");
   /* Remember the table the keyboard holds so Save only writes a changed table */
   const savedAltRepeat = useRef("0");
+  /* Count rules loads and edits, so only the newest load applies, and only when no edit came after it started */
+  const altRepeatLoads = useRef(0);
+  const altRepeatEdits = useRef(0);
   /* Index the selected key's tabs, with -1 for Default */
   const [altRepeatTab, setAltRepeatTab] = useState(-1);
   /* Point ruleIndex at the rule whose previous key changes, or null for a new tab */
@@ -476,6 +479,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
   /* Mark a failed read so Save stays off until the rules load */
   const loadAltRepeatRules = useCallback(async (currentDevice: AltRepeatDevice) => {
+    altRepeatLoads.current += 1;
+    const load = altRepeatLoads.current;
+    const edits = altRepeatEdits.current;
+
     if (!store.get("capabilities.altRepeat")) {
       setAltRepeatState("unsupported");
       setAltRepeatRules([]);
@@ -483,6 +490,11 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     }
 
     const rules = await readAltRepeatRules(currentDevice);
+
+    /* Drop a reply that a newer load or a rules edit made stale */
+    if (load !== altRepeatLoads.current || edits !== altRepeatEdits.current) {
+      return;
+    }
 
     if (rules === null) {
       log.error("[LayoutEditor] altrepeat.map could not be read");
@@ -749,12 +761,14 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
   /* Replace the whole table after a load, copy, clear or import */
   const replaceRules = (next: AltRepeatRule[]) => {
+    altRepeatEdits.current += 1;
     setAltRepeatRules(next);
     setAltRepeatTab(-1);
   };
 
   /* Change the table from an edit the user saves or discards */
   const editRules = (next: AltRepeatRule[]) => {
+    altRepeatEdits.current += 1;
     setAltRepeatRules(next);
     setModified(true);
     startContext();
@@ -1947,7 +1961,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     allowLayerHold={currentLayer !== 0}
                   />
                 )}
-                {/* Offer the combo picker without Autoshift, since a rule output runs like a combo action. Layer hold works as on Default */}
+                {/* Offer the combo picker without Autoshift, since a rule output runs like a combo action. Layer hold needs v1.2.3 */}
                 {selectedRule !== null && defaultBlock === null && (
                   <KeyPickerKeyboard
                     key={`ar-${currentLayer}-${currentKeyIndex}-${selectedRuleIdx}`}
@@ -1963,7 +1977,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     selectedlanguage={currentLanguageLayout}
                     isWireless={isWireless}
                     allowAutoshift={false}
-                    allowLayerHold={currentLayer !== 0}
+                    allowLayerHold={currentLayer !== 0 && Boolean(store.get("capabilities.altRepeatLayerHold"))}
                     fullMouse
                   />
                 )}
