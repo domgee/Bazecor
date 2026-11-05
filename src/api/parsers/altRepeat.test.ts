@@ -3,12 +3,15 @@ import { AltRepeatRule } from "@Renderer/types/altRepeat";
 import { SuperkeysType } from "@Renderer/types/superkeys";
 import {
   ALT_REPEAT_COMMAND,
+  ALT_REPEAT_REPEAT_FLAG,
   AltRepeatDevice,
   altRepeatDefaultBlock,
+  basePrevious,
   clearLayerRules,
   copyLayerRules,
   findKeyType,
   hasAltRepeatCommand,
+  hasRepeat,
   isAllowedOutput,
   isDualFunctionSuperkey,
   isValidPrevious,
@@ -28,6 +31,7 @@ import {
   serializeAltRepeat,
   superkeyQukeyCode,
   validateAltRepeatRules,
+  withRepeat,
   writeAltRepeatRules,
 } from "./altRepeat";
 
@@ -121,6 +125,33 @@ describe("previous key", () => {
     expect(isValidPrevious(code)).toBe(false);
   });
 
+  test.each([[0x8006], [0x9006], [0x9b06], [0x80dd]])("%i with the repeat flag is a valid previous key", code => {
+    expect(isValidPrevious(code)).toBe(true);
+  });
+
+  test.each([[0x8000], [0x80e0], [0xa006], [0x8406], [0x10006]])("%i with the repeat flag is not a previous key", code => {
+    expect(isValidPrevious(code)).toBe(false);
+  });
+
+  test("normalizePrevious keeps the repeat flag", () => {
+    expect(normalizePrevious(0x8406)).toBe(0x8206);
+  });
+
+  test("previousModifiers ignores the repeat flag", () => {
+    expect(previousModifiers(0x9006)).toEqual(["gui"]);
+  });
+
+  test("repeat helpers set, clear and strip the flag", () => {
+    expect(ALT_REPEAT_REPEAT_FLAG).toBe(0x8000);
+    expect(hasRepeat(0x9035)).toBe(true);
+    expect(hasRepeat(0x1035)).toBe(false);
+    expect(withRepeat(0x1035, true)).toBe(0x9035);
+    expect(withRepeat(0x9035, true)).toBe(0x9035);
+    expect(withRepeat(0x9035, false)).toBe(0x1035);
+    expect(basePrevious(0x9035)).toBe(0x1035);
+    expect(basePrevious(0x1035)).toBe(0x1035);
+  });
+
   test("previousModifiers lists Ctrl, Alt, Shift and Gui", () => {
     expect(previousModifiers(0x1b06)).toEqual(["ctrl", "alt", "shift", "gui"]);
     expect(previousModifiers(0x406)).toEqual(["alt"]);
@@ -162,6 +193,10 @@ describe("validateAltRepeatRules", () => {
     expect(validateAltRepeatRules([rule(0, 1, 6, 4), rule(0, 2, 6, 4), rule(9, 59, 0x1006, 53980)], 10, 60)).toBeNull();
   });
 
+  test("accepts a rule with the repeat flag", () => {
+    expect(validateAltRepeatRules([rule(0, 1, 0x9035, 0x1035), rule(0, 1, 6, 4)], 10, 60)).toBeNull();
+  });
+
   test.each([
     ["129 rules", fill(129)],
     ["a layer at the count", [rule(10, 0, 6, 4)]],
@@ -169,6 +204,7 @@ describe("validateAltRepeatRules", () => {
     ["a modifier-only previous key", [rule(0, 1, 0xe0, 4)]],
     ["a Transparent output", [rule(0, 1, 6, 65535)]],
     ["a repeated previous key on one key", [rule(0, 1, 6, 4), rule(0, 1, 6, 5)]],
+    ["the same previous key with and without the repeat flag", [rule(0, 1, 6, 4), rule(0, 1, 0x8006, 5)]],
   ])("rejects %s", (_, rules) => {
     expect(validateAltRepeatRules(rules, 10, 60)).not.toBeNull();
   });
@@ -313,12 +349,25 @@ describe("table operations", () => {
     expect(replaceLayerRules(rules, 0, entries, 60)).toEqual({ rules: [rule(1, 1, 6, 4), rule(0, 3, 0x206, 5)], dropped: 5 });
   });
 
+  test("replaceLayerRules keeps the repeat flag and drops a later entry that differs only in it", () => {
+    const entries = [
+      { position: 3, previous: 0x8406, output: 5 },
+      { position: 3, previous: 0x206, output: 6 },
+    ];
+
+    expect(replaceLayerRules([], 0, entries, 60)).toEqual({ rules: [rule(0, 3, 0x8206, 5)], dropped: 1 });
+  });
+
   test("replaceLayerRules refuses to go past capacity and leaves the input alone", () => {
     const rules = fill(120, 1);
     const entries = fill(10, 0).map(({ position, previous, output }) => ({ position, previous, output }));
 
     expect(replaceLayerRules(rules, 0, entries, 60)).toEqual({ error: "capacity" });
     expect(rules).toHaveLength(120);
+  });
+
+  test("replaceAllRules drops a later rule that differs only in the repeat flag", () => {
+    expect(replaceAllRules([rule(0, 1, 6, 4), rule(0, 1, 0x8006, 5)], 10, 60)).toEqual({ rules: [rule(0, 1, 6, 4)], dropped: 1 });
   });
 
   test("replaceAllRules keeps valid rules and refuses more than capacity", () => {

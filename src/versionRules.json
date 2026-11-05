@@ -66,6 +66,12 @@
       "minFirmware": {
         "Sonsei": "1.2.3"
       }
+    },
+    "altRepeatKeyRepeat": {
+      "description": "Apply on key repeat on previous-key rule tabs (Sonsei fork). Shown only together with capabilities.altRepeat, which comes from help. v1.2.2 and v1.2.3 have the command but reject a previous key with the repeat flag.",
+      "minFirmware": {
+        "Sonsei": "1.2.4"
+      }
     }
   }
 }

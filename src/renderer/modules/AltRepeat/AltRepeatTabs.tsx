@@ -17,10 +17,11 @@
 import React from "react";
 import { Button } from "@Renderer/components/atoms/Button";
 import Heading from "@Renderer/components/atoms/Heading";
+import CustomRadioCheckBox from "@Renderer/components/molecules/Form/CustomRadioCheckBox";
 import { i18n } from "@Renderer/i18n";
 import { AltRepeatBlock, AltRepeatRule, AltRepeatState } from "@Renderer/types/altRepeat";
 import { KeymapDB } from "../../../api/keymap";
-import { MAX_ALT_REPEAT_RULES } from "../../../api/parsers/altRepeat";
+import { hasRepeat, MAX_ALT_REPEAT_RULES } from "../../../api/parsers/altRepeat";
 import PreviousKeyLabel from "./PreviousKeyLabel";
 
 interface AltRepeatTabsProps {
@@ -34,6 +35,9 @@ interface AltRepeatTabsProps {
   onChangePrevious: () => void;
   onDelete: () => void;
   onReload: () => void;
+  /** Offer Apply on key repeat on the selected tab, which needs firmware v1.2.4. */
+  allowRepeat?: boolean;
+  onToggleRepeat?: () => void;
   /** Rules on the whole keyboard. */
   totalCount: number;
   block: AltRepeatBlock | null;
@@ -53,6 +57,8 @@ const AltRepeatTabs = (props: AltRepeatTabsProps) => {
     onChangePrevious,
     onDelete,
     onReload,
+    allowRepeat = false,
+    onToggleRepeat = () => {},
     totalCount,
     block,
     replacesTap,
@@ -99,6 +105,11 @@ const AltRepeatTabs = (props: AltRepeatTabsProps) => {
           >
             <span className="mr-1">{strings.after}</span>
             <PreviousKeyLabel code={rule.previous} keymapDB={keymapDB} />
+            {hasRepeat(rule.previous) && (
+              <span className="altRepeatRepeatMark ml-1" title={strings.repeat} aria-label={strings.repeat}>
+                ↻
+              </span>
+            )}
           </Button>
         ))}
         <Button
@@ -130,6 +141,19 @@ const AltRepeatTabs = (props: AltRepeatTabsProps) => {
           <Button variant="outline" size="sm" onClick={onDelete}>
             {strings.delete}
           </Button>
+          {allowRepeat && (
+            <CustomRadioCheckBox
+              label={<div className="pl-0.5">{strings.repeat}</div>}
+              onClick={onToggleRepeat}
+              checked={hasRepeat(selectedRule.previous)}
+              type="checkbox"
+              name="altRepeatKeyRepeat"
+              id="altRepeatKeyRepeat"
+              disabled={block !== null}
+              tooltip={<p className="description text-ssm font-medium text-gray-400 dark:text-gray-200">{strings.repeatHint}</p>}
+              className="mt-0"
+            />
+          )}
         </div>
       )}
     </div>

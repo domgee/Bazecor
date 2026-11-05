@@ -83,9 +83,11 @@ import { ComboBreakReason, comboBreakReason, combosAtPosition, isLegacyCombosRep
 import {
   MAX_ALT_REPEAT_RULES,
   altRepeatDefaultBlock,
+  basePrevious,
   clearLayerRules,
   copyLayerRules,
   firmwareLayerCount,
+  hasRepeat,
   isAllowedOutput,
   AltRepeatDevice,
   readAltRepeatRules,
@@ -94,6 +96,7 @@ import {
   replacesTap,
   rulesAt,
   serializeAltRepeat,
+  withRepeat,
   writeAltRepeatRules,
 } from "../../api/parsers/altRepeat";
 
@@ -1796,7 +1799,11 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     setPreviousDialog({ open: false, ruleIndex: null });
 
     if (ruleIndex !== null) {
-      editRules(altRepeatRules.map((rule, index) => (index === ruleIndex ? { ...rule, previous } : rule)));
+      editRules(
+        altRepeatRules.map((rule, index) =>
+          index === ruleIndex ? { ...rule, previous: withRepeat(previous, hasRepeat(rule.previous)) } : rule,
+        ),
+      );
       return;
     }
 
@@ -1819,6 +1826,18 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     setAltRepeatTab(-1);
   };
 
+  const onToggleRepeat = () => {
+    if (selectedRuleIdx === -1) {
+      return;
+    }
+
+    editRules(
+      altRepeatRules.map((rule, index) =>
+        index === selectedRuleIdx ? { ...rule, previous: withRepeat(rule.previous, !hasRepeat(rule.previous)) } : rule,
+      ),
+    );
+  };
+
   const onRuleOutputChange = (keyCode: number) => {
     if (selectedRuleIdx === -1 || !isAllowedOutput(keyCode) || keyCode === altRepeatRules[selectedRuleIdx].output) {
       return;
@@ -1829,7 +1848,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
   const takenPreviousCodes = keyRules
     .filter(index => index !== previousDialog.ruleIndex)
-    .map(index => altRepeatRules[index].previous);
+    .map(index => basePrevious(altRepeatRules[index].previous));
 
   // log.info("execution that may not render");
   if (layerData === undefined || layerData.length < 1) return <LoaderLayout steps={scanningStep} />;
@@ -1939,6 +1958,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     onChangePrevious={() => setPreviousDialog({ open: true, ruleIndex: selectedRuleIdx })}
                     onDelete={onDeleteRule}
                     onReload={onReloadAltRepeat}
+                    allowRepeat={Boolean(store.get("capabilities.altRepeatKeyRepeat"))}
+                    onToggleRepeat={onToggleRepeat}
                     totalCount={altRepeatRules.length}
                     block={defaultBlock}
                     replacesTap={replacesTap(defaultKeyCode, superkeys)}
@@ -2018,7 +2039,9 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
         <PreviousKeyDialog
           open={previousDialog.open}
-          initialCode={previousDialog.ruleIndex === null ? 0 : (altRepeatRules[previousDialog.ruleIndex]?.previous ?? 0)}
+          initialCode={
+            previousDialog.ruleIndex === null ? 0 : basePrevious(altRepeatRules[previousDialog.ruleIndex]?.previous ?? 0)
+          }
           takenCodes={takenPreviousCodes}
           keymapDB={keymapDB}
           selectedlanguage={currentLanguageLayout}

@@ -20,7 +20,7 @@ export interface AltRepeatRule {
   layer: number;
   /** Physical key offset, KeyAddr::toInt(). */
   position: number;
-  /** Ctrl 0x100, Alt 0x200, Shift 0x800 and Gui 0x1000 flags plus a keycode from 0x04 to 0xDD. */
+  /** Ctrl 0x100, Alt 0x200, Shift 0x800 and Gui 0x1000 flags plus a keycode 0x04..0xDD, and 0x8000 to apply on key repeat. */
   previous: number;
   /** Raw Bazecor keycode. */
   output: number;

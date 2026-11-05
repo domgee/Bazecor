@@ -536,6 +536,8 @@ const English = {
       previousModifierOnly: "Pick a key that types. Modifiers, layer, media and mouse keys never count as the previous key.",
       previousDuplicate: "This key already has a tab for that previous key.",
       outputTitle: "Output after this previous key",
+      repeat: "Apply on key repeat",
+      repeatHint: "Keep sending this output on each press of this key until another key is typed.",
       confirm: "Confirm",
       cancel: "Cancel",
       blocked: {

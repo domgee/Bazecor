@@ -27,6 +27,9 @@ import { SuperkeysType } from "@Renderer/types/superkeys";
 export const ALT_REPEAT_COMMAND = "altrepeat.map";
 export const MAX_ALT_REPEAT_RULES = 128;
 
+/** AltRepeatDygma::REPEAT_FLAG in a rule's previous key. The output repeats on each press until another key types. */
+export const ALT_REPEAT_REPEAT_FLAG = 0x8000;
+
 /* Bound the layer by the firmware's uint32 layer state and leave the real layer count to the firmware */
 export const LAYER_COUNT_BOUND = 32;
 
@@ -70,6 +73,14 @@ export const hasAltRepeatCommand = (help: unknown): boolean => {
   return help.split(/\r?\n/).some(line => line.trim() === ALT_REPEAT_COMMAND);
 };
 
+/** The previous key of a rule without the repeat flag. */
+export const basePrevious = (previous: number): number => previous & ~ALT_REPEAT_REPEAT_FLAG;
+
+export const hasRepeat = (previous: number): boolean => (previous & ALT_REPEAT_REPEAT_FLAG) !== 0;
+
+export const withRepeat = (previous: number, on: boolean): number =>
+  on ? previous | ALT_REPEAT_REPEAT_FLAG : basePrevious(previous);
+
 /** The firmware matches Alt with the side ignored, so AltGr becomes Alt. */
 export const normalizePrevious = (code: number): number => {
   if ((code & ALTGR_FLAG) === 0) {
@@ -79,14 +90,14 @@ export const normalizePrevious = (code: number): number => {
   return (code & ~ALTGR_FLAG) | ALT_FLAG;
 };
 
-/** A key that types, from `a` to the last HID key, with only Ctrl, Alt, Shift and Gui flags. */
+/** A key that types, from `a` to the last HID key, with only Ctrl, Alt, Shift and Gui flags and the repeat flag. */
 export const isValidPrevious = (code: number): boolean => {
-  if (!Number.isInteger(code) || code < 0 || code >= 0x2000) {
+  if (!Number.isInteger(code) || code < 0 || code > 0xffff || basePrevious(code) >= 0x2000) {
     return false;
   }
 
   const keycode = code & 0xff;
-  return ((code >> 8) & ~PREVIOUS_MODS) === 0 && keycode >= FIRST_TYPING_KEY && keycode <= LAST_TYPING_KEY;
+  return ((basePrevious(code) >> 8) & ~PREVIOUS_MODS) === 0 && keycode >= FIRST_TYPING_KEY && keycode <= LAST_TYPING_KEY;
 };
 
 /** Mirror of AltRepeatDygma::outputAllowed. */
@@ -205,7 +216,7 @@ export const validateAltRepeatRules = (rules: AltRepeatRule[], layerCount: numbe
       return `rule ${i} has the output ${output}, which the firmware does not run`;
     }
 
-    const key = `${layer} ${position} ${previous}`;
+    const key = `${layer} ${position} ${basePrevious(previous)}`;
 
     if (seen.has(key)) {
       return `rule ${i} repeats the previous key of another rule on the same key`;
@@ -404,7 +415,7 @@ export const copyLayerRules = (
   return { rules: next };
 };
 
-/* Valid rules from a file, with AltGr folded into Alt and later duplicates of a key's previous key dropped */
+/* Valid rules from a file, AltGr folded into Alt. Drop later duplicates of a previous key, also when only the flag differs */
 const cleanEntries = (
   entries: unknown[],
   layerCount: number,
@@ -417,7 +428,7 @@ const cleanEntries = (
   entries.forEach(entry => {
     const { layer, position, previous, output } = (entry ?? {}) as Partial<AltRepeatRule>;
     const normalized = typeof previous === "number" ? normalizePrevious(previous) : NaN;
-    const key = `${layer} ${position} ${normalized}`;
+    const key = `${layer} ${position} ${basePrevious(normalized)}`;
     const valid =
       Number.isInteger(layer) &&
       layer >= 0 &&
