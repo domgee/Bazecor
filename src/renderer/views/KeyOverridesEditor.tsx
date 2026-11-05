@@ -30,6 +30,7 @@ import { PageHeader } from "@Renderer/modules/PageHeader";
 import PreviousKeyLabel from "@Renderer/modules/AltRepeat/PreviousKeyLabel";
 import KeyOverrideKeyDialog from "@Renderer/modules/KeyOverrides/KeyOverrideKeyDialog";
 import ReplacementLabel from "@Renderer/modules/KeyOverrides/ReplacementLabel";
+import backupAfterSave from "@Renderer/modules/KeyOverrides/backupAfterSave";
 import { useDevice } from "@Renderer/DeviceContext";
 import Store from "@Renderer/utils/Store";
 import getLanguage from "@Renderer/utils/language";
@@ -48,13 +49,17 @@ import {
   KO_REQUIRED_MOD_DOWN,
   KO_TRIGGER_DOWN,
   MAX_KEY_OVERRIDES,
+  anyOneRequired,
+  isLastActivation,
   layerSummary,
   moveKeyOverride,
   newKeyOverride,
+  optionChecked,
   overlapsEarlier,
   readKeyOverrides,
   serializeKeyOverrides,
   splitTriggerCode,
+  toggleOption,
   triggerCode,
   validateKeyOverrides,
   withTriggerMods,
@@ -178,22 +183,24 @@ function KeyOverridesEditor(props: KeyOverridesEditorProps) {
 
     try {
       await writeKeyOverrides(currentDevice, saving);
+
+      /* Back up after every save, as the other editors do. For a virtual keyboard the backup writes the file that holds the save */
+      await backupAfterSave(
+        currentDevice.file !== false,
+        async () => {
+          const chipID = await currentDevice.command("hardware.chip_id");
+          const neuronID = typeof chipID === "string" ? chipID.replace(/\s/g, "") : "";
+          const commands = await Backup.Commands(currentDevice);
+          const backup = await bkp.DoBackup(commands, neuronID, currentDevice);
+          Backup.SaveBackup(backup, currentDevice);
+        },
+        error => log.warn("[KeyOverrides] backup after save failed", error),
+      );
     } catch (error) {
       log.error("[KeyOverrides] failed to save", error);
       toast.error(<ToastMessage title={strings.title} content={`${strings.saveFailed} ${String(error)}`} />, { autoClose: 4000 });
       setIsSaving(false);
       return;
-    }
-
-    /* Back up after every save, as the other editors do. The keyboard already holds the overrides, so a failed backup is only logged */
-    try {
-      const chipID = await currentDevice.command("hardware.chip_id");
-      const neuronID = typeof chipID === "string" ? chipID.replace(/\s/g, "") : "";
-      const commands = await Backup.Commands(currentDevice);
-      const backup = await bkp.DoBackup(commands, neuronID, currentDevice);
-      Backup.SaveBackup(backup, currentDevice);
-    } catch (error) {
-      log.warn("[KeyOverrides] backup after save failed", error);
     }
 
     const unchanged = serializeKeyOverrides(listRef.current) === snapshot;
@@ -419,9 +426,9 @@ function KeyOverridesEditor(props: KeyOverridesEditorProps) {
               type="checkbox"
               id={`ko-${row.id}-option-${option.key}`}
               name={`ko-${row.id}-option-${option.key}`}
-              checked={(o.options & option.bit) !== 0}
-              disabled={locked}
-              onClick={() => updateAt(index, current => ({ ...current, options: current.options ^ option.bit }))}
+              checked={optionChecked(o.options, option.bit)}
+              disabled={locked || isLastActivation(o.options, option.bit)}
+              onClick={() => updateAt(index, current => ({ ...current, options: toggleOption(current.options, option.bit) }))}
               className="mt-0"
             />
           ))}
@@ -500,6 +507,9 @@ function KeyOverridesEditor(props: KeyOverridesEditorProps) {
                   <span className="font-semibold">
                     <PreviousKeyLabel code={triggerCode(o)} keymapDB={keymapDB} />
                   </span>
+                  {anyOneRequired(o) && (
+                    <span className="rounded-sm bg-gray-100 dark:bg-gray-500 px-1.5 py-0.5 text-ssm">{strings.anyOne}</span>
+                  )}
                   <span className="text-lg text-gray-400 dark:text-gray-300">→</span>
                   <ReplacementLabel code={o.replacement} keymapDB={keymapDB} />
                   {o.negativeMods !== 0 && (

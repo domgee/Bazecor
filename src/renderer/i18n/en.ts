@@ -594,6 +594,7 @@ const English = {
       optionRequiredModDown: "Activate when a required modifier is pressed while the key is held",
       optionNegativeModUp: "Activate when a forbidden modifier is released while the key is held",
       optionOneMod: "Any one of the required modifiers is enough",
+      anyOne: "Any one modifier",
       optionNoReregister: "Don't re-send the key when the override ends",
       optionNoUnregisterOnOther: "Stay active when another key is pressed",
       overlap: "Row {0} above has priority for the same key and modifiers, so this row never activates where both apply.",

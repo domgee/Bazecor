@@ -14,7 +14,13 @@ import {
   MOD_CTRL,
   MOD_GUI,
   MOD_SHIFT,
+  KO_NEGATIVE_MOD_UP,
+  KO_REQUIRED_MOD_DOWN,
+  anyOneRequired,
   hasKeyOverridesCommand,
+  isLastActivation,
+  optionChecked,
+  toggleOption,
   layerSummary,
   moveKeyOverride,
   needsKeyOverridesClear,
@@ -121,6 +127,7 @@ describe("parseKeyOverridesRaw", () => {
     ["a value above 0xffff", "1 42 8 65536 0 8 76 7 1"],
     ["an empty reply", ""],
     ["a blank reply", "  \r\n"],
+    ["an enabled value above 1", "1 42 8 1023 0 8 76 7 2"],
   ])("rejects %s", (_, raw) => {
     expect(parseKeyOverridesRaw(raw)).toBeNull();
   });
@@ -399,11 +406,30 @@ describe("writeKeyOverrides", () => {
     expect(noCacheCommand).not.toHaveBeenCalled();
   });
 
-  test("rejects the firmware's error reply", async () => {
-    const { device, noCacheCommand } = fakeDevice("0", true);
+  test("rejects the firmware's error reply and reads the kept table back into the cache", async () => {
+    const { device, noCacheCommand } = fakeDevice(`1 ${BLOCK_Q_WIRE}`, true);
 
     await expect(writeKeyOverrides(device, [shiftBackspace])).rejects.toThrow("rejected");
-    expect(noCacheCommand).toHaveBeenCalledTimes(1);
+    expect(noCacheCommand.mock.calls).toEqual([[KEY_OVERRIDES_COMMAND, `1 ${SHIFT_BACKSPACE_WIRE}`], [KEY_OVERRIDES_COMMAND]]);
+    expect(await noCacheCommand.mock.results[1].value).toBe(`1 ${BLOCK_Q_WIRE}`);
+  });
+
+  test("reads the table back into the cache after a failed send, and keeps the send's error when that read fails too", async () => {
+    const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => {
+      throw new Error(args.length > 0 ? "port closed" : "still closed");
+    });
+
+    await expect(writeKeyOverrides({ noCacheCommand }, [shiftBackspace])).rejects.toThrow("port closed");
+    expect(noCacheCommand.mock.calls).toEqual([[KEY_OVERRIDES_COMMAND, `1 ${SHIFT_BACKSPACE_WIRE}`], [KEY_OVERRIDES_COMMAND]]);
+  });
+
+  test("reads the table again after an Error read-back", async () => {
+    const noCacheCommand = vi.fn(
+      async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "" : new Error("timeout")),
+    );
+
+    await expect(writeKeyOverrides({ noCacheCommand }, [shiftBackspace])).rejects.toThrow("timeout");
+    expect(noCacheCommand).toHaveBeenCalledTimes(3);
   });
 
   test("rejects an Error reply", async () => {
@@ -422,8 +448,17 @@ describe("writeKeyOverrides", () => {
     await expect(writeKeyOverrides(device, [])).rejects.toThrow("port closed");
   });
 
-  test("rejects a different table read back", async () => {
+  test("rejects a different table read back, which is already in the cache", async () => {
     const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "" : "0"));
+
+    await expect(writeKeyOverrides({ noCacheCommand }, [shiftBackspace])).rejects.toThrow("did not store");
+    expect(noCacheCommand).toHaveBeenCalledTimes(2);
+  });
+
+  test("rejects a read-back with an enabled value above 1", async () => {
+    const noCacheCommand = vi.fn(
+      async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "" : "1 42 8 1023 0 8 76 7 2"),
+    );
 
     await expect(writeKeyOverrides({ noCacheCommand }, [shiftBackspace])).rejects.toThrow("did not store");
   });
@@ -448,6 +483,7 @@ describe("restoreKeyOverrides", () => {
     const { device, noCacheCommand } = fakeDevice();
 
     await expect(restoreKeyOverrides(device, "[object Object]")).rejects.toThrow("Malformed");
+    await expect(restoreKeyOverrides(device, "1 42 8 1023 0 8 76 7 2")).rejects.toThrow("Malformed");
     expect(noCacheCommand).not.toHaveBeenCalled();
   });
 
@@ -459,5 +495,49 @@ describe("restoreKeyOverrides", () => {
 
   test("the limit is the firmware's 32", () => {
     expect(MAX_KEY_OVERRIDES).toBe(32);
+  });
+});
+
+describe("options", () => {
+  const ALL_ACTIVATIONS = KO_TRIGGER_DOWN | KO_REQUIRED_MOD_DOWN | KO_NEGATIVE_MOD_UP;
+
+  test("no activation bit shows all three on, as the firmware applies them", () => {
+    expect(optionChecked(KO_ONE_MOD, KO_TRIGGER_DOWN)).toBe(true);
+    expect(optionChecked(KO_ONE_MOD, KO_REQUIRED_MOD_DOWN)).toBe(true);
+    expect(optionChecked(KO_ONE_MOD, KO_NEGATIVE_MOD_UP)).toBe(true);
+    expect(optionChecked(KO_ONE_MOD, KO_ONE_MOD)).toBe(true);
+    expect(optionChecked(KO_ONE_MOD, KO_NO_REREGISTER)).toBe(false);
+  });
+
+  test("set activation bits show as they are", () => {
+    expect(optionChecked(KO_TRIGGER_DOWN, KO_TRIGGER_DOWN)).toBe(true);
+    expect(optionChecked(KO_TRIGGER_DOWN, KO_REQUIRED_MOD_DOWN)).toBe(false);
+  });
+
+  test("the only activation bit left can not be cleared", () => {
+    expect(isLastActivation(KO_TRIGGER_DOWN, KO_TRIGGER_DOWN)).toBe(true);
+    expect(isLastActivation(KO_TRIGGER_DOWN | KO_NO_REREGISTER, KO_TRIGGER_DOWN)).toBe(true);
+    expect(isLastActivation(ALL_ACTIVATIONS, KO_TRIGGER_DOWN)).toBe(false);
+    expect(isLastActivation(KO_TRIGGER_DOWN, KO_ONE_MOD)).toBe(false);
+    expect(toggleOption(KO_TRIGGER_DOWN, KO_TRIGGER_DOWN)).toBe(KO_TRIGGER_DOWN);
+  });
+
+  test("clearing an activation bit starts from the bits the firmware applies", () => {
+    expect(toggleOption(KO_ONE_MOD, KO_TRIGGER_DOWN)).toBe(KO_ONE_MOD | KO_REQUIRED_MOD_DOWN | KO_NEGATIVE_MOD_UP);
+    expect(toggleOption(ALL_ACTIVATIONS, KO_REQUIRED_MOD_DOWN)).toBe(KO_TRIGGER_DOWN | KO_NEGATIVE_MOD_UP);
+    expect(toggleOption(KO_TRIGGER_DOWN, KO_NEGATIVE_MOD_UP)).toBe(KO_TRIGGER_DOWN | KO_NEGATIVE_MOD_UP);
+  });
+
+  test("other options flip on their own", () => {
+    expect(toggleOption(ALL_ACTIVATIONS, KO_ONE_MOD)).toBe(ALL_ACTIVATIONS | KO_ONE_MOD);
+    expect(toggleOption(0, KO_NO_REREGISTER)).toBe(KO_NO_REREGISTER);
+  });
+
+  test("anyOneRequired needs one_mod and more than one required modifier", () => {
+    const twoMods = { ...shiftBackspace, triggerMods: MOD_SHIFT | MOD_CTRL, suppressedMods: MOD_SHIFT | MOD_CTRL };
+
+    expect(anyOneRequired({ ...twoMods, options: KO_OPTIONS_DEFAULT | KO_ONE_MOD })).toBe(true);
+    expect(anyOneRequired(twoMods)).toBe(false);
+    expect(anyOneRequired({ ...shiftBackspace, options: KO_OPTIONS_DEFAULT | KO_ONE_MOD })).toBe(false);
   });
 });

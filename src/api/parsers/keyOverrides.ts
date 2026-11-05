@@ -99,7 +99,13 @@ export const parseKeyOverridesRaw = (raw: unknown): KeyOverride[] | null => {
       1 + FIELDS * i,
       1 + FIELDS * (i + 1),
     );
-    list.push({ trigger, triggerMods, layers, negativeMods, suppressedMods, replacement, options, enabled: enabled !== 0 });
+
+    /* Take only the firmware's 0 and 1, so a malformed entry fails instead of turning into an enabled override */
+    if (enabled > 1) {
+      return null;
+    }
+
+    list.push({ trigger, triggerMods, layers, negativeMods, suppressedMods, replacement, options, enabled: enabled === 1 });
   }
 
   return list;
@@ -240,8 +246,34 @@ export const moveKeyOverride = <T>(list: T[], from: number, to: number): T[] => 
   return next;
 };
 
-/* QMK treats no activation bit as all of them */
-const activationBits = (options: number) => options & KO_ACTIVATION_MASK || KO_ACTIVATION_MASK;
+/** The activation bits the firmware applies. QMK treats no activation bit as all of them. */
+export const effectiveActivation = (options: number): number => options & KO_ACTIVATION_MASK || KO_ACTIVATION_MASK;
+
+/** Whether an option shows as on. The activation bits show as the firmware applies them. */
+export const optionChecked = (options: number, bit: number): boolean => {
+  const shown = (bit & KO_ACTIVATION_MASK) !== 0 ? (options & ~KO_ACTIVATION_MASK) | effectiveActivation(options) : options;
+  return (shown & bit) !== 0;
+};
+
+/** True for the only activation bit still on, which can not be cleared, since no activation bit means all of them. */
+export const isLastActivation = (options: number, bit: number): boolean => effectiveActivation(options) === bit;
+
+/** Flip one option. Flip an activation bit from what the firmware applies, and keep at least one activation bit on. */
+export const toggleOption = (options: number, bit: number): number => {
+  if ((bit & KO_ACTIVATION_MASK) === 0) {
+    return options ^ bit;
+  }
+
+  if (isLastActivation(options, bit)) {
+    return options;
+  }
+
+  return (options & ~KO_ACTIVATION_MASK) | (effectiveActivation(options) ^ bit);
+};
+
+/** True when one_mod makes any one of several required modifiers enough. */
+export const anyOneRequired = (o: KeyOverride): boolean =>
+  (o.options & KO_ONE_MOD) !== 0 && KO_MODIFIERS.filter(mod => (o.triggerMods & mod.bit) !== 0).length > 1;
 
 /** The first earlier enabled override that always wins over the one at `index`, or -1. The firmware uses the first match in list order. */
 export const overlapsEarlier = (list: KeyOverride[], index: number): number => {
@@ -261,7 +293,7 @@ export const overlapsEarlier = (list: KeyOverride[], index: number): number => {
         earlier.negativeMods === o.negativeMods &&
         (earlier.options & KO_ONE_MOD) === (o.options & KO_ONE_MOD) &&
         (o.layers & ~earlier.layers) === 0 &&
-        (activationBits(o.options) & ~activationBits(earlier.options)) === 0,
+        (effectiveActivation(o.options) & ~effectiveActivation(earlier.options)) === 0,
     );
 };
 
@@ -321,25 +353,39 @@ export const writeKeyOverrides = async (device: KeyOverridesDevice, list: KeyOve
   }
 
   const sent = serializeKeyOverrides(list);
-  const written = await device.noCacheCommand(KEY_OVERRIDES_COMMAND, sent);
+  let stored: KeyOverride[] | null;
 
-  if (written instanceof Error) {
-    throw written;
+  try {
+    const written = await device.noCacheCommand(KEY_OVERRIDES_COMMAND, sent);
+
+    if (written instanceof Error) {
+      throw written;
+    }
+
+    /* Trust no other reply, since the virtual keyboard echoes the payload. The read-back decides */
+    if (typeof written === "string" && written.trim() === "error") {
+      throw new Error("The keyboard rejected the key overrides");
+    }
+
+    const reply = await device.noCacheCommand(KEY_OVERRIDES_COMMAND);
+
+    if (reply instanceof Error) {
+      throw reply;
+    }
+
+    stored = parseKeyOverridesRaw(reply);
+  } catch (error) {
+    /* Device caches the table it sent. Read what the keyboard holds, so a later backup does not record the unsent table */
+    try {
+      await device.noCacheCommand(KEY_OVERRIDES_COMMAND);
+    } catch (refreshError) {
+      /* Keep the write's own error */
+    }
+
+    throw error;
   }
 
-  /* Trust no other reply, since the virtual keyboard echoes the payload. The read-back decides */
-  if (typeof written === "string" && written.trim() === "error") {
-    throw new Error("The keyboard rejected the key overrides");
-  }
-
-  const reply = await device.noCacheCommand(KEY_OVERRIDES_COMMAND);
-
-  if (reply instanceof Error) {
-    throw reply;
-  }
-
-  const stored = parseKeyOverridesRaw(reply);
-
+  /* The read-back already put the keyboard's table in the cache */
   if (stored === null || serializeKeyOverrides(stored) !== sent) {
     throw new Error("The keyboard did not store the key overrides");
   }
