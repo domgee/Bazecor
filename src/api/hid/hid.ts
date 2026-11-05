@@ -242,14 +242,14 @@ class HID {
         }
 
         const decodedData = HID.decoder.decode(data);
-        if (decodedData.includes("\r\n.\r\n")) {
-          const lastChunk = decodedData.replace("\r\n.\r\n", "");
-          this.dataReceived += lastChunk;
-          this.dataReceived = HID.purgeUselessCharsEnd(this.dataReceived);
+        this.dataReceived += decodedData;
+
+        // Search the whole reply, because the end marker can straddle two reports
+        const markerIndex = this.dataReceived.indexOf("\r\n.\r\n");
+        if (markerIndex !== -1) {
+          this.dataReceived = HID.purgeUselessCharsEnd(this.dataReceived.slice(0, markerIndex));
           clearTimeout(timeout);
           resolve(this.dataReceived);
-        } else {
-          this.dataReceived += decodedData;
         }
       };
       this.connectedDevice.addEventListener("inputreport", receiveDataHandler);
