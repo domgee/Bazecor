@@ -35,7 +35,7 @@ interface AltRepeatTabsProps {
   onChangePrevious: () => void;
   onDelete: () => void;
   onReload: () => void;
-  /** Offer Apply on key repeat on the selected tab, which needs firmware v1.2.4. */
+  /** Offer Apply on key repeat on the selected tab, which needs firmware v1.2.4. A tab that has it can always clear it. */
   allowRepeat?: boolean;
   onToggleRepeat?: () => void;
   /** Rules on the whole keyboard. */
@@ -141,7 +141,7 @@ const AltRepeatTabs = (props: AltRepeatTabsProps) => {
           <Button variant="outline" size="sm" onClick={onDelete}>
             {strings.delete}
           </Button>
-          {allowRepeat && (
+          {(allowRepeat || hasRepeat(selectedRule.previous)) && (
             <CustomRadioCheckBox
               label={<div className="pl-0.5">{strings.repeat}</div>}
               onClick={onToggleRepeat}

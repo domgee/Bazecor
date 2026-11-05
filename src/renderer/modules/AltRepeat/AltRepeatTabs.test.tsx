@@ -137,6 +137,16 @@ describe("AltRepeatTabs", () => {
     expect(container.querySelector(REPEAT_CHECKBOX)).toBeNull();
   });
 
+  test("a repeat tab offers the checkbox without the capability, so the flag can be cleared", () => {
+    const keyRules = [rules[0], { ...rules[1], previous: 0x9006 }];
+    const { container, onToggleRepeat } = renderTabs({ keyRules, selected: 1 });
+    const checkbox = container.querySelector(REPEAT_CHECKBOX);
+
+    expect(checkbox.getAttribute("data-state")).toBe("checked");
+    fireEvent.click(checkbox);
+    expect(onToggleRepeat).toHaveBeenCalledTimes(1);
+  });
+
   test("a repeat tab is checked and marked in its label", () => {
     const keyRules = [rules[0], { ...rules[1], previous: 0x9006 }];
     const { container } = renderTabs({ keyRules, selected: 1, allowRepeat: true });

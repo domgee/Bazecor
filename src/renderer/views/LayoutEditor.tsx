@@ -1228,7 +1228,13 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       const sameProduct = data.device?.product === currentDevice?.device.info.product;
 
       if (sameProduct && Array.isArray(data.altRepeat)) {
-        const replaced = replaceLayerRules(altRepeatRules, currentLayer, data.altRepeat, keysPerLayer());
+        const replaced = replaceLayerRules(
+          altRepeatRules,
+          currentLayer,
+          data.altRepeat,
+          keysPerLayer(),
+          Boolean(store.get("capabilities.altRepeatKeyRepeat")),
+        );
 
         if ("error" in replaced) {
           showAltRepeatToast(i18n.editor.altRepeat.capacityRefused);
@@ -1380,6 +1386,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
               Array.isArray(layers.altRepeat) ? layers.altRepeat : [],
               firmwareLayerCount(keymap),
               keysPerLayer(),
+              Boolean(store.get("capabilities.altRepeatKeyRepeat")),
             );
 
             if ("error" in replaced) {

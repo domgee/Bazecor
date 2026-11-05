@@ -358,6 +358,19 @@ describe("table operations", () => {
     expect(replaceLayerRules([], 0, entries, 60)).toEqual({ rules: [rule(0, 3, 0x8206, 5)], dropped: 1 });
   });
 
+  test("replaceLayerRules drops the repeat flag for firmware without it", () => {
+    const entries = [
+      { position: 3, previous: 0x8406, output: 5 },
+      { position: 4, previous: 0x9006, output: 6 },
+      { position: 4, previous: 0x1006, output: 7 },
+    ];
+
+    expect(replaceLayerRules([], 0, entries, 60, false)).toEqual({
+      rules: [rule(0, 3, 0x206, 5), rule(0, 4, 0x1006, 6)],
+      dropped: 1,
+    });
+  });
+
   test("replaceLayerRules refuses to go past capacity and leaves the input alone", () => {
     const rules = fill(120, 1);
     const entries = fill(10, 0).map(({ position, previous, output }) => ({ position, previous, output }));
@@ -368,6 +381,13 @@ describe("table operations", () => {
 
   test("replaceAllRules drops a later rule that differs only in the repeat flag", () => {
     expect(replaceAllRules([rule(0, 1, 6, 4), rule(0, 1, 0x8006, 5)], 10, 60)).toEqual({ rules: [rule(0, 1, 6, 4)], dropped: 1 });
+  });
+
+  test("replaceAllRules drops the repeat flag for firmware without it and keeps it otherwise", () => {
+    const entries = [rule(0, 1, 0x8006, 4), rule(1, 2, 7, 5)];
+
+    expect(replaceAllRules(entries, 10, 60, false)).toEqual({ rules: [rule(0, 1, 6, 4), rule(1, 2, 7, 5)], dropped: 0 });
+    expect(replaceAllRules(entries, 10, 60, true)).toEqual({ rules: entries, dropped: 0 });
   });
 
   test("replaceAllRules keeps valid rules and refuses more than capacity", () => {

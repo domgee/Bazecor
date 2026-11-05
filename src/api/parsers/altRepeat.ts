@@ -420,6 +420,7 @@ const cleanEntries = (
   entries: unknown[],
   layerCount: number,
   keysPerLayer: number,
+  keepRepeat: boolean,
 ): { rules: AltRepeatRule[]; dropped: number } => {
   const rules: AltRepeatRule[] = [];
   const seen = new Set<string>();
@@ -427,7 +428,8 @@ const cleanEntries = (
 
   entries.forEach(entry => {
     const { layer, position, previous, output } = (entry ?? {}) as Partial<AltRepeatRule>;
-    const normalized = typeof previous === "number" ? normalizePrevious(previous) : NaN;
+    const normalized =
+      typeof previous === "number" ? withRepeat(normalizePrevious(previous), keepRepeat && hasRepeat(previous)) : NaN;
     const key = `${layer} ${position} ${basePrevious(normalized)}`;
     const valid =
       Number.isInteger(layer) &&
@@ -452,15 +454,16 @@ const cleanEntries = (
   return { rules, dropped };
 };
 
-/** Replace the rules on `layer` with a single-layer file's entries. */
+/** Replace the rules on `layer` with a single-layer file's entries. Without `keepRepeat` drop the repeat flag. */
 export const replaceLayerRules = (
   rules: AltRepeatRule[],
   layer: number,
   entries: unknown[],
   keysPerLayer: number,
+  keepRepeat = true,
 ): { rules: AltRepeatRule[]; dropped: number } | AltRepeatCapacityError => {
   const layered = entries.map(entry => ({ ...((entry ?? {}) as AltRepeatLayerEntry), layer }));
-  const cleaned = cleanEntries(layered, layer + 1, keysPerLayer);
+  const cleaned = cleanEntries(layered, layer + 1, keysPerLayer, keepRepeat);
   const next = clearLayerRules(rules, layer).concat(cleaned.rules);
 
   if (next.length > MAX_ALT_REPEAT_RULES) {
@@ -470,13 +473,14 @@ export const replaceLayerRules = (
   return { rules: next, dropped: cleaned.dropped };
 };
 
-/** Replace every rule with an all-layers file's entries. */
+/** Replace every rule with an all-layers file's entries. Without `keepRepeat` drop the repeat flag. */
 export const replaceAllRules = (
   entries: unknown[],
   layerCount: number,
   keysPerLayer: number,
+  keepRepeat = true,
 ): { rules: AltRepeatRule[]; dropped: number } | AltRepeatCapacityError => {
-  const cleaned = cleanEntries(entries, layerCount, keysPerLayer);
+  const cleaned = cleanEntries(entries, layerCount, keysPerLayer, keepRepeat);
 
   if (cleaned.rules.length > MAX_ALT_REPEAT_RULES) {
     return { error: "capacity" };
