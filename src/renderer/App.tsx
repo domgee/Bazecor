@@ -52,6 +52,7 @@ import UdevPolkitErrorDialog from "@Renderer/components/molecules/CustomModal/Ud
 import getTranslator from "@Renderer/utils/translator";
 import { Neuron } from "@Types/neurons";
 import { hasLayerHoldMarker } from "../hw/layerhold";
+import { hasSwapHandsMarker } from "../hw/swaphands";
 import { hasAltRepeatCommand } from "../api/parsers/altRepeat";
 import { hasKeyOverridesCommand } from "../api/parsers/keyOverrides";
 import { hasConditionalLayersCommand } from "../api/parsers/conditionalLayers";
@@ -89,8 +90,8 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     log.info("[Capabilities] all disabled due to firmware version read/parse error");
   }
 
-  /* Detect Hold until layer change, previous-key rules, key overrides, quick tap and conditional layers through help, because official
-   * firmware of the same version lacks them */
+  /* Detect Hold until layer change, previous-key rules, key overrides, quick tap, conditional layers and swap hands through help, because
+   * official firmware of the same version lacks them */
   try {
     const help = await currentDevice.noCacheCommand("help");
     const available = hasLayerHoldMarker(help);
@@ -108,13 +109,17 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     const conditionalLayers = hasConditionalLayersCommand(help);
     store.set("capabilities.conditionalLayers", conditionalLayers);
     log.info(`[Capabilities] conditionalLayers -> available: ${conditionalLayers}`);
+    const swapHands = hasSwapHandsMarker(help);
+    store.set("capabilities.swapHands", swapHands);
+    log.info(`[Capabilities] swapHands -> available: ${swapHands}`);
   } catch (e) {
-    log.warn("Error reading help for layerHold, altRepeat, keyOverrides, quickTap and conditionalLayers", e);
+    log.warn("Error reading help for layerHold, altRepeat, keyOverrides, quickTap, conditionalLayers and swapHands", e);
     store.set("capabilities.layerHold", false);
     store.set("capabilities.altRepeat", false);
     store.set("capabilities.keyOverrides", false);
     store.set("capabilities.quickTap", false);
     store.set("capabilities.conditionalLayers", false);
+    store.set("capabilities.swapHands", false);
   }
 };
 

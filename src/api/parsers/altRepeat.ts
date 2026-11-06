@@ -17,6 +17,7 @@
 
 import { AltRepeatBlock, AltRepeatLayerEntry, AltRepeatRule } from "@Renderer/types/altRepeat";
 import { SuperkeysType } from "@Renderer/types/superkeys";
+import { isSwapHandsCode } from "../../hw/swaphands";
 
 /* Previous-key rules, AltRepeatDygma in the Sonsei firmware.
  *
@@ -111,6 +112,10 @@ export const isAllowedOutput = (code: number): boolean => {
   }
 
   if (code >= AUTOSHIFT_FIRST && code <= AUTOSHIFT_LAST) {
+    return false;
+  }
+
+  if (isSwapHandsCode(code)) {
     return false;
   }
 
@@ -367,6 +372,10 @@ export const altRepeatDefaultBlock = (code: number, superkeys: SuperkeysType[] =
 
   if (code === CAPS_WORD) {
     return "capsword";
+  }
+
+  if (isSwapHandsCode(code)) {
+    return "swaphands";
   }
 
   if (code >= UNSUPPORTED_FIRST && code <= UNSUPPORTED_LAST) {

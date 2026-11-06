@@ -36,7 +36,8 @@ interface ComboBreakDialogProps {
 export const ComboBreakDialog = (props: ComboBreakDialogProps): JSX.Element => {
   const { open, reason, comboIndexes, combos, onUndo, onKeep } = props;
   const strings = i18n.editor.combos.breakModal;
-  const isLens = reason === "lens";
+  const text = { lens: strings.lens, superkey: strings.superkey, swaphands: strings.swaphands };
+  const hint = { lens: strings.lensHint, superkey: strings.superkeyHint, swaphands: strings.swaphandsHint };
 
   return (
     <Dialog open={open} onOpenChange={onKeep}>
@@ -45,7 +46,7 @@ export const ComboBreakDialog = (props: ComboBreakDialogProps): JSX.Element => {
           <DialogTitle>{strings.title}</DialogTitle>
         </DialogHeader>
         <div className="px-6 pb-2 mt-2 flex flex-col gap-3">
-          <p>{isLens ? strings.lens : strings.superkey}</p>
+          <p>{text[reason ?? "superkey"]}</p>
           {comboIndexes.length > 0 && (
             <div>
               <p>{strings.affected}</p>
@@ -57,7 +58,7 @@ export const ComboBreakDialog = (props: ComboBreakDialogProps): JSX.Element => {
               ))}
             </div>
           )}
-          <p className="text-gray-400 dark:text-gray-200">{isLens ? strings.lensHint : strings.superkeyHint}</p>
+          <p className="text-gray-400 dark:text-gray-200">{hint[reason ?? "superkey"]}</p>
         </div>
         <DialogFooter>
           <Button variant="outline" size="md" onClick={onKeep}>

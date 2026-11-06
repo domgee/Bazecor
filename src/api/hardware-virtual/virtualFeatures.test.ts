@@ -122,6 +122,35 @@ describe("Hold until layer change marker", () => {
   });
 });
 
+describe("swap hands marker", () => {
+  test("the Sonsei lists swaphands.state in help and never erases it", () => {
+    expect(SonseiWireless.virtual.help.data.split("\r\n")).toContain("swaphands.state");
+    expect(SonseiWireless.virtual["swaphands.state"].eraseable).toBe(false);
+  });
+
+  test.each([
+    ["Defy wireless", DefyWireless],
+    ["Raise 2 ANSI", Raise2ANSI],
+  ])("the %s does not", (_, template) => {
+    expect(template.virtual.help.data.split("\r\n")).not.toContain("swaphands.state");
+    expect(template.virtual["swaphands.state"]).toBeUndefined();
+  });
+
+  test("addMissingVirtualCommands adds it to a Sonsei file saved before it", () => {
+    const vk: VirtualType = JSON.parse(JSON.stringify(SonseiWireless));
+    delete vk.virtual["swaphands.state"];
+    vk.virtual.help.data = vk.virtual.help.data
+      .split("\r\n")
+      .filter(c => c !== "swaphands.state")
+      .join("\r\n");
+
+    const added = addMissingVirtualCommands(vk);
+
+    expect(added).toEqual(["swaphands.state"]);
+    expect(vk.virtual.help.data.split("\r\n")).toContain("swaphands.state");
+  });
+});
+
 describe("previous-key rules", () => {
   test("the Sonsei lists altrepeat.map in help, erasable and empty", () => {
     expect(SonseiWireless.virtual.help.data.split("\r\n")).toContain("altrepeat.map");

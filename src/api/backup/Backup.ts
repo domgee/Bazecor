@@ -211,6 +211,7 @@ export default class Backup {
       "capsword.state",
       "combos.state",
       "layerhold.state",
+      "swaphands.state",
     ];
     const commands = await device.command("help");
     // A blank line in `help` used to end up in every backup as an empty command.

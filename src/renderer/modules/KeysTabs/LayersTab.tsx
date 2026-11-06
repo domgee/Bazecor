@@ -12,11 +12,24 @@ import { Popover, PopoverContent, PopoverTrigger } from "@Renderer/components/at
 import ToastMessage from "@Renderer/components/atoms/ToastMessage";
 import CustomRadioCheckBox from "@Renderer/components/molecules/Form/CustomRadioCheckBox";
 import { Separator } from "@Renderer/components/atoms/Separator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@Renderer/components/atoms/Tooltip";
 import { SegmentedKeyType } from "@Renderer/types/layout";
 import { MacrosType } from "@Renderer/types/macros";
 import { KeymapDB } from "../../../api/keymap";
 import { Picker } from "../KeyPickerKeyboard";
 import Store from "@Renderer/utils/Store";
+import { SWAP_TAP_DEFAULT, SwapHandsCodes, canSwapTap, isSwapTap, swapTapBase, toSwapTap } from "../../../hw/swaphands";
+
+const SWAP_CONTROLS = [
+  { code: SwapHandsCodes.SWAP_HANDS_MON, label: "Hold", hint: "Swap hands while the key is held." },
+  { code: SwapHandsCodes.SWAP_HANDS_TOGGLE, label: "Toggle", hint: "Tap to turn swap hands on or off." },
+  { code: SwapHandsCodes.SWAP_HANDS_TAP_TOGGLE, label: "Tap-toggle", hint: "Hold to swap. Tap 5 times quickly to toggle." },
+  {
+    code: SwapHandsCodes.SWAP_HANDS_ONESHOT,
+    label: "One-shot",
+    hint: "Swap the next key. Modifiers, layer keys and OneShot keys don't use it up. Hold it to swap while held.",
+  },
+];
 
 interface LayersTabProps {
   keyCode?: SegmentedKeyType;
@@ -50,6 +63,8 @@ const LayersTab = ({
   const [KC, setKC] = useState<number>(0);
   const store = Store.getStore();
   const sk20 = Boolean(store.get("capabilities.sk20"));
+  const swapHands = Boolean(store.get("capabilities.swapHands"));
+  const [openSwapPopover, setOpenSwapPopover] = useState<boolean>(false);
 
   const layers = useMemo(
     () => [
@@ -179,6 +194,26 @@ const LayersTab = ({
     },
     [keymapDB],
   );
+
+  /* Keep the current key as the tap key when it can be one, else keep the current tap key, else start with Space */
+  const handleSwapTap = () => {
+    let base = SWAP_TAP_DEFAULT;
+    if (KC < 256 && canSwapTap(KC)) {
+      base = KC;
+    } else if (isSwapTap(KC)) {
+      base = swapTapBase(KC);
+    }
+
+    onKeySelect(toSwapTap(base));
+    setOpenSwapPopover(true);
+  };
+
+  const handleSwapTapKey = (code: number) => {
+    if (canSwapTap(code)) {
+      onKeySelect(toSwapTap(code));
+      setOpenSwapPopover(false);
+    }
+  };
 
   return (
     <div className={`flex flex-wrap h-[inherit] ${disabled ? "opacity-50 pointer-events-none" : ""} tabsLayer`}>
@@ -413,6 +448,112 @@ const LayersTab = ({
               )}
             </div>
           </div>
+          {swapHands && activeTab === "editor" && (
+            <div className="flex flex-col gap-2 mt-4">
+              <Heading renderAs="h4" headingLevel={3} className="text-base flex leading-6 gap-1">
+                Swap hands
+              </Heading>
+              <p className="description text-ssm font-medium text-gray-400 dark:text-gray-300 max-w-xl">
+                Each key acts as the key in the mirrored position on the other half. Swap keys never move.
+              </p>
+              <TooltipProvider delayDuration={100}>
+                <div className="flex flex-wrap gap-2 items-center">
+                  {SWAP_CONTROLS.map(control => (
+                    <Tooltip key={`swapHands-${control.code}`}>
+                      <TooltipTrigger asChild>
+                        <div>
+                          <Button
+                            variant="config"
+                            onClick={() => onKeySelect(control.code)}
+                            selected={KC === control.code}
+                            size="sm"
+                            className="min-w-16 text-ssm h-9"
+                          >
+                            {control.label}
+                          </Button>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent size="sm" className="max-w-xs">
+                        {control.hint}
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <Button
+                          variant="config"
+                          onClick={handleSwapTap}
+                          selected={isSwapTap(KC)}
+                          size="sm"
+                          className="min-w-16 text-ssm h-9"
+                        >
+                          Hold, key on tap
+                        </Button>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent size="sm" className="max-w-xs">
+                      Tap to type the chosen key, hold to swap hands. Pressing and releasing another key while holding swaps it. If
+                      you release this key first, you get the tap.
+                    </TooltipContent>
+                  </Tooltip>
+                  {isSwapTap(KC) && (
+                    <>
+                      <Heading renderAs="h4" headingLevel={3} className="text-base flex leading-6 gap-1 ml-4">
+                        Key <span className="text-gray-400 dark:text-gray-300"> on tap</span>
+                      </Heading>
+                      <Popover open={openSwapPopover} onOpenChange={setOpenSwapPopover}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="config"
+                            selected
+                            size="sm"
+                            className="min-w-20 h-9 flex gap-2 justify-between"
+                            aria-label="Swap hands key on tap"
+                          >
+                            {labelKey(swapTapBase(KC))}
+                            <div className="flex gap-2">
+                              <Separator orientation="vertical" className="bg-gray-50 dark:bg-gray-50 h-[auto] opacity-20" />
+                              <IconPen size="xs" />
+                            </div>
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          sideOffset={5}
+                          align="center"
+                          side="top"
+                          className="md:w-[720px] lg:w-[820px] xl:w-[920px] max-w-full"
+                        >
+                          <div className="w-full p-2 rounded-sm bg-gray-25/40 dark:bg-gray-800">
+                            <div className="dropdown-group">
+                              <Heading
+                                headingLevel={5}
+                                renderAs="h5"
+                                className="my-1 flex gap-2 items-center text-gray-200 dark:text-gray-300"
+                              >
+                                <span>
+                                  Select <span className="text-gray-400 dark:text-gray-50">key</span>
+                                </span>
+                              </Heading>
+                              <Picker
+                                disable={disabled}
+                                baseCode={swapTapBase(KC)}
+                                modCode={0}
+                                onKeySelect={handleSwapTapKey}
+                                selectedlanguage={selectedlanguage}
+                                disableMods
+                                disableMove={false}
+                              />
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </>
+                  )}
+                </div>
+              </TooltipProvider>
+            </div>
+          )}
         </div>
       </div>
     </div>

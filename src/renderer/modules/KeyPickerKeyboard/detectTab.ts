@@ -2,6 +2,7 @@ import log from "electron-log/renderer";
 import { AutoshiftCodes } from "../../../hw/autoshift";
 import { CapsWordCodes } from "../../../hw/capsword";
 import { isLayerHold } from "../../../hw/layerhold";
+import { isSwapHandsCode } from "../../../hw/swaphands";
 
 /** The picker tab that edits this keycode, given the tab that is open now. */
 export const detectTab = (keyCode: number, currentTab: string | undefined): string => {
@@ -91,6 +92,11 @@ export const detectTab = (keyCode: number, currentTab: string | undefined): stri
   }
 
   if (keyCode === CapsWordCodes.CAPS_WORD) {
+    tab = "tabLayers";
+  }
+
+  /* Swap hands keys are assigned from Layers & modifiers */
+  if (isSwapHandsCode(keyCode)) {
     tab = "tabLayers";
   }
 

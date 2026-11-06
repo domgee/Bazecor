@@ -25,6 +25,7 @@ import {
 } from "@Renderer/types/combos";
 import { SuperkeysType } from "@Renderer/types/superkeys";
 import { OverlayCodes } from "../../hw/overlay";
+import { isSwapHandsCode } from "../../hw/swaphands";
 
 /* Wire format of `combos.map`, matching CombosDygma::onFocusEvent:
  *
@@ -305,17 +306,19 @@ export const isQukeySuperkey = (superkey: SuperkeysType | undefined): boolean =>
   return isModifierKey(hold) || isLayerKey(hold);
 };
 
-export type ComboBreakReason = "lens" | "superkey";
+export type ComboBreakReason = "lens" | "superkey" | "swaphands";
 
 /**
  * Why `keyCode` would stop a combo it sits in from firing, or null if it
  * would not.
  *
- * Lens keys and superkeys break a combo, except a superkey that behaves as a
+ * Lens keys, swap hands keys and superkeys break a combo, except a superkey that behaves as a
  * Qukey. Qukeys, autoshift and CapsWord are fine.
  */
 export const comboBreakReason = (keyCode: number, superkeys: SuperkeysType[] = []): ComboBreakReason | null => {
   if (LENS_KEYS.includes(keyCode)) return "lens";
+
+  if (isSwapHandsCode(keyCode)) return "swaphands";
 
   if (keyCode >= SUPERKEY_FIRST && keyCode < SUPERKEY_FIRST + SUPERKEY_COUNT) {
     return isQukeySuperkey(superkeys[keyCode - SUPERKEY_FIRST]) ? null : "superkey";

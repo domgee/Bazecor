@@ -5,6 +5,7 @@ import { SuperkeysType } from "@Renderer/types/superkeys";
 import { OverlayCodes } from "../../hw/overlay";
 import {
   blockedComboPositions,
+  comboBreakReason,
   combosAtPosition,
   duplicateComboIndex,
   emptyCombo,
@@ -182,5 +183,18 @@ describe("combo member blocking", () => {
     const blockedPositions = blockedComboPositions(keyCodes, superkeys);
 
     expect(blockedPositions).toEqual(new Set([0, 2, 3, 4]));
+  });
+
+  test.each([
+    [54372, "swaphands"], // Swap while held
+    [54375, "swaphands"], // One-shot
+    [54420, "swaphands"], // Swap hands, Space on tap
+    [54371, null], // CapsWord
+  ])("comboBreakReason(%i) is %s", (keyCode, expected) => {
+    expect(comboBreakReason(keyCode)).toBe(expected);
+  });
+
+  test("a swap hands key is blocked as a member", () => {
+    expect(blockedComboPositions([4, 54372, 5])).toEqual(new Set([1]));
   });
 });

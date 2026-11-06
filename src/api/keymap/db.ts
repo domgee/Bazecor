@@ -33,6 +33,7 @@ import SuperKeyTable from "./db/superkeys";
 import TapDanceTable from "./db/tapdance";
 import { Battery, Bluetooth, Energy, RF, Overlay } from "./db/wireless";
 import { CapsWord } from "./db/autoshift";
+import SwapHandsTable from "./db/swaphands";
 import NumpadTable, { ModifiedNumpadTables } from "./db/numpad";
 import FunctionKeyTable, { ModifiedFunctionKeyTables } from "./db/fxs";
 
@@ -57,6 +58,7 @@ import getLanguage from "../../renderer/utils/language";
 import { BaseKeycodeTableType, KeymapCodeTableType, LanguageType } from "./types";
 import { AUTOSHIFT_MAX_BASE, AUTOSHIFT_MIN_BASE, toAutoshift } from "../../hw/autoshift";
 import { canHoldUntilLayerChange, fromLayerHold, isLayerHold } from "../../hw/layerhold";
+import { SWAP_TAP_MAX_BASE, SWAP_TAP_MIN_BASE, SwapHandsCodes, isSwapTap, toSwapTap } from "../../hw/swaphands";
 
 const store = Store.getStore();
 
@@ -95,6 +97,7 @@ const defaultBaseKeyCodeTable: BaseKeycodeTableType[] = [
   RF,
   Overlay,
   CapsWord,
+  SwapHandsTable,
   BlankTable,
 ];
 
@@ -169,6 +172,7 @@ class KeymapDB {
     }
 
     this.addAutoshiftCodes();
+    this.addSwapHandsTapCodes();
   }
 
   /* One entry per autoshiftable base key, derived from the table that was just
@@ -187,6 +191,25 @@ class KeymapDB {
             top: "SHIFT",
             primary: base.labels.primary,
             verbose: `Autoshift ${base.labels.verbose ?? base.labels.primary}`,
+          },
+        };
+      }
+    }
+  }
+
+  /* One "swap on hold, key on tap" entry per tap key, derived from the base keys so the labels follow the selected layout */
+  addSwapHandsTapCodes() {
+    for (let baseCode = SWAP_TAP_MIN_BASE; baseCode <= SWAP_TAP_MAX_BASE; baseCode += 1) {
+      const base = this.keymapCodeTable[baseCode];
+
+      if (base) {
+        const name = base.labels.verbose ?? base.labels.primary;
+        this.keymapCodeTable[toSwapTap(baseCode)] = {
+          code: toSwapTap(baseCode),
+          labels: {
+            top: "SWAP",
+            primary: base.labels.primary,
+            verbose: typeof name === "string" ? `Swap hands, ${name} on tap` : "Swap hands, key on tap",
           },
         };
       }
@@ -273,6 +296,9 @@ class KeymapDB {
       case SuperKeyTable.keys.map(r => r.code).includes(keyCode):
         // Superkeys keys
         return { base: keyCode - 53980, modified: 53980 };
+      case isSwapTap(keyCode):
+        // Swap on hold, key on tap
+        return { base: keyCode - SwapHandsCodes.SWAP_HANDS_TAP_FIRST, modified: SwapHandsCodes.SWAP_HANDS_TAP_FIRST };
       default:
         return { base: keyCode, modified: 0 };
     }

@@ -12,6 +12,9 @@ describe("detectTab", () => {
     [0x102b, "tabLayers", "tabLayers"], // Shortcut stays on the open Layers tab
     [17451, "tabKeys", "tabLayers"], // Shift to layer 2
     [54115, "tabKeys", "tabKeys"], // Autoshift a
+    [54372, "tabKeys", "tabLayers"], // Swap hands while held
+    [54420, "tabKeys", "tabLayers"], // Swap hands, Space on tap
+    [54631, undefined, "tabLayers"], // Last swap hands tap code
   ])("keycode %i with %s open gives %s", (keyCode, currentTab, expected) => {
     expect(detectTab(keyCode, currentTab)).toBe(expected);
   });

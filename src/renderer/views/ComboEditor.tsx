@@ -822,8 +822,8 @@ function ComboEditor(props: ComboEditorProps) {
                 : "Select a slot above, then assign a key"}
             </Heading>
             <p className="mb-2 text-center text-ssm text-gray-400 dark:text-gray-300">
-              Note: Layer Lens keys can&apos;t be part of a combo, and neither can Superkeys unless configured only with TAP and a
-              modifier or layer on HOLD.
+              Note: Layer Lens keys and Swap hands keys can&apos;t be part of a combo, and neither can Superkeys unless configured only
+              with TAP and a modifier or layer on HOLD.
             </p>
             {KeyboardComponent && layerData.length > 0 ? (
               <div

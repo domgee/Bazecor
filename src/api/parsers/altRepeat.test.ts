@@ -168,6 +168,14 @@ describe("isAllowedOutput", () => {
     expect(isAllowedOutput(code)).toBe(false);
   });
 
+  test.each([
+    [54372], // Swap while held
+    [54420], // Swap hands, Space on tap
+    [54631], // Last swap hands tap code
+  ])("swap hands key %i is not allowed", code => {
+    expect(isAllowedOutput(code)).toBe(false);
+  });
+
   /* Mirror the shape LayerHoldMods registers, a modifier and a keycode from a to the last HID key */
   test.each([
     [0x302b], // Cmd+Tab held until layer change
@@ -283,6 +291,8 @@ describe("altRepeatDefaultBlock", () => {
     [53267, "unsupported"],
     [53272, "unsupported"],
     [53851, "unsupported"],
+    [54372, "swaphands"],
+    [54420, "swaphands"],
   ])("%i is blocked as %s", (code, expected) => {
     expect(altRepeatDefaultBlock(code)).toBe(expected);
   });
