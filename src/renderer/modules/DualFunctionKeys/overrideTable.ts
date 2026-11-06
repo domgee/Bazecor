@@ -127,11 +127,15 @@ export const startValue = (global: number | null, range: { min: number; max: num
   return Math.min(range.max, Math.max(range.min, global));
 };
 
-/** The slider bounds for `value`, widened so a stored value outside the page's range shows as it is. */
-export const sliderBounds = (value: number, range: { min: number; max: number }): { min: number; max: number } => ({
-  min: Math.min(range.min, value),
-  max: Math.max(range.max, value),
-});
+/** Return the slider bounds for a field whose keyboard value is `stored`. Widen the page's range so a stored value outside it shows as it is.
+ * Take the stored value, not the edited one, so the bounds stay put while the slider is dragged. */
+export const sliderBounds = (stored: number | null, range: { min: number; max: number }): { min: number; max: number } => {
+  if (stored === null) {
+    return { min: range.min, max: range.max };
+  }
+
+  return { min: Math.min(range.min, stored), max: Math.max(range.max, stored) };
+};
 
 export type KeyRole = "dualFunction" | "swapHands" | "other";
 

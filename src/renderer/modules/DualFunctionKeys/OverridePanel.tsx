@@ -60,6 +60,7 @@ interface NumericRowProps {
   label: string;
   tip?: string;
   value: number | null;
+  stored: number | null;
   global: number | null;
   range: Range;
   format: (value: number) => string;
@@ -88,8 +89,8 @@ const modeLabel = (mode: number): string => {
   return labels[mode] ?? String(mode);
 };
 
-function NumericRow({ id, label, tip, value, global, range, format, disabled, onChange }: NumericRowProps) {
-  const bounds = value === null ? range : sliderBounds(value, range);
+function NumericRow({ id, label, tip, value, stored, global, range, format, disabled, onChange }: NumericRowProps) {
+  const bounds = sliderBounds(stored, range);
 
   return (
     <div className="flex flex-col gap-1">
@@ -126,6 +127,8 @@ function NumericRow({ id, label, tip, value, global, range, format, disabled, on
 
 interface OverridePanelProps {
   override: PerKeyOverride;
+  /** The key's override as the keyboard holds it. */
+  stored: PerKeyOverride;
   keyData: KeyType | undefined;
   role: KeyRole;
   globals: DualFunctionGlobalPreview;
@@ -134,15 +137,16 @@ interface OverridePanelProps {
   onClear: () => void;
 }
 
-function OverridePanel({ override, keyData, role, globals, disabled, onChange, onClear }: OverridePanelProps) {
+function OverridePanel({ override, stored, keyData, role, globals, disabled, onChange, onClear }: OverridePanelProps) {
   const s = strings();
   const { position } = override;
   const hand = handOfPosition(position);
   const handLabels = { left: s.handLeft, right: s.handRight, thumb: s.handThumb };
   const { options } = globals;
 
-  const triStates: { field: TriStateField; label: string; global: boolean | null }[] = [
-    { field: "chordal", label: s.chordal, global: options?.chordal ?? null },
+  /* Keep a stored Chordal Hold value on a thumb key, which the keyboard ignores since thumbs count as either hand */
+  const triStates: { field: TriStateField; label: string; global: boolean | null; note?: string }[] = [
+    { field: "chordal", label: s.chordal, global: options?.chordal ?? null, note: hand === "thumb" ? s.chordalThumb : undefined },
     { field: "speculative", label: s.speculative, global: options?.speculative ?? null },
     { field: "retro", label: s.retro, global: options?.retro ?? null },
   ];
@@ -186,6 +190,7 @@ function OverridePanel({ override, keyData, role, globals, disabled, onChange, o
         id="hold-timeout"
         label={s.holdTimeout}
         value={override.holdTimeout}
+        stored={stored.holdTimeout}
         global={globals.holdTimeout}
         range={HOLD_TIMEOUT_RANGE}
         format={formatMs}
@@ -197,6 +202,7 @@ function OverridePanel({ override, keyData, role, globals, disabled, onChange, o
         label={s.quickTapTerm}
         tip={s.quickTapTermTip}
         value={override.quickTapTerm}
+        stored={stored.quickTapTerm}
         global={globals.quickTapTerm}
         range={QUICK_TAP_RANGE}
         format={formatQuickTap}
@@ -207,6 +213,7 @@ function OverridePanel({ override, keyData, role, globals, disabled, onChange, o
         id="prior-interval"
         label={s.priorInterval}
         value={override.priorInterval}
+        stored={stored.priorInterval}
         global={globals.priorInterval}
         range={PRIOR_INTERVAL_RANGE}
         format={formatMs}
@@ -233,7 +240,7 @@ function OverridePanel({ override, keyData, role, globals, disabled, onChange, o
         </Select>
       </div>
 
-      {triStates.map(({ field, label, global }) => (
+      {triStates.map(({ field, label, global, note }) => (
         <div className="flex flex-col gap-1" key={`df-${field}`}>
           <Heading headingLevel={4} renderAs="paragraph-sm">
             {label}
@@ -241,7 +248,7 @@ function OverridePanel({ override, keyData, role, globals, disabled, onChange, o
           <Select
             value={triStateChoice(override[field])}
             onValueChange={choice => changeTriState(field, choice)}
-            disabled={disabled}
+            disabled={disabled || note !== undefined}
           >
             <SelectTrigger className="w-full">
               <SelectValue />
@@ -252,6 +259,7 @@ function OverridePanel({ override, keyData, role, globals, disabled, onChange, o
               <SelectItem value={triStateChoice(false)}>{s.off}</SelectItem>
             </SelectContent>
           </Select>
+          {note && <p className="text-ssm text-gray-400 dark:text-gray-300">{note}</p>}
         </div>
       ))}
     </div>

@@ -139,6 +139,19 @@ describe("numeric fields", () => {
     expect(sliderBounds(1, HOLD_TIMEOUT_RANGE)).toEqual({ min: 1, max: 1000 });
     expect(sliderBounds(1000, QUICK_TAP_RANGE)).toEqual({ min: 0, max: 1000 });
   });
+
+  test("keep the slider at the page's range for a field the keyboard holds on global", () => {
+    expect(sliderBounds(null, HOLD_TIMEOUT_RANGE)).toEqual({ min: 50, max: 1000 });
+  });
+
+  test("keep widened bounds while a stored value is dragged back inside the page's range", () => {
+    const stored = updateOverride([], 3, { holdTimeout: 2000 });
+    const edited = updateOverride(stored, 3, { holdTimeout: 400 });
+
+    // Take the bounds from the stored list, as the panel does, so the edit leaves them alone
+    expect(sliderBounds(overrideAt(stored, 3).holdTimeout, HOLD_TIMEOUT_RANGE)).toEqual({ min: 50, max: 2000 });
+    expect(overrideAt(edited, 3).holdTimeout).toBe(400);
+  });
 });
 
 describe("key roles", () => {

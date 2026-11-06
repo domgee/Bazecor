@@ -669,6 +669,7 @@ const English = {
       priorInterval: "Minimum prior interval",
       mode: "Decision mode",
       chordal: "Chordal Hold",
+      chordalThumb: "Thumb keys count as either hand, so Chordal Hold never applies to them.",
       speculative: "Speculative Hold",
       retro: "Retro Tapping",
       clearKey: "Clear this key",
@@ -951,7 +952,8 @@ const English = {
         "It stops the computer from opening a menu or the Start menu when a Speculative Hold or a Retro Tap releases the modifier alone.",
       neutralizerTipDefault: "Default value: Off",
       neutralizerKeycode: "Keycode",
-      neutralizerSharedTip: "Also applies to keys that turn Speculative Hold or Retro Tapping on per key, even while they are off here.",
+      neutralizerSharedTip:
+        "Also applies to keys that turn Speculative Hold or Retro Tapping on per key, even while they are off here.",
       perKeyNote: "Set these options and the timeouts for single keys on the Dual-function Keys page.",
     },
     superkeys: {

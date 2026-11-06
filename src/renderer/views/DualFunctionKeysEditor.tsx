@@ -36,6 +36,7 @@ import {
   clearOverride,
   keyRole,
   overrideAt,
+  sameOverrides,
   updateOverride,
 } from "@Renderer/modules/DualFunctionKeys/overrideTable";
 import { useDevice } from "@Renderer/DeviceContext";
@@ -57,7 +58,6 @@ import {
   VALID_POSITIONS,
   readDualFunctionGlobals,
   readPerKeyOverrides,
-  serializePerKeyOverrides,
   validatePerKeyOverrides,
   writePerKeyOverrides,
 } from "../../api/parsers/dualFunction";
@@ -87,12 +87,25 @@ const parseNumber = (raw: unknown): number | null => {
   return parseInt(raw, 10);
 };
 
+/* Read uncached, and once more after a failure, because a failed reply stays in the Device cache and the backup after a save records it */
+const readGlobalNumber = async (device: Device, command: string): Promise<number | null> => {
+  const first = parseNumber(await device.noCacheCommand(command));
+
+  if (first !== null) {
+    return first;
+  }
+
+  return parseNumber(await device.noCacheCommand(command));
+};
+
 function DualFunctionKeysEditor(props: DualFunctionKeysEditorProps) {
   const { darkMode, startContext, cancelContext, setLoading, saveButtonRef, discardChangesButtonRef } = props;
   const { state } = useDevice();
   const strings = i18n.editor.dualFunctionKeys;
 
   const [list, setList] = useState<PerKeyOverride[]>([]);
+  /* The overrides the keyboard holds, which fix the slider bounds while a value is dragged */
+  const [stored, setStored] = useState<PerKeyOverride[]>([]);
   const [globals, setGlobals] = useState<DualFunctionGlobalPreview>(NO_GLOBALS);
   const [loadState, setLoadState] = useState<DualFunctionKeysState>("unsupported");
   const [loadingData, setLoadingData] = useState(true);
@@ -119,6 +132,7 @@ function DualFunctionKeysEditor(props: DualFunctionKeysEditorProps) {
 
   const replaceAll = useCallback((next: PerKeyOverride[]) => {
     setList(next);
+    setStored(next);
     listRef.current = next;
   }, []);
 
@@ -185,9 +199,9 @@ function DualFunctionKeysEditor(props: DualFunctionKeysEditorProps) {
 
       /* Show "Use global" without a value for a global setting that can not be read */
       setGlobals({
-        holdTimeout: parseNumber(await currentDevice.command("qukeys.holdTimeout")),
+        holdTimeout: await readGlobalNumber(currentDevice, "qukeys.holdTimeout"),
         quickTapTerm: store.get("capabilities.quickTap") ? await readQuickTapTerm(currentDevice) : null,
-        priorInterval: parseNumber(await currentDevice.command("qukeys.minimumPriorInterval")),
+        priorInterval: await readGlobalNumber(currentDevice, "qukeys.minimumPriorInterval"),
         options: await readDualFunctionGlobals(currentDevice),
       });
 
@@ -228,7 +242,6 @@ function DualFunctionKeysEditor(props: DualFunctionKeysEditorProps) {
     }
 
     const saving = listRef.current;
-    const snapshot = serializePerKeyOverrides(saving);
     setIsSaving(true);
 
     try {
@@ -253,7 +266,9 @@ function DualFunctionKeysEditor(props: DualFunctionKeysEditorProps) {
       return;
     }
 
-    const unchanged = serializePerKeyOverrides(listRef.current) === snapshot;
+    setStored(saving);
+
+    const unchanged = sameOverrides(listRef.current, saving);
     setModified(!unchanged);
 
     if (unchanged) {
@@ -465,6 +480,7 @@ function DualFunctionKeysEditor(props: DualFunctionKeysEditorProps) {
               ) : (
                 <OverridePanel
                   override={overrideAt(list, selected)}
+                  stored={overrideAt(stored, selected)}
                   keyData={layerData[selected]}
                   role={keyRole(layerData[selected]?.keyCode, superkeys)}
                   globals={globals}
