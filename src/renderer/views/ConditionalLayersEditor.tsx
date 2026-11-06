@@ -74,7 +74,7 @@ function ConditionalLayersEditor(props: ConditionalLayersEditorProps) {
   const locked = isSaving || loadState !== "ready";
   const invalid = validateConditionalLayers(list);
 
-  const layerLabel = (layer: number) => (layerNames[layer] ? `${layer + 1} ${layerNames[layer]}` : `${layer + 1}`);
+  const layerLabel = (layer: number) => `${layer + 1}: ${layerNames[layer] || `L${layer + 1}`}`;
 
   /* ---------------------------------------------------------------------- */
   /* Load                                                                    */

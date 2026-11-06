@@ -132,6 +132,7 @@ describe("validateConditionalLayer", () => {
     ["a fractional then-layer", { ifMask: 6, thenLayer: 1.5 }],
     ["a fractional if-layer mask", { ifMask: 6.5, thenLayer: 3 }],
     ["a negative if-layer mask", { ifMask: -1, thenLayer: 3 }],
+    ["an if-layer mask above 32 bits", { ifMask: 2 ** 32 + 6, thenLayer: 3 }],
   ])("rejects %s", (_, rule) => {
     expect(validateConditionalLayer(rule)).not.toBeNull();
   });
@@ -271,6 +272,7 @@ describe("writeConditionalLayers", () => {
     await expect(writeConditionalLayers(device, [{ ifMask: 6, thenLayer: 1 }])).rejects.toThrow("not sent");
     await expect(writeConditionalLayers(device, [tri, { ...tri }])).rejects.toThrow("not sent");
     await expect(writeConditionalLayers(device, fill(9))).rejects.toThrow("not sent");
+    await expect(writeConditionalLayers(device, [{ ifMask: 2 ** 32 + 6, thenLayer: 3 }])).rejects.toThrow("not sent");
     expect(noCacheCommand).not.toHaveBeenCalled();
   });
 

@@ -99,7 +99,7 @@ export const layerBits = (mask: number): number => {
 
 /** Mirror of ConditionalLayersDygma::ruleAllowed. Why the firmware would reject `r`, or null when it accepts it. */
 export const validateConditionalLayer = (r: ConditionalLayerRule): string | null => {
-  if (!Number.isInteger(r.ifMask) || r.ifMask < 0 || (r.ifMask & ~CL_LAYERS_MASK) !== 0) {
+  if (!Number.isInteger(r.ifMask) || r.ifMask < 0 || r.ifMask > CL_LAYERS_MASK) {
     return `the if-layer mask ${r.ifMask} has a layer above ${CL_LAYER_COUNT}`;
   }
 
