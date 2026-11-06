@@ -565,15 +565,31 @@ const Preferences = (props: PreferencesProps) => {
       await saveKeymapChanges();
       await saveWirelessChanges();
 
-      /* Save the dual-function options and quick tap last, so a rejection skips only the backup */
+      /* Save the dual-function options and quick tap last, each even when the other fails, so a rejection skips only the backup */
+      let firstSaveError: unknown = null;
+
       if (store.get("capabilities.dualFunction")) {
         log.info("[DualFunction] saving options", kbData.dualFunction);
-        await saveDualFunctionGlobals(state.currentDevice, kbData.dualFunction);
+
+        try {
+          await saveDualFunctionGlobals(state.currentDevice, kbData.dualFunction);
+        } catch (error) {
+          firstSaveError = error;
+        }
       }
 
       if (store.get("capabilities.quickTap")) {
         log.info(`[QuickTap] saving term=${kbData.qukeysQuickTapTerm}`);
-        await saveQuickTapTerm(state.currentDevice, kbData.qukeysQuickTapTerm);
+
+        try {
+          await saveQuickTapTerm(state.currentDevice, kbData.qukeysQuickTapTerm);
+        } catch (error) {
+          firstSaveError = firstSaveError ?? error;
+        }
+      }
+
+      if (firstSaveError !== null) {
+        throw firstSaveError;
       }
 
       const commands = await Backup.Commands(state.currentDevice);

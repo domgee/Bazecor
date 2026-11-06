@@ -218,6 +218,11 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
   const capsword = Boolean(store.get("capabilities.capsword"));
   const quickTap = Boolean(store.get("capabilities.quickTap"));
   const dualFunctionCapable = Boolean(store.get("capabilities.dualFunction"));
+  const qukeysTips = (points: string[], defaultTip?: string) => [
+    ...points,
+    ...(sk20 ? [i18n.keyboardSettings.qukeys.superkeysAffectsNote] : []),
+    ...(defaultTip ? [defaultTip] : []),
+  ];
   const qukeysLabel = (text: string) =>
     sk20 ? labelWithFastSuper(text).replace("Superkeys - ", "").trim() : labelWithFastSuper(text);
 
@@ -723,12 +728,14 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
                       <OptionHeading
                         label={qukeysLabel(i18n.keyboardSettings.qukeys.decisionMode)}
                         tip={i18n.keyboardSettings.qukeys.decisionModeTip1}
-                        points={[
-                          i18n.keyboardSettings.qukeys.decisionModeTip2,
-                          i18n.keyboardSettings.qukeys.decisionModeTip3,
-                          i18n.keyboardSettings.qukeys.decisionModeTip4,
+                        points={qukeysTips(
+                          [
+                            i18n.keyboardSettings.qukeys.decisionModeTip2,
+                            i18n.keyboardSettings.qukeys.decisionModeTip3,
+                            i18n.keyboardSettings.qukeys.decisionModeTip4,
+                          ],
                           i18n.keyboardSettings.qukeys.decisionModeTipDefault,
-                        ]}
+                        )}
                       />
                     </div>
                     <div className="min-w-56">
@@ -752,11 +759,10 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
                     <OptionHeading
                       label={qukeysLabel(i18n.keyboardSettings.qukeys.chordalHold)}
                       tip={i18n.keyboardSettings.qukeys.chordalHoldTip1}
-                      points={[
-                        i18n.keyboardSettings.qukeys.chordalHoldTip2,
-                        i18n.keyboardSettings.qukeys.chordalHoldTip3,
+                      points={qukeysTips(
+                        [i18n.keyboardSettings.qukeys.chordalHoldTip2, i18n.keyboardSettings.qukeys.chordalHoldTip3],
                         i18n.keyboardSettings.qukeys.chordalHoldTipDefault,
-                      ]}
+                      )}
                     />
                     <Switch
                       id="ChordalHoldSwitch"
@@ -770,11 +776,10 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
                     <OptionHeading
                       label={qukeysLabel(i18n.keyboardSettings.qukeys.speculativeHold)}
                       tip={i18n.keyboardSettings.qukeys.speculativeHoldTip1}
-                      points={[
-                        i18n.keyboardSettings.qukeys.speculativeHoldTip2,
-                        i18n.keyboardSettings.qukeys.speculativeHoldTip3,
+                      points={qukeysTips(
+                        [i18n.keyboardSettings.qukeys.speculativeHoldTip2, i18n.keyboardSettings.qukeys.speculativeHoldTip3],
                         i18n.keyboardSettings.qukeys.speculativeHoldTipDefault,
-                      ]}
+                      )}
                     />
                     <Switch
                       id="SpeculativeHoldSwitch"
@@ -784,67 +789,66 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
                       size="sm"
                     />
                   </div>
-                  {dualFunction.speculative && (
-                    <div className="w-full flex flex-col gap-4 pl-4">
-                      <div className="w-full flex gap-2 items-center justify-between">
-                        <OptionHeading
-                          label={i18n.keyboardSettings.qukeys.speculativeOneKey}
-                          tip={i18n.keyboardSettings.qukeys.speculativeOneKeyTip}
-                          points={[]}
-                        />
-                        <Switch
-                          id="SpeculativeOneKeySwitch"
-                          checked={dualFunction.speculativeOneKey}
-                          onCheckedChange={(checked: boolean) => setDualFunction({ speculativeOneKey: checked })}
-                          variant="default"
-                          size="sm"
-                        />
-                      </div>
-                      <div className="w-full">
-                        <div className="w-full flex gap-2">
-                          <div className="w-full">
-                            <OptionHeading
-                              label={i18n.keyboardSettings.qukeys.speculativeFlowTerm}
-                              tip={i18n.keyboardSettings.qukeys.speculativeFlowTermTip}
-                              points={[]}
-                            />
-                          </div>
-                          <div className="flex items-center text-right">
-                            <span className="tagsfix whitespace-nowrap">
-                              {dualFunction.speculativeFlowTerm === 0
-                                ? i18n.keyboardSettings.qukeys.dualFunctionOff
-                                : `${dualFunction.speculativeFlowTerm} ms`}
-                            </span>
-                          </div>
+                  {/* Show the shared settings while the global switch is off, since per-key overrides can turn the feature on */}
+                  <div className="w-full flex flex-col gap-4 pl-4">
+                    <div className="w-full flex gap-2 items-center justify-between">
+                      <OptionHeading
+                        label={i18n.keyboardSettings.qukeys.speculativeOneKey}
+                        tip={i18n.keyboardSettings.qukeys.speculativeOneKeyTip}
+                        points={qukeysTips([i18n.keyboardSettings.qukeys.speculativeSharedTip])}
+                      />
+                      <Switch
+                        id="SpeculativeOneKeySwitch"
+                        checked={dualFunction.speculativeOneKey}
+                        onCheckedChange={(checked: boolean) => setDualFunction({ speculativeOneKey: checked })}
+                        variant="default"
+                        size="sm"
+                      />
+                    </div>
+                    <div className="w-full">
+                      <div className="w-full flex gap-2">
+                        <div className="w-full">
+                          <OptionHeading
+                            label={i18n.keyboardSettings.qukeys.speculativeFlowTerm}
+                            tip={i18n.keyboardSettings.qukeys.speculativeFlowTermTip}
+                            points={qukeysTips([i18n.keyboardSettings.qukeys.speculativeSharedTip])}
+                          />
                         </div>
-                        <div className="w-full flex gap-2">
-                          <div className="flex max-w-12 p-0 text-center items-center">
-                            <span className="tagsfix">{i18n.keyboardSettings.qukeys.dualFunctionOff}</span>
-                          </div>
-                          <div className="w-full flex items-center p-0">
-                            <Slider
-                              min={0}
-                              max={FLOW_TERM_MAX}
-                              step={5}
-                              value={[dualFunction.speculativeFlowTerm]}
-                              onValueChange={(value: number[]) => setDualFunction({ speculativeFlowTerm: value[0] })}
-                            />
-                          </div>
-                          <div className="flex max-w-12 p-0 text-center items-center">
-                            <span className="tagsfix">Longer</span>
-                          </div>
+                        <div className="flex items-center text-right">
+                          <span className="tagsfix whitespace-nowrap">
+                            {dualFunction.speculativeFlowTerm === 0
+                              ? i18n.keyboardSettings.qukeys.dualFunctionOff
+                              : `${dualFunction.speculativeFlowTerm} ms`}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-full flex gap-2">
+                        <div className="flex max-w-12 p-0 text-center items-center">
+                          <span className="tagsfix">{i18n.keyboardSettings.qukeys.dualFunctionOff}</span>
+                        </div>
+                        <div className="w-full flex items-center p-0">
+                          <Slider
+                            min={0}
+                            max={FLOW_TERM_MAX}
+                            step={5}
+                            value={[dualFunction.speculativeFlowTerm]}
+                            onValueChange={(value: number[]) => setDualFunction({ speculativeFlowTerm: value[0] })}
+                          />
+                        </div>
+                        <div className="flex max-w-12 p-0 text-center items-center">
+                          <span className="tagsfix">Longer</span>
                         </div>
                       </div>
                     </div>
-                  )}
+                  </div>
                   <div className="w-full flex gap-2 items-center justify-between">
                     <OptionHeading
                       label={qukeysLabel(i18n.keyboardSettings.qukeys.retroTapping)}
                       tip={i18n.keyboardSettings.qukeys.retroTappingTip1}
-                      points={[
-                        i18n.keyboardSettings.qukeys.retroTappingTip2,
+                      points={qukeysTips(
+                        [i18n.keyboardSettings.qukeys.retroTappingTip2],
                         i18n.keyboardSettings.qukeys.retroTappingTipDefault,
-                      ]}
+                      )}
                     />
                     <Switch
                       id="RetroTappingSwitch"
@@ -854,37 +858,35 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
                       size="sm"
                     />
                   </div>
-                  {(dualFunction.speculative || dualFunction.retro) && (
-                    <div className="w-full flex gap-2 items-center">
-                      <div className="w-full">
-                        <OptionHeading
-                          label={qukeysLabel(i18n.keyboardSettings.qukeys.neutralizer)}
-                          tip={i18n.keyboardSettings.qukeys.neutralizerTip1}
-                          points={[
-                            i18n.keyboardSettings.qukeys.neutralizerTip2,
-                            i18n.keyboardSettings.qukeys.neutralizerTipDefault,
-                          ]}
-                        />
-                      </div>
-                      <div className="min-w-56">
-                        <Select
-                          value={String(dualFunction.neutralizer)}
-                          onValueChange={value => setDualFunction({ neutralizer: Number(value) })}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {neutralizerOptions(dualFunction.neutralizer).map(option => (
-                              <SelectItem value={String(option.value)} key={`neutralizer-${option.value}`}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                  <div className="w-full flex gap-2 items-center pl-4">
+                    <div className="w-full">
+                      <OptionHeading
+                        label={qukeysLabel(i18n.keyboardSettings.qukeys.neutralizer)}
+                        tip={i18n.keyboardSettings.qukeys.neutralizerTip1}
+                        points={qukeysTips(
+                          [i18n.keyboardSettings.qukeys.neutralizerTip2, i18n.keyboardSettings.qukeys.neutralizerSharedTip],
+                          i18n.keyboardSettings.qukeys.neutralizerTipDefault,
+                        )}
+                      />
                     </div>
-                  )}
+                    <div className="min-w-56">
+                      <Select
+                        value={String(dualFunction.neutralizer)}
+                        onValueChange={value => setDualFunction({ neutralizer: Number(value) })}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {neutralizerOptions(dualFunction.neutralizer).map(option => (
+                            <SelectItem value={String(option.value)} key={`neutralizer-${option.value}`}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                   <span className="text-sm text-gray-400 dark:text-gray-200">{i18n.keyboardSettings.qukeys.perKeyNote}</span>
                 </>
               )}

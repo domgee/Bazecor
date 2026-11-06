@@ -92,7 +92,8 @@ const restoreSettings = async (
       const val = commands[i].data;
       log.info(`Going to send ${commands[i].command} to keyboard`);
 
-      /* Validate and read back the rules, key overrides, quick tap and conditional layers writes so a rejection fails the restore */
+      /* Validate and read back the rules, key overrides, quick tap, conditional layers and dual-function writes so a rejection fails the
+       * restore */
       const target = device;
 
       if (target) {

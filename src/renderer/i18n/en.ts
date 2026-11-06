@@ -901,6 +901,7 @@ const English = {
       speculativeOneKeyTip: "Skip the early modifier while another modifier is already held.",
       speculativeFlowTerm: "Skip while typing",
       speculativeFlowTermTip: "Skip the early modifier when the previous key was pressed less than this time before.",
+      speculativeSharedTip: "Also applies to keys that turn Speculative Hold on per key, even while it is off here.",
       retroTapping: "Add Key on Tap - Retro Tapping",
       retroTappingTip1:
         "Send the tap key when you hold a dual-function key past the hold timeout and release it without pressing another key.",
@@ -912,6 +913,7 @@ const English = {
         "It stops the computer from opening a menu or the Start menu when a Speculative Hold or a Retro Tap releases the modifier alone.",
       neutralizerTipDefault: "Default value: Off",
       neutralizerKeycode: "Keycode",
+      neutralizerSharedTip: "Also applies to keys that turn Speculative Hold or Retro Tapping on per key, even while they are off here.",
       perKeyNote: "Set these options and the timeouts for single keys on the Dual-function keys page.",
     },
     superkeys: {

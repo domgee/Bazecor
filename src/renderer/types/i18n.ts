@@ -736,6 +736,7 @@ export interface Qukeys {
   speculativeOneKeyTip: string;
   speculativeFlowTerm: string;
   speculativeFlowTermTip: string;
+  speculativeSharedTip: string;
   retroTapping: string;
   retroTappingTip1: string;
   retroTappingTip2: string;
@@ -745,6 +746,7 @@ export interface Qukeys {
   neutralizerTip2: string;
   neutralizerTipDefault: string;
   neutralizerKeycode: string;
+  neutralizerSharedTip: string;
   perKeyNote: string;
 }
 
