@@ -615,6 +615,15 @@ function FirmwareUpdateProcess(props: FirmwareUpdateProcessProps) {
                   const neurons = store.get("neurons") as Neuron[];
                   const loadedFile = await Backup.getLatestBackup(backupFolder, chipID, connected);
                   ok = await Backup.restoreBackup(neurons, chipID, loadedFile, connected);
+                  Backup.takeRestoreWarnings().forEach(warning => {
+                    toast.warn(
+                      <ToastMessage title="Not everything was restored" content={warning} icon={<IconArrowDownWithLine />} />,
+                      {
+                        autoClose: false,
+                        icon: "",
+                      },
+                    );
+                  });
                   if (ok) {
                     toast.success(
                       <ToastMessage title="Backup restored successfully" content="Your backup was restored successfully to the device!" icon={<IconArrowDownWithLine />} />,

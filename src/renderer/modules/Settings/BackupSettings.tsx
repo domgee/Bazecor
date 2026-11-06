@@ -68,6 +68,12 @@ const BackupSettings = (props: BackupSettingsProps) => {
       openPerformingBackup();
       toggleBackup(true);
       await Backup.restoreBackup(neurons, neuronID, backup, state.currentDevice);
+      Backup.takeRestoreWarnings().forEach(warning => {
+        toast.warn(<ToastMessage title="Not everything was restored" content={warning} icon={<IconArrowDownWithLine />} />, {
+          autoClose: false,
+          icon: "",
+        });
+      });
       toast.success(
         <ToastMessage
           title="Backup restored successfully"
@@ -94,6 +100,12 @@ const BackupSettings = (props: BackupSettingsProps) => {
       openPerformingBackup();
       toggleBackup(true);
       await Backup.restoreVirtual(virtual, state.currentDevice);
+      Backup.takeRestoreWarnings().forEach(warning => {
+        toast.warn(<ToastMessage title="Not everything was restored" content={warning} icon={<IconArrowDownWithLine />} />, {
+          autoClose: false,
+          icon: "",
+        });
+      });
       toast.success(
         <ToastMessage
           title="Backup restored successfully"

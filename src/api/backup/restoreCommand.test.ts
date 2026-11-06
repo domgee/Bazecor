@@ -4,6 +4,7 @@ import { KEY_OVERRIDES_COMMAND } from "../parsers/keyOverrides";
 import { QUICK_TAP_COMMAND } from "../parsers/quickTap";
 import { CONDITIONAL_LAYERS_COMMAND } from "../parsers/conditionalLayers";
 import { DUAL_FUNCTION_COMMAND, PER_KEY_COMMAND } from "../parsers/dualFunction";
+import { MACROS_COMMAND, MACROS_NOT_RESTORED } from "../parsers/macros";
 import restoreCommand from "./restoreCommand";
 
 /* A keyboard that stores each table it is sent and replies with it */
@@ -165,5 +166,64 @@ describe("restoreCommand", () => {
     await expect(restoreCommand({ noCacheCommand }, command, data, () => 60, sendPlain)).rejects.toThrow("Malformed");
     expect(noCacheCommand).not.toHaveBeenCalled();
     expect(sendPlain).not.toHaveBeenCalled();
+  });
+
+  describe("macros.map", () => {
+    const LEGACY = "8 4 0 0";
+    const UPGRADED = "14 140 8 4 15 16 195 169 0 0";
+
+    const helpDevice = (help: unknown) => {
+      const noCacheCommand = vi.fn(async (): Promise<unknown> => help);
+      return { device: { noCacheCommand }, noCacheCommand };
+    };
+
+    test("sends legacy macros plain without reading help", async () => {
+      const { device, noCacheCommand } = helpDevice("macros.map");
+      const sendPlain = vi.fn(async () => "");
+
+      const warning = await restoreCommand(device, MACROS_COMMAND, LEGACY, () => 60, sendPlain);
+
+      expect(warning).toBeUndefined();
+      expect(sendPlain).toHaveBeenCalledTimes(1);
+      expect(noCacheCommand).not.toHaveBeenCalled();
+    });
+
+    test("sends new steps plain when help lists the marker", async () => {
+      const { device, noCacheCommand } = helpDevice("macros.map\r\nmacros.state");
+      const sendPlain = vi.fn(async () => "");
+
+      const warning = await restoreCommand(device, MACROS_COMMAND, UPGRADED, () => 60, sendPlain);
+
+      expect(warning).toBeUndefined();
+      expect(sendPlain).toHaveBeenCalledTimes(1);
+      expect(noCacheCommand.mock.calls).toEqual([["help"]]);
+    });
+
+    test("skips new steps and returns a warning when help lacks the marker", async () => {
+      const { device } = helpDevice("macros.map\r\nmacros.memory");
+      const sendPlain = vi.fn(async () => "");
+
+      const warning = await restoreCommand(device, MACROS_COMMAND, UPGRADED, () => 60, sendPlain);
+
+      expect(warning).toBe(MACROS_NOT_RESTORED);
+      expect(sendPlain).not.toHaveBeenCalled();
+    });
+
+    test.each([
+      ["returns an Error", async (): Promise<unknown> => new Error("timeout")],
+      [
+        "throws",
+        async (): Promise<unknown> => {
+          throw new Error("port closed");
+        },
+      ],
+    ])("counts a help read that %s as no marker", async (_, reply) => {
+      const sendPlain = vi.fn(async () => "");
+
+      const warning = await restoreCommand({ noCacheCommand: vi.fn(reply) }, MACROS_COMMAND, UPGRADED, () => 60, sendPlain);
+
+      expect(warning).toBe(MACROS_NOT_RESTORED);
+      expect(sendPlain).not.toHaveBeenCalled();
+    });
   });
 });

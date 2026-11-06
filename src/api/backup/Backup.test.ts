@@ -26,6 +26,15 @@ describe("Backup.Commands", () => {
     expect(commands).not.toContain("swaphands.state");
     expect(commands).not.toContain("layerhold.state");
   });
+
+  test("leaves out the macro state and keeps the macros", async () => {
+    const device = { command: async () => "macros.map\r\nmacros.state\r\nmacros.memory" } as unknown as Device;
+
+    const commands = await Backup.Commands(device);
+
+    expect(commands).toContain("macros.map");
+    expect(commands).not.toContain("macros.state");
+  });
 });
 
 /* A Sonsei that stores each command it is sent and replies with it, as the firmware with the dual-function commands does */

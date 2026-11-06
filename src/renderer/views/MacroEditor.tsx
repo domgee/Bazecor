@@ -51,6 +51,7 @@ import Heading from "@Renderer/components/atoms/Heading";
 import { PageHeader } from "@Renderer/modules/PageHeader";
 import MacroCreator from "@Renderer/modules/Macros/MacroCreator";
 import TimelineEditorManager from "@Renderer/modules/Macros/TimelineEditorManager";
+import { findMacroActionRefs } from "@Renderer/modules/Macros/macroReferences";
 
 // Tools
 import { useDevice } from "@Renderer/DeviceContext";
@@ -77,6 +78,7 @@ import {
   serializeAltRepeat,
   writeAltRepeatRules,
 } from "../../api/parsers/altRepeat";
+import { macroNeedsUpgrade, macrosByteLength } from "../../api/parsers/macros";
 
 const store = Store.getStore();
 
@@ -143,7 +145,6 @@ function MacroEditor(props: MacroEditorProps) {
     listToDeleteM: [],
     futureMacros: [],
     selectedList: -1,
-    usedMemory: 0,
     totalMemory: 0,
     macrosEraser: "",
     loading: true,
@@ -159,19 +160,12 @@ function MacroEditor(props: MacroEditorProps) {
   const { state: deviceState } = useDevice();
   const timelineRef = useRef(null);
 
-  const limitActions = (actions: MacroActionsType[]) => {
-    if (deviceState.currentDevice.device.info.product !== "Raise") {
-      return actions.slice(0, 100);
-    }
-    return actions;
-  };
-
   const addToActions = (actions: MacroActionsType[]) => {
     const { startContext } = props;
     const { macros, selectedMacro } = state;
 
     const macrosList: MacrosType[] = JSON.parse(JSON.stringify(macros));
-    macrosList[selectedMacro].actions = limitActions(macrosList[selectedMacro].actions.concat(actions));
+    macrosList[selectedMacro].actions = macrosList[selectedMacro].actions.concat(actions);
     state.macros = macrosList;
     state.modified = true;
     setState({ ...state });
@@ -184,7 +178,7 @@ function MacroEditor(props: MacroEditorProps) {
     const { macros, selectedMacro, modified } = state;
 
     const macrosList = JSON.parse(JSON.stringify(macros));
-    macrosList[selectedMacro].actions = limitActions(JSON.parse(JSON.stringify(actions)));
+    macrosList[selectedMacro].actions = JSON.parse(JSON.stringify(actions));
     if (!modified) {
       state.macros = macrosList;
       state.modified = true;
@@ -221,7 +215,6 @@ function MacroEditor(props: MacroEditorProps) {
     const { startContext } = props;
     state.macros = recievedMacros;
     state.modified = true;
-    state.usedMemory = recievedMacros.map(m => m.actions).flat().length;
     setState({ ...state });
     startContext();
   };
@@ -244,6 +237,32 @@ function MacroEditor(props: MacroEditorProps) {
     const { macros, neurons, neuronID, keymap, superkeys } = state;
     const { setLoading, cancelContext } = props;
     const { currentDevice } = deviceState;
+    const usedBytes = macrosByteLength(macros);
+
+    // Refuse what the keyboard cannot store, so nothing is cut off silently
+    if (usedBytes > state.totalMemory) {
+      toast.error(
+        <ToastMessage
+          title="Macros too large"
+          content={`The macros need ${usedBytes} of ${state.totalMemory} bytes. Remove steps before saving.`}
+          icon={<IconFloppyDisk />}
+        />,
+        { icon: "" },
+      );
+      return;
+    }
+
+    // Older firmware stops a macro at an option, release marker or Unicode step
+    const needUpgrade = macros.flatMap((m, i) => (macroNeedsUpgrade(m) ? [`#${i + 1}`] : []));
+
+    if (!store.get("capabilities.macroUpgrade") && needUpgrade.length > 0) {
+      const content = `Remove the play options, Pause until release and Unicode steps from macro ${needUpgrade.join(", ")}, or update the firmware.`;
+      toast.error(<ToastMessage title="Macros use features this firmware lacks" content={content} icon={<IconFloppyDisk />} />, {
+        icon: "",
+      });
+      return;
+    }
+
     setIsSaving(true);
     setLoading(true);
     log.info("saving Macros:", macros, keymap, superkeys);
@@ -379,7 +398,6 @@ function MacroEditor(props: MacroEditorProps) {
     const { macros, superkeys, keymap } = state;
     let customKeymapList: ListToDeleteType[] = [];
     let customSuperList: ListToDeleteSType[] = [];
-    let customMacrosList: ListToDeleteMType[] = [];
     for (let i = keyboardIdx; i < macros.length; i += 1) {
       const macroID = macros[i].id + 53852;
       const newKey = i === keyboardIdx ? -1 : i - 1;
@@ -397,17 +415,11 @@ function MacroEditor(props: MacroEditorProps) {
             )
             .flat()
         : [];
-      const macrosList = macros
-        .map((macro, macroIdx) =>
-          macro.actions
-            .map((action, pos) => ({ macroIdx: macroIdx - 1, pos, newKey, actions: macro.actions }))
-            .filter(elem => elem.actions[elem.pos].keyCode === macroID),
-        )
-        .flat();
       customKeymapList = customKeymapList.concat(filteredKeys);
       customSuperList = customSuperList.concat(superkeyList);
-      customMacrosList = customMacrosList.concat(macrosList);
     }
+
+    const customMacrosList: ListToDeleteMType[] = findMacroActionRefs(macros, keyboardIdx);
 
     // log.info("result of macro exploration: ", macros, customKeymapList, customSuperList, customMacrosList);
 
@@ -549,7 +561,6 @@ function MacroEditor(props: MacroEditorProps) {
       state.keymap = keymap;
       state.kbtype = kbtype;
       state.modified = false;
-      state.usedMemory = parsedMacros.map(m => m.actions).flat().length;
       state.totalMemory = tMem;
       state.loading = false;
       setState({ ...state });
@@ -589,14 +600,27 @@ function MacroEditor(props: MacroEditorProps) {
     }
     const aux = macros;
     const newID = aux.length;
-    aux.push({
+    const imported: MacrosType = {
       actions: macro.actions,
       name: macro.name,
       id: newID,
       macro: macro.macro,
-    });
+      options: macro.options,
+    };
+    aux.push(imported);
     updateMacros(aux);
     changeSelected(newID);
+
+    if (!store.get("capabilities.macroUpgrade") && macroNeedsUpgrade(imported)) {
+      toast.warn(
+        <ToastMessage
+          title="Imported macro uses features this firmware lacks"
+          content="Remove its play options, Pause until release and Unicode steps before saving, or update the firmware."
+          icon={<IconArrowDownWithLine />}
+        />,
+        { icon: "" },
+      );
+    }
   };
 
   const importMacro = async () => {
@@ -716,7 +740,6 @@ function MacroEditor(props: MacroEditorProps) {
     listToDeleteS,
     listToDeleteM,
     futureMacros,
-    usedMemory,
     totalMemory,
     showDeleteModal,
     currentLanguageLayout,
@@ -788,6 +811,8 @@ function MacroEditor(props: MacroEditorProps) {
       </Select>
     </>
   );
+
+  const usedMemory = macrosByteLength(macros);
 
   if (loading) return <LogoLoader centered />;
   return (

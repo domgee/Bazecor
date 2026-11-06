@@ -47,7 +47,6 @@ export interface MacroEditorInitialStateType {
   listToDeleteM: ListToDeleteMType[];
   futureMacros: MacrosType[];
   selectedList: number;
-  usedMemory: number;
   totalMemory: number;
   macrosEraser: string;
   loading: boolean;

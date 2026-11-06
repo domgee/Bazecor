@@ -178,6 +178,16 @@ export default class Backup {
     this.DoBackup = this.DoBackup.bind(this);
   }
 
+  // Warnings for commands the last restore skipped, shown by the caller
+  static restoreWarnings: string[] = [];
+
+  /** The warnings of the last restore, emptying the list. */
+  static takeRestoreWarnings = (): string[] => {
+    const warnings = Backup.restoreWarnings;
+    Backup.restoreWarnings = [];
+    return warnings;
+  };
+
   /**
    * Function that returns the list of available commands excluding the ones that do not return usefull information for the backup
    * @returns An array with strings that contain the serial commands that are capable of returing the keyboard configuration
@@ -219,6 +229,7 @@ export default class Backup {
       "combos.state",
       "layerhold.state",
       "swaphands.state",
+      "macros.state",
     ];
     const commands = await device.command("help");
     // A blank line in `help` used to end up in every backup as an empty command.
@@ -373,6 +384,7 @@ export default class Backup {
   }
 
   static restoreBackup = async (neurons: Neuron[], neuronID: string, backup: BackupType, device: Device) => {
+    Backup.restoreWarnings = [];
     let data: BackupCmd[] = [];
     if (Array.isArray(backup)) {
       data = backup as unknown as BackupCmd[];
@@ -481,7 +493,11 @@ export default class Backup {
           const value = String(val).trim();
           const keysPerLayer = () => device.device.keyboard.rows * device.device.keyboard.columns;
           // eslint-disable-next-line no-await-in-loop
-          await restoreCommand(device, command, value, keysPerLayer, () => device.command(command, value));
+          const warning = await restoreCommand(device, command, value, keysPerLayer, () => device.command(command, value));
+
+          if (warning) {
+            Backup.restoreWarnings.push(warning);
+          }
         }
 
         if (clearAltRepeat) {
@@ -521,6 +537,7 @@ export default class Backup {
   };
 
   static restoreVirtual = async (virtual: VirtualType, device: Device) => {
+    Backup.restoreWarnings = [];
     if (device) {
       try {
         log.info("Restoring all settings");
@@ -628,7 +645,13 @@ export default class Backup {
               const keysPerLayer = () => device.device.keyboard.rows * device.device.keyboard.columns;
               const sendData = commandData;
               // eslint-disable-next-line no-await-in-loop
-              await restoreCommand(device, command, sendData, keysPerLayer, () => device.command(command, sendData));
+              const warning = await restoreCommand(device, command, sendData, keysPerLayer, () =>
+                device.command(command, sendData),
+              );
+
+              if (warning) {
+                Backup.restoreWarnings.push(warning);
+              }
             }
           }
         }

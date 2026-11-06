@@ -97,6 +97,9 @@ export const actionTypes: MacroEAType[] = [
     icon: <></>,
     smallIcon: <></>,
   },
+  { enum: "MACRO_ACTION_STEP_OPTIONS", name: "Options", icon: <></>, smallIcon: <></> },
+  { enum: "MACRO_ACTION_STEP_RELEASE", name: "Pause until release", icon: <></>, smallIcon: <></> },
+  { enum: "MACRO_ACTION_STEP_UNICODE", name: "Unicode", icon: <></>, smallIcon: <></> },
 ];
 
 export const translator: { [key: number]: number } = {
@@ -307,7 +310,16 @@ export const createConversion = (actions: MacroActionsType[], macros: MacrosType
           ucolor: "transparent",
         };
       default:
-        return undefined;
+        // Show steps without an editor of their own by name and keep their payload, so a save writes them back unchanged
+        return {
+          symbol: actionTypes[action.type]?.name ?? `Step ${action.type}`,
+          keyCode: action.keyCode,
+          type: action.type,
+          id: i,
+          uid: randID,
+          color: "#ededed",
+          ucolor: "transparent",
+        };
     }
   });
   return converted;

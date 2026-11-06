@@ -99,7 +99,14 @@ const restoreSettings = async (
       if (target) {
         const { command } = commands[i];
         const keysPerLayer = () => target.device.keyboard.rows * target.device.keyboard.columns;
-        await restoreCommand(target, command, String(val).trim(), keysPerLayer, () => target.command(`${command} ${val}`.trim()));
+        const warning = await restoreCommand(target, command, String(val).trim(), keysPerLayer, () =>
+          target.command(`${command} ${val}`.trim()),
+        );
+
+        // Log what was skipped, because this flow has no toast
+        if (warning) {
+          log.warn(warning);
+        }
       }
 
       stateUpd("restore", (i / commands.length) * 90);

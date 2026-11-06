@@ -24,48 +24,55 @@ import {
   restoreDualFunctionGlobals,
   restorePerKeyOverrides,
 } from "../parsers/dualFunction";
+import { MACROS_COMMAND, restoreMacrosMap } from "../parsers/macros";
 
 /** Restore one backup command. Validate and read back the previous-key rules, the key overrides, the conditional layers, the quick tap
- * term and the dual-function options, whose rejection must fail the restore. Send the rest plain. `keysPerLayer` runs only for the
- * previous-key rules, so a plain command never needs the keyboard's layout. */
+ * term and the dual-function options, whose rejection must fail the restore. Skip macros that use steps the keyboard lacks. Send the rest
+ * plain. `keysPerLayer` runs only for the previous-key rules, so a plain command never needs the keyboard's layout. Return a warning for
+ * the user when a command was skipped. */
 export const restoreCommand = async (
   device: AltRepeatDevice,
   command: string,
   data: string,
   keysPerLayer: () => number,
   sendPlain: () => Promise<unknown>,
-): Promise<void> => {
+): Promise<string | undefined> => {
+  if (command === MACROS_COMMAND) {
+    return restoreMacrosMap(device, data, sendPlain);
+  }
+
   if (command === ALT_REPEAT_COMMAND) {
     await restoreAltRepeat(device, data, keysPerLayer());
-    return;
+    return undefined;
   }
 
   if (command === KEY_OVERRIDES_COMMAND) {
     await restoreKeyOverrides(device, data);
-    return;
+    return undefined;
   }
 
   if (command === CONDITIONAL_LAYERS_COMMAND) {
     await restoreConditionalLayers(device, data);
-    return;
+    return undefined;
   }
 
   if (command === QUICK_TAP_COMMAND) {
     await restoreQuickTap(device, data);
-    return;
+    return undefined;
   }
 
   if (command === DUAL_FUNCTION_COMMAND) {
     await restoreDualFunctionGlobals(device, data);
-    return;
+    return undefined;
   }
 
   if (command === PER_KEY_COMMAND) {
     await restorePerKeyOverrides(device, data);
-    return;
+    return undefined;
   }
 
   await sendPlain();
+  return undefined;
 };
 
 export default restoreCommand;

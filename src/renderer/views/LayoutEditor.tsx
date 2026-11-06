@@ -531,6 +531,15 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             const neurons = store.get("neurons") as Neuron[];
             const latestBackup = await Backup.getLatestBackup(backupFolder, chipID, currentDevice);
             await Backup.restoreBackup(neurons, chipID, latestBackup, currentDevice);
+            Backup.takeRestoreWarnings().forEach(warning => {
+              toast.warn(
+                <ToastMessage title="Not everything was restored" content={warning} icon={<IconArrowDownWithLine />} />,
+                {
+                  autoClose: false,
+                  icon: "",
+                },
+              );
+            });
             log.info("repaired successfully");
             handleSetRestoredOk(true);
           } catch (error) {

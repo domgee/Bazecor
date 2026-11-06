@@ -305,3 +305,32 @@ describe("conditional layers", () => {
     expect(vk.virtual.help.data.split("\r\n")).toContain("conditional.map");
   });
 });
+
+describe("macro upgrade marker", () => {
+  test("the Sonsei lists macros.state in help and never erases it", () => {
+    expect(SonseiWireless.virtual.help.data.split("\r\n")).toContain("macros.state");
+    expect(SonseiWireless.virtual["macros.state"]).toEqual({ data: "0 0", eraseable: false });
+  });
+
+  test.each([
+    ["Defy wireless", DefyWireless],
+    ["Raise 2 ANSI", Raise2ANSI],
+  ])("the %s does not", (_, template) => {
+    expect(template.virtual.help.data.split("\r\n")).not.toContain("macros.state");
+    expect(template.virtual["macros.state"]).toBeUndefined();
+  });
+
+  test("addMissingVirtualCommands adds it to a Sonsei file saved before it", () => {
+    const vk: VirtualType = JSON.parse(JSON.stringify(SonseiWireless));
+    delete vk.virtual["macros.state"];
+    vk.virtual.help.data = vk.virtual.help.data
+      .split("\r\n")
+      .filter(c => c !== "macros.state")
+      .join("\r\n");
+
+    const added = addMissingVirtualCommands(vk);
+
+    expect(added).toEqual(["macros.state"]);
+    expect(vk.virtual.help.data.split("\r\n")).toContain("macros.state");
+  });
+});
