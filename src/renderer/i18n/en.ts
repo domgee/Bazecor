@@ -94,6 +94,7 @@ const English = {
       badgeNew: "New",
       changeName: "Change name",
       keyOverrides: "Key <br>Overrides",
+      conditionalLayers: "Conditional <br>Layers",
     },
     deviceMenu: {
       Homepage: "Homepage",
@@ -613,6 +614,29 @@ const English = {
       replacementInvalid: "Pick a key that types, or Block. Layer, media, mouse and macro keys can't be sent by an override.",
       confirm: "Confirm",
       cancel: "Cancel",
+    },
+    conditionalLayers: {
+      title: "Conditional Layers",
+      intro:
+        "A rule turns a layer on while all its if-layers are on, for example layer 4 while layers 2 and 3 are both held. It turns off again when one of them turns off.",
+      introOwnership:
+        "A rule only turns off a layer it turned on itself. A layer that was already on, for example locked, stays as it was. While the if-layers are on, switching that layer off turns it on again at once.",
+      introChain:
+        "A layer a rule turns on goes on top, so its keys win. A layer that was already on keeps its position. A layer turned on by one rule can be an if-layer of another.",
+      counter: "rules",
+      empty: "No conditional layers yet. Add a rule to get started.",
+      add: "Add a rule",
+      delete: "Delete",
+      ifLabel: "When all of these layers are on",
+      thenLabel: "turn on layer",
+      tooFewIfLayers: "Pick at least two layers.",
+      duplicate: "Row {0} above is the same rule.",
+      loadFailed: "Conditional layers could not be read. Saving is off until they load.",
+      reload: "Reload from the keyboard (discards unsaved changes)",
+      unsupported: "This keyboard's firmware does not have conditional layers. Update the firmware and reconnect.",
+      saveFailed: "The keyboard did not store the conditional layers.",
+      saved: "Your conditional layers are now on the keyboard.",
+      savedTitle: "Conditional layers saved",
     },
     oldMacroModal: {
       title: "Update your macros",

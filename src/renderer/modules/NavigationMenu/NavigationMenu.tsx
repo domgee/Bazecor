@@ -70,6 +70,7 @@ function NavigationMenu(props: NavigationMenuProps) {
   const sk20 = Boolean(store.get("capabilities.sk20"));
   const combos = Boolean(store.get("capabilities.combos"));
   const keyOverrides = Boolean(store.get("capabilities.keyOverrides"));
+  const conditionalLayers = Boolean(store.get("capabilities.conditionalLayers"));
 
   const getGitHubFW = useCallback(
     async (product: any) => {
@@ -301,6 +302,24 @@ function NavigationMenu(props: NavigationMenuProps) {
                     <NavigationButton
                       selected={currentPage === "/key-overrides"}
                       buttonText={i18n.app.menu.keyOverrides}
+                      icoSVG={<IconKeyboard2Stroke />}
+                      disabled={fwUpdate || loading}
+                    />
+                  </Link>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence mode="popLayout">
+              {connected && pages.keymap && conditionalLayers && (
+                <motion.div initial={linkVariants.hidden} animate={linkVariants.visible} exit={linkVariants.hidden}>
+                  <Link
+                    to="/conditional-layers"
+                    onClick={linkHandler}
+                    className={`list-link flex hover:no-underline ${fwUpdate || loading ? "disabled pointer-events-none" : ""}`}
+                  >
+                    <NavigationButton
+                      selected={currentPage === "/conditional-layers"}
+                      buttonText={i18n.app.menu.conditionalLayers}
                       icoSVG={<IconKeyboard2Stroke />}
                       disabled={fwUpdate || loading}
                     />

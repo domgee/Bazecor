@@ -17,9 +17,11 @@
 import { ALT_REPEAT_COMMAND, AltRepeatDevice, restoreAltRepeat } from "../parsers/altRepeat";
 import { KEY_OVERRIDES_COMMAND, restoreKeyOverrides } from "../parsers/keyOverrides";
 import { QUICK_TAP_COMMAND, restoreQuickTap } from "../parsers/quickTap";
+import { CONDITIONAL_LAYERS_COMMAND, restoreConditionalLayers } from "../parsers/conditionalLayers";
 
-/** Restore one backup command. Validate and read back the tables and the quick tap term, whose rejection must fail the restore.
- * Send the rest plain. `keysPerLayer` runs only for the previous-key rules, so a plain command never needs the keyboard's layout. */
+/** Restore one backup command. Validate and read back the previous-key rules, the key overrides, the conditional layers and the quick tap
+ * term, whose rejection must fail the restore. Send the rest plain. `keysPerLayer` runs only for the previous-key rules, so a plain
+ * command never needs the keyboard's layout. */
 export const restoreCommand = async (
   device: AltRepeatDevice,
   command: string,
@@ -34,6 +36,11 @@ export const restoreCommand = async (
 
   if (command === KEY_OVERRIDES_COMMAND) {
     await restoreKeyOverrides(device, data);
+    return;
+  }
+
+  if (command === CONDITIONAL_LAYERS_COMMAND) {
+    await restoreConditionalLayers(device, data);
     return;
   }
 

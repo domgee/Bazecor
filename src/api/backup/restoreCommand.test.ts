@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { ALT_REPEAT_COMMAND } from "../parsers/altRepeat";
 import { KEY_OVERRIDES_COMMAND } from "../parsers/keyOverrides";
 import { QUICK_TAP_COMMAND } from "../parsers/quickTap";
+import { CONDITIONAL_LAYERS_COMMAND } from "../parsers/conditionalLayers";
 import restoreCommand from "./restoreCommand";
 
 /* A keyboard that stores each table it is sent and replies with it */
@@ -37,6 +38,24 @@ describe("restoreCommand", () => {
 
     expect(noCacheCommand.mock.calls).toEqual([[ALT_REPEAT_COMMAND, "1 0 23 6 14"], [ALT_REPEAT_COMMAND]]);
     expect(sendPlain).not.toHaveBeenCalled();
+  });
+
+  test("validates conditional layers and reads them back, with no plain send", async () => {
+    const { device, noCacheCommand } = mockDevice();
+    const sendPlain = vi.fn(async () => "");
+
+    await restoreCommand(device, CONDITIONAL_LAYERS_COMMAND, "1 6 3", () => 60, sendPlain);
+
+    expect(noCacheCommand.mock.calls).toEqual([[CONDITIONAL_LAYERS_COMMAND, "1 6 3"], [CONDITIONAL_LAYERS_COMMAND]]);
+    expect(sendPlain).not.toHaveBeenCalled();
+  });
+
+  test("rejects when the keyboard replies error to the conditional layers write", async () => {
+    const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "error" : "0"));
+
+    await expect(restoreCommand({ noCacheCommand }, CONDITIONAL_LAYERS_COMMAND, "1 6 3", () => 60, vi.fn())).rejects.toThrow(
+      "rejected",
+    );
   });
 
   test("sends every other command plain, once, without reading the layout", async () => {

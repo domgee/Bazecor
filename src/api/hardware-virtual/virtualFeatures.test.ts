@@ -211,3 +211,33 @@ describe("quick tap", () => {
     expect(vk.virtual.help.data.split("\r\n")).toContain("qukeys.quickTapTerm");
   });
 });
+
+describe("conditional layers", () => {
+  test("the Sonsei lists conditional.map in help, erasable and empty", () => {
+    expect(SonseiWireless.virtual.help.data.split("\r\n")).toContain("conditional.map");
+    expect(SonseiWireless.virtual["conditional.map"].eraseable).toBe(true);
+    expect(SonseiWireless.virtual["conditional.map"].data).toBe("0");
+  });
+
+  test.each([
+    ["Defy wireless", DefyWireless],
+    ["Raise 2 ANSI", Raise2ANSI],
+  ])("the %s does not", (_, template) => {
+    expect(template.virtual.help.data.split("\r\n")).not.toContain("conditional.map");
+    expect(template.virtual["conditional.map"]).toBeUndefined();
+  });
+
+  test("addMissingVirtualCommands adds it to a Sonsei file saved before it", () => {
+    const vk: VirtualType = JSON.parse(JSON.stringify(SonseiWireless));
+    delete vk.virtual["conditional.map"];
+    vk.virtual.help.data = vk.virtual.help.data
+      .split("\r\n")
+      .filter(c => c !== "conditional.map")
+      .join("\r\n");
+
+    const added = addMissingVirtualCommands(vk);
+
+    expect(added).toEqual(["conditional.map"]);
+    expect(vk.virtual.help.data.split("\r\n")).toContain("conditional.map");
+  });
+});
