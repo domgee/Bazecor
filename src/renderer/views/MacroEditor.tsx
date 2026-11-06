@@ -36,7 +36,7 @@ import {
 } from "@Renderer/types/macroEditor";
 import { Neuron } from "@Renderer/types/neurons";
 import { KeymapType } from "@Renderer/types/layout";
-import { MacroActionsType, MacrosType } from "@Renderer/types/macros";
+import { MacroActionsType, MacroOptions, MacrosType } from "@Renderer/types/macros";
 
 // Components
 import LogoLoader from "@Renderer/components/atoms/loader/LogoLoader";
@@ -52,6 +52,7 @@ import { PageHeader } from "@Renderer/modules/PageHeader";
 import MacroCreator from "@Renderer/modules/Macros/MacroCreator";
 import TimelineEditorManager from "@Renderer/modules/Macros/TimelineEditorManager";
 import { findMacroActionRefs } from "@Renderer/modules/Macros/macroReferences";
+import { NEW_MACRO_OPTIONS, normalizeOptions } from "@Renderer/modules/Macros/macroOptions";
 
 // Tools
 import { useDevice } from "@Renderer/DeviceContext";
@@ -78,7 +79,7 @@ import {
   serializeAltRepeat,
   writeAltRepeatRules,
 } from "../../api/parsers/altRepeat";
-import { macroNeedsUpgrade, macrosByteLength } from "../../api/parsers/macros";
+import { MACRO_STEP, macroNeedsUpgrade, macrosByteLength, resetMacroOptions } from "../../api/parsers/macros";
 
 const store = Store.getStore();
 
@@ -155,6 +156,7 @@ function MacroEditor(props: MacroEditorProps) {
     altRepeatSaved: "0",
     altRepeatState: "unsupported",
     deletedMacroIdx: -1,
+    macroUpgrade: Boolean(store.get("capabilities.macroUpgrade")),
   };
   const [state, setState] = useState(initialState);
   const { state: deviceState } = useDevice();
@@ -188,6 +190,30 @@ function MacroEditor(props: MacroEditorProps) {
       state.macros = macrosList;
       setState({ ...state });
     }
+  };
+
+  const updateSelectedMacro = (update: (macro: MacrosType) => MacrosType) => {
+    const { startContext } = props;
+    const { macros, selectedMacro } = state;
+
+    const macrosList: MacrosType[] = JSON.parse(JSON.stringify(macros));
+    macrosList[selectedMacro] = update(macrosList[selectedMacro]);
+    state.macros = macrosList;
+    state.modified = true;
+    setState({ ...state });
+    startContext();
+  };
+
+  const updateOptions = (options: MacroOptions) => {
+    updateSelectedMacro(macro => ({ ...macro, options: normalizeOptions(options) }));
+  };
+
+  const addMarker = () => {
+    addToActions([{ type: MACRO_STEP.RELEASE, keyCode: 0 }]);
+  };
+
+  const resetOptions = () => {
+    updateSelectedMacro(resetMacroOptions);
   };
 
   const saveName = (data: string) => {
@@ -225,7 +251,8 @@ function MacroEditor(props: MacroEditorProps) {
       return;
     }
     const selected = selectedMacro;
-    const aux = { ...macros[selected] };
+    // Copy deep so the clone does not share actions or options with the original
+    const aux: MacrosType = JSON.parse(JSON.stringify(macros[selected]));
     aux.id = macros.length;
     aux.name = `Copy of ${aux.name}`;
     macros.push(aux);
@@ -241,23 +268,20 @@ function MacroEditor(props: MacroEditorProps) {
 
     // Refuse what the keyboard cannot store, so nothing is cut off silently
     if (usedBytes > state.totalMemory) {
-      toast.error(
-        <ToastMessage
-          title="Macros too large"
-          content={`The macros need ${usedBytes} of ${state.totalMemory} bytes. Remove steps before saving.`}
-          icon={<IconFloppyDisk />}
-        />,
-        { icon: "" },
-      );
+      const content = i18n.editor.macros.tooLargeBody.replace("{0}", `${usedBytes}`).replace("{1}", `${state.totalMemory}`);
+      toast.error(<ToastMessage title={i18n.editor.macros.tooLargeTitle} content={content} icon={<IconFloppyDisk />} />, {
+        icon: "",
+      });
       return;
     }
 
     // Older firmware stops a macro at an option, release marker or Unicode step
     const needUpgrade = macros.flatMap((m, i) => (macroNeedsUpgrade(m) ? [`#${i + 1}`] : []));
 
+    // Read the capability fresh, since writing new steps to older firmware breaks its macros
     if (!store.get("capabilities.macroUpgrade") && needUpgrade.length > 0) {
-      const content = `Remove the play options, Pause until release and Unicode steps from macro ${needUpgrade.join(", ")}, or update the firmware.`;
-      toast.error(<ToastMessage title="Macros use features this firmware lacks" content={content} icon={<IconFloppyDisk />} />, {
+      const content = i18n.editor.macros.needsUpgradeBody.replace("{0}", needUpgrade.join(", "));
+      toast.error(<ToastMessage title={i18n.editor.macros.needsUpgradeTitle} content={content} icon={<IconFloppyDisk />} />, {
         icon: "",
       });
       return;
@@ -478,6 +502,7 @@ function MacroEditor(props: MacroEditorProps) {
       name,
       id: newID,
       macro: "",
+      options: state.macroUpgrade ? { ...NEW_MACRO_OPTIONS } : undefined,
     });
     updateMacros(aux);
     changeSelected(newID);
@@ -562,6 +587,7 @@ function MacroEditor(props: MacroEditorProps) {
       state.kbtype = kbtype;
       state.modified = false;
       state.totalMemory = tMem;
+      state.macroUpgrade = Boolean(store.get("capabilities.macroUpgrade"));
       state.loading = false;
       setState({ ...state });
       cancelContext();
@@ -605,7 +631,7 @@ function MacroEditor(props: MacroEditorProps) {
       name: macro.name,
       id: newID,
       macro: macro.macro,
-      options: macro.options,
+      options: normalizeOptions(macro.options),
     };
     aux.push(imported);
     updateMacros(aux);
@@ -614,8 +640,8 @@ function MacroEditor(props: MacroEditorProps) {
     if (!store.get("capabilities.macroUpgrade") && macroNeedsUpgrade(imported)) {
       toast.warn(
         <ToastMessage
-          title="Imported macro uses features this firmware lacks"
-          content="Remove its play options, Pause until release and Unicode steps before saving, or update the firmware."
+          title={i18n.editor.macros.importNeedsUpgradeTitle}
+          content={i18n.editor.macros.importNeedsUpgradeBody}
           icon={<IconArrowDownWithLine />}
         />,
         { icon: "" },
@@ -745,6 +771,7 @@ function MacroEditor(props: MacroEditorProps) {
     currentLanguageLayout,
     loading,
     scrollPos,
+    macroUpgrade,
   } = state;
 
   let ListOfDeletes = listToDelete.map(({ layer, pos, key, newKey }) => {
@@ -861,6 +888,10 @@ function MacroEditor(props: MacroEditorProps) {
               updateActions={updateActions}
               updateScroll={updateScroll}
               scrollPos={scrollPos}
+              macroUpgrade={macroUpgrade}
+              onOptionsChange={updateOptions}
+              onAddMarker={addMarker}
+              onResetOptions={resetOptions}
             />
             <MacroCreator
               macro={{ ...macros[selectedMacro] }}
@@ -869,6 +900,7 @@ function MacroEditor(props: MacroEditorProps) {
               addToActions={addToActions}
               selectedlanguage={currentLanguageLayout}
               triggerDeleteLastItem={timelineRef.current}
+              unicodeSteps={macroUpgrade}
             />
           </>
         )}

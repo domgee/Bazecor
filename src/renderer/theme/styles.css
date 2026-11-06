@@ -198,9 +198,13 @@ select:focus {
   left: 3px;
   transform: translate3d(0, -55%, 0);
 }
+.previewMacro .previewKey.action-1,
 .previewMacro .previewKey.action-2 {
   @apply text-red-100 border-red-100;
   padding-left: 24px;
+}
+.previewMacro .previewKey.action-15 {
+  @apply text-purple-200 border-purple-200 border-dashed;
 }
 .previewMacro .previewKey.action-8 {
   margin: 0;

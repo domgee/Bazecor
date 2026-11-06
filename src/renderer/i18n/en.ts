@@ -232,6 +232,30 @@ const English = {
       successFlash: "Successfully sent the macros to the device",
       previewMacro: "Preview macro",
       clearMacro: "Clear macro",
+      tooLargeTitle: "Macros too large",
+      tooLargeBody: "The macros need {0} of {1} bytes. Remove steps before saving.",
+      needsUpgradeTitle: "Macros use features this firmware lacks",
+      needsUpgradeBody: "Remove the play options, Pause until release and Unicode steps from macro {0}, or update the firmware.",
+      importNeedsUpgradeTitle: "Imported macro uses features this firmware lacks",
+      importNeedsUpgradeBody:
+        "Remove its play options, Pause until release and Unicode steps before saving, or update the firmware.",
+      options: {
+        title: "Play options",
+        play: "Play",
+        modeOnce: "Once",
+        modeRepeat: "Repeat while held",
+        modeToggle: "Toggle loop",
+        loopBlocked: "Remove the Pause until release step to use a loop mode.",
+        ignoreMods: "Ignore held modifiers",
+        otherKeysStop: "Other keys stop this macro",
+        addMarker: "Add pause until release",
+        markerHint:
+          "The macro plays up to Pause until release when you press its key and the rest when you release it. Pressing its key again always stops a running macro.",
+        unicodeNote:
+          "Text your keyboard language in Bazecor cannot type becomes Unicode steps. They need the Unicode Hex Input source on macOS.",
+        unsupported: "This macro uses play options this firmware lacks.",
+        resetClassic: "Reset to classic",
+      },
       deleteModal: {
         title: "This macro is in use on your layout",
         body: "Pick the action to replace it:",
@@ -833,6 +857,9 @@ const English = {
       windowRestore: "Restore",
       selectButtonText: "Change",
       restoreButtonText: "Restore backup",
+      restoreWarningTitle: "Not everything was restored",
+      macrosNotRestored:
+        "Macros were not restored because they use macro features this firmware lacks. Update the firmware and restore again.",
       storeTime: "Backup storage period",
       storeTimeTip: "Determines how long a backup is stored before being deleted",
     },

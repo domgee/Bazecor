@@ -59,6 +59,8 @@ export interface MacroEditorInitialStateType {
   altRepeatState: AltRepeatState;
   /* Remember the macro the delete modal is about so its confirmation can renumber rule outputs */
   deletedMacroIdx: number;
+  /* The firmware plays macro options, the release marker and Unicode steps */
+  macroUpgrade: boolean;
 }
 
 export interface ListToDeleteType {

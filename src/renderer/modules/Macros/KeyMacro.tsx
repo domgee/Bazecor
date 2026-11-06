@@ -18,6 +18,8 @@ import Heading from "@Renderer/components/atoms/Heading";
 import { Button } from "@Renderer/components/atoms/Button";
 import OSKey from "@Renderer/components/molecules/KeyTags/OSKey";
 import { RowsRepresentation } from "@Renderer/types/macros";
+import { MACRO_STEP } from "../../../api/parsers/macros";
+import { formatCodePoint } from "./textChars";
 
 interface Modifier {
   id: number;
@@ -59,7 +61,14 @@ const KeyMacro = (props: KeyMacroProps) => {
     }),
     [theme.styles.macroKey],
   );
-  const isModifier = useMemo(() => (item.keyCode as number) > 223 && (item.keyCode as number) < 232 && item.type !== 2, [item]);
+  const isDelay = item.type === MACRO_STEP.RANDOM_DELAY || item.type === MACRO_STEP.WAIT;
+  // Only key steps can change their function or get a modifier
+  const isKeyStep = item.type >= MACRO_STEP.KEYDOWN && item.type <= MACRO_STEP.TAPCODE;
+  const isReleaseMarker = item.type === MACRO_STEP.RELEASE;
+  const isModifier = useMemo(
+    () => isKeyStep && (item.keyCode as number) > 223 && (item.keyCode as number) < 232,
+    [item, isKeyStep],
+  );
   const [delay, setDelay] = useState<number | number[]>(item.keyCode);
   const [enableEdit, setEnableEdit] = useState(false);
 
@@ -87,7 +96,19 @@ const KeyMacro = (props: KeyMacroProps) => {
     setEnableEdit(false);
   };
 
-  const visualKeycode = Array.isArray(item.keyCode) ? item.keyCode.join("-") : item.keyCode;
+  const actionName = actionTypes[item.type]?.name ?? "";
+  let infoTitle = actionName;
+  let visualKeycode: React.ReactNode = item.symbol;
+
+  if (isDelay) {
+    infoTitle = i18n.editor.macros.delay;
+    visualKeycode = Array.isArray(item.keyCode) ? item.keyCode.join("-") : item.keyCode;
+  } else if (isKeyStep) {
+    infoTitle = i18n.general.key;
+    visualKeycode = item.keyCode as number;
+  } else if (item.type === MACRO_STEP.UNICODE) {
+    visualKeycode = formatCodePoint(item.keyCode as number);
+  }
 
   return (
     <div>
@@ -99,8 +120,8 @@ const KeyMacro = (props: KeyMacroProps) => {
       >
         <div
           className={`keyMacroWrapper relative flex flex-wrap flex-col p-0 !m-0 after:absolute after:content-[' '] after:w-full after:h-[1px] after:top-[71px] after:left-0 after:bg-white/80 after:dark:bg-[#2B2C43] keyCode-${item.keyCode} ${isModifier ? "isModifier" : ""} ${
-            item.type === 1 || item.type === 2 ? "isDelay" : ""
-          } item-id-${item.id}`}
+            isDelay ? "isDelay" : ""
+          } ${isReleaseMarker ? "isReleaseMarker" : ""} item-id-${item.id}`}
         >
           <div className="keyMacro">
             <div className="headerDrag">
@@ -128,10 +149,10 @@ const KeyMacro = (props: KeyMacroProps) => {
                           renderAs="h4"
                           className="m-0 uppercase !text-ssm text-gray-300 dark:text-gray-500"
                         >
-                          {item.type === 1 || item.type === 2 ? i18n.editor.macros.delay : i18n.general.key}
+                          {infoTitle}
                         </Heading>
                         <div className="keyValue text-2xl">
-                          {(item.type === 1 || item.type === 2) && enableEdit ? (
+                          {isDelay && enableEdit ? (
                             <input
                               id="changeDelay"
                               type="text"
@@ -142,15 +163,15 @@ const KeyMacro = (props: KeyMacroProps) => {
                           ) : (
                             visualKeycode
                           )}
-                          {(item.type === 1 || item.type === 2) && !enableEdit ? <small>ms</small> : ""}
-                          {(item.type === 1 || item.type === 2) && !enableEdit ? (
+                          {isDelay && !enableEdit ? <small>ms</small> : ""}
+                          {isDelay && !enableEdit ? (
                             <Button variant="ghost" onClick={() => setEnableEdit(true)}>
                               <IconPen />{" "}
                             </Button>
                           ) : (
                             ""
                           )}
-                          {(item.type === 1 || item.type === 2) && enableEdit ? (
+                          {isDelay && enableEdit ? (
                             <Button variant="ghost" onClick={() => finishDelayEdit()} className="pl-3">
                               <IconCheckmark size="md" />{" "}
                             </Button>
@@ -159,92 +180,96 @@ const KeyMacro = (props: KeyMacroProps) => {
                           )}
                         </div>
                       </div>
-                      <div className="keyFunctions py-[12px] px-[12px] bg-gray-50/40 dark:bg-gray-800 border-t-[1px] border-gray-50 dark:border-gray-700">
-                        <Heading
-                          headingLevel={5}
-                          renderAs="h5"
-                          className="normal-case tracking-normal font-medium !text-ssm mb-[8px] text-gray-500 dark:text-gray-50"
-                        >
-                          Edit function
-                        </Heading>
-                        <div className="keyFunctionsButtons flex gap-1">
-                          <Button
-                            iconDirection="left"
-                            variant="config"
-                            icon={<IconPress size="sm" />}
-                            selected={actionTypes[item.type].name === "Key Press"}
-                            disabled={!!(item.type === 1 || item.type === 2)}
-                            onClick={() => updateAction(item.id, 6)}
-                            size="sm"
-                          >
-                            Press
-                          </Button>
-                          <Button
-                            iconDirection="left"
-                            variant="config"
-                            icon={<IconRelease size="sm" />}
-                            selected={actionTypes[item.type].name === "Key Release"}
-                            disabled={!!(item.type === 1 || item.type === 2)}
-                            onClick={() => updateAction(item.id, 7)}
-                            size="sm"
-                          >
-                            Release
-                          </Button>
-                          <Button
-                            iconDirection="left"
-                            variant="config"
-                            icon={<IconPressAndRelease size="sm" />}
-                            selected={actionTypes[item.type].name === "Key Press & Rel."}
-                            disabled={!!(item.type === 1 || item.type === 2)}
-                            onClick={() => updateAction(item.id, 8)}
-                            size="sm"
-                          >
-                            Press & Release
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="keyModifiers py-[12px] px-[12px] bg-gray-25/40 dark:bg-gray-700">
-                        <Heading
-                          headingLevel={4}
-                          renderAs="h4"
-                          className="normal-case tracking-normal font-medium !text-ssm mb-[8px] text-gray-500 dark:text-gray-50"
-                        >
-                          Add modifier
-                        </Heading>
-                        <div className="keyModifiersButtons grid grid-cols-4 gap-1">
-                          {modifiers.map((modifier, id) => (
-                            <Button
-                              variant="config"
-                              size="sm"
-                              className="w-full text-center"
-                              onClick={() => addModifier(item.id, id)}
-                              // eslint-disable-next-line
-                              key={`addModifierMacro-${id}`}
+                      {isKeyStep && (
+                        <>
+                          <div className="keyFunctions py-[12px] px-[12px] bg-gray-50/40 dark:bg-gray-800 border-t-[1px] border-gray-50 dark:border-gray-700">
+                            <Heading
+                              headingLevel={5}
+                              renderAs="h5"
+                              className="normal-case tracking-normal font-medium !text-ssm mb-[8px] text-gray-500 dark:text-gray-50"
                             >
-                              {modifier.name === "LEFT SHIFT" ? <OSKey renderKey="shift" direction="Left" /> : ""}
-                              {modifier.name === "RIGHT SHIFT" ? <OSKey renderKey="shift" direction="Right" /> : ""}
-                              {modifier.name === "LEFT CTRL" ? <OSKey renderKey="control" direction="Left" /> : ""}
-                              {modifier.name === "RIGHT CTRL" ? <OSKey renderKey="control" direction="Right" /> : ""}
-                              {modifier.name === "LEFT OS" ? <OSKey renderKey="os" direction="Left" /> : ""}
-                              {modifier.name === "RIGHT OS" ? <OSKey renderKey="os" direction="Right" /> : ""}
-                              {modifier.name === "LEFT ALT" ? <OSKey renderKey="alt" direction="Left" /> : ""}
-                              {modifier.name === "RIGHT ALT" ? <OSKey renderKey="altGr" /> : ""}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
+                              Edit function
+                            </Heading>
+                            <div className="keyFunctionsButtons flex gap-1">
+                              <Button
+                                iconDirection="left"
+                                variant="config"
+                                icon={<IconPress size="sm" />}
+                                selected={actionName === "Key Press"}
+                                onClick={() => updateAction(item.id, 6)}
+                                size="sm"
+                              >
+                                Press
+                              </Button>
+                              <Button
+                                iconDirection="left"
+                                variant="config"
+                                icon={<IconRelease size="sm" />}
+                                selected={actionName === "Key Release"}
+                                onClick={() => updateAction(item.id, 7)}
+                                size="sm"
+                              >
+                                Release
+                              </Button>
+                              <Button
+                                iconDirection="left"
+                                variant="config"
+                                icon={<IconPressAndRelease size="sm" />}
+                                selected={actionName === "Key Press & Rel."}
+                                onClick={() => updateAction(item.id, 8)}
+                                size="sm"
+                              >
+                                Press & Release
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="keyModifiers py-[12px] px-[12px] bg-gray-25/40 dark:bg-gray-700">
+                            <Heading
+                              headingLevel={4}
+                              renderAs="h4"
+                              className="normal-case tracking-normal font-medium !text-ssm mb-[8px] text-gray-500 dark:text-gray-50"
+                            >
+                              Add modifier
+                            </Heading>
+                            <div className="keyModifiersButtons grid grid-cols-4 gap-1">
+                              {modifiers.map((modifier, id) => (
+                                <Button
+                                  variant="config"
+                                  size="sm"
+                                  className="w-full text-center"
+                                  onClick={() => addModifier(item.id, id)}
+                                  // eslint-disable-next-line
+                                  key={`addModifierMacro-${id}`}
+                                >
+                                  {modifier.name === "LEFT SHIFT" ? <OSKey renderKey="shift" direction="Left" /> : ""}
+                                  {modifier.name === "RIGHT SHIFT" ? <OSKey renderKey="shift" direction="Right" /> : ""}
+                                  {modifier.name === "LEFT CTRL" ? <OSKey renderKey="control" direction="Left" /> : ""}
+                                  {modifier.name === "RIGHT CTRL" ? <OSKey renderKey="control" direction="Right" /> : ""}
+                                  {modifier.name === "LEFT OS" ? <OSKey renderKey="os" direction="Left" /> : ""}
+                                  {modifier.name === "RIGHT OS" ? <OSKey renderKey="os" direction="Right" /> : ""}
+                                  {modifier.name === "LEFT ALT" ? <OSKey renderKey="alt" direction="Left" /> : ""}
+                                  {modifier.name === "RIGHT ALT" ? <OSKey renderKey="altGr" /> : ""}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                     <div className="keyMacroItemOptions flex flex-col gap-1 mt-1">
-                      <Button
-                        variant="dropdownLink"
-                        icon={<IconClone />}
-                        iconDirection="left"
-                        size="sm"
-                        onClick={() => onCloneRow(item.id)}
-                        className="!justify-start"
-                      >
-                        Clone
-                      </Button>
+                      {/* The firmware honours only the first release marker, so a clone would do nothing */}
+                      {!isReleaseMarker && (
+                        <Button
+                          variant="dropdownLink"
+                          icon={<IconClone />}
+                          iconDirection="left"
+                          size="sm"
+                          onClick={() => onCloneRow(item.id)}
+                          className="!justify-start"
+                        >
+                          Clone
+                        </Button>
+                      )}
                       <Button
                         variant="dropdownLink"
                         iconDirection="left"
@@ -265,10 +290,10 @@ const KeyMacro = (props: KeyMacroProps) => {
                 {item.symbol}
               </p>
               <div className="actionicon">
-                {actionTypes[item.type].name === "Key Press" ? <IconPress size="sm" /> : ""}
-                {actionTypes[item.type].name === "Key Release" ? <IconRelease size="sm" /> : ""}
-                {actionTypes[item.type].name === "Key Press & Rel." ? <IconPressAndRelease size="sm" /> : ""}
-                {actionTypes[item.type].name === "Delay" ? <IconStopWatch size="sm" /> : ""}
+                {actionName === "Key Press" ? <IconPress size="sm" /> : ""}
+                {actionName === "Key Release" ? <IconRelease size="sm" /> : ""}
+                {actionName === "Key Press & Rel." ? <IconPressAndRelease size="sm" /> : ""}
+                {actionName === "Delay" ? <IconStopWatch size="sm" /> : ""}
               </div>
             </div>
           </div>

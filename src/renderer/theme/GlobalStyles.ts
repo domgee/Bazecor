@@ -1440,6 +1440,12 @@ div.card.card-preferences .card-body {
   color:  ${({ theme }: { theme: DefaultTheme }) => theme.styles.macroKey.delay.actionIconColor};
 }
 }
+// Mark the split between the press and release halves of a macro
+.isReleaseMarker {
+.keyMacro:not(.keyMacroFreeSlot) {
+  border: 2px dashed #9b8cf2;
+}
+}
 
 
 //

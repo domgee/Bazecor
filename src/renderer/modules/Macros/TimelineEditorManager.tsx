@@ -24,10 +24,13 @@ import log from "electron-log/renderer";
 import { IconDelete, IconStopWatch } from "@Renderer/components/atoms/icons";
 import PreviewMacroModal from "@Renderer/components/molecules/CustomModal/ModalPreviewMacro";
 import Heading from "@Renderer/components/atoms/Heading";
-import { MacroActionsType, MacrosType } from "@Renderer/types/macros";
+import { MacroActionsType, MacroOptions, MacrosType } from "@Renderer/types/macros";
 import { KeymapDB } from "../../../api/keymap";
+import { MACRO_STEP } from "../../../api/parsers/macros";
 
 import TimelineEditorForm from "./TimelineEditorForm";
+import MacroOptionsPanel from "./MacroOptionsPanel";
+import { actionTypes } from "./utils";
 
 const Styles = Styled.div`
 .card {
@@ -101,10 +104,25 @@ interface Props {
   clearMacro: any;
   scrollPos: number;
   updateScroll: (scrollPos: number) => void;
+  macroUpgrade: boolean;
+  onOptionsChange: (options: MacroOptions) => void;
+  onAddMarker: () => void;
+  onResetOptions: () => void;
 }
 
 const MacroManager = (props: Props) => {
-  const { macro, macros, updateActions, clearMacro, scrollPos, updateScroll } = props;
+  const {
+    macro,
+    macros,
+    updateActions,
+    clearMacro,
+    scrollPos,
+    updateScroll,
+    macroUpgrade,
+    onOptionsChange,
+    onAddMarker,
+    onResetOptions,
+  } = props;
   const [componentWidth, setComponentWidth] = useState(0);
   const [macroID, setMacroID] = useState("");
 
@@ -156,7 +174,41 @@ const MacroManager = (props: Props) => {
     return aux.label;
   };
 
-  // console.log("Macro on TimelineEditorManager", macro);
+  const previewAction = (item: MacroActionsType) => {
+    switch (item.type) {
+      case MACRO_STEP.RANDOM_DELAY:
+        return (
+          <>
+            <IconStopWatch size="xs" /> {(item.keyCode as number[]).join("-")}
+          </>
+        );
+      case MACRO_STEP.WAIT:
+        return (
+          <>
+            <IconStopWatch size="xs" /> {item.keyCode}
+          </>
+        );
+      case MACRO_STEP.KEYDOWN:
+      case MACRO_STEP.KEYUP:
+      case MACRO_STEP.TAP:
+      case MACRO_STEP.KEYCODEDOWN:
+      case MACRO_STEP.KEYCODEUP:
+      case MACRO_STEP.TAPCODE:
+        return parseKey(item.keyCode as number);
+      case MACRO_STEP.RELEASE:
+        return "Release";
+      case MACRO_STEP.UNICODE:
+        return String.fromCodePoint(item.keyCode as number);
+      default:
+        return actionTypes[item.type]?.name ?? "";
+    }
+  };
+
+  const isPreviewModifier = (item: MacroActionsType) =>
+    item.type >= MACRO_STEP.KEYDOWN &&
+    item.type <= MACRO_STEP.TAPCODE &&
+    (item.keyCode as number) > 223 &&
+    (item.keyCode as number) < 232;
 
   return (
     <Styles className="timelineWrapper grid mt-4 grid-cols-[minmax(auto,_240px)_1fr] rounded-t-lg pb-[5px] bg-white/80 dark:bg-[#2B2C43]">
@@ -173,17 +225,9 @@ const MacroManager = (props: Props) => {
                   ? macro.actions.map(item => (
                       <span
                         key={`literal-${macroID}-${item?.id}`}
-                        className={`previewKey action-${item.type} keyCode-${item.keyCode} ${
-                          (item.keyCode as number) > 223 && (item.keyCode as number) < 232 && item.type !== 2 ? "isModifier" : ""
-                        }`}
+                        className={`previewKey action-${item.type} keyCode-${item.keyCode} ${isPreviewModifier(item) ? "isModifier" : ""}`}
                       >
-                        {item.type === 2 ? (
-                          <>
-                            <IconStopWatch size="xs" /> {item.keyCode}
-                          </>
-                        ) : (
-                          parseKey(item.keyCode as number)
-                        )}
+                        {previewAction(item)}
                       </span>
                     ))
                   : ""}
@@ -200,6 +244,13 @@ const MacroManager = (props: Props) => {
             >
               <IconDelete /> {i18n.editor.macros.clearMacro}
             </Button>
+            <MacroOptionsPanel
+              macro={macro}
+              macroUpgrade={macroUpgrade}
+              onOptionsChange={onOptionsChange}
+              onAddMarker={onAddMarker}
+              onResetOptions={onResetOptions}
+            />
           </div>
         </div>
       </div>

@@ -4,8 +4,12 @@ import React from "react";
 
 import { MdUnfoldLess, MdKeyboardArrowUp, MdKeyboardArrowDown, MdTimer } from "react-icons/md";
 import { KeymapDB } from "../../../api/keymap";
+import { MACRO_STEP } from "../../../api/parsers/macros";
 
 const keymapDB = new KeymapDB();
+
+/* Divider colour of the release marker, which splits the timeline into its press and release halves */
+const RELEASE_MARKER_COLOR = "#c9c3f5";
 
 export const modifiers: MacroModType[] = [
   { id: 0, name: "LEFT SHIFT", keyCode: 225, color: "#e1f3f7" },
@@ -307,6 +311,37 @@ export const createConversion = (actions: MacroActionsType[], macros: MacrosType
           id: i,
           uid: randID,
           color: assignColor(action.keyCode as number),
+          ucolor: "transparent",
+        };
+      case MACRO_STEP.TAP_SEQUENCE:
+      case MACRO_STEP.TAP_CODE_SEQUENCE:
+        return {
+          symbol: `${actionTypes[action.type].name} (${(action.keyCode as number[]).length})`,
+          keyCode: action.keyCode,
+          type: action.type,
+          id: i,
+          uid: randID,
+          color: "#ededed",
+          ucolor: "transparent",
+        };
+      case MACRO_STEP.RELEASE:
+        return {
+          symbol: "Release",
+          keyCode: 0,
+          type: action.type,
+          id: i,
+          uid: randID,
+          color: RELEASE_MARKER_COLOR,
+          ucolor: "transparent",
+        };
+      case MACRO_STEP.UNICODE:
+        return {
+          symbol: String.fromCodePoint(action.keyCode as number),
+          keyCode: action.keyCode,
+          type: action.type,
+          id: i,
+          uid: randID,
+          color: "#ededed",
           ucolor: "transparent",
         };
       default:

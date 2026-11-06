@@ -67,6 +67,7 @@ import BlankTable from "../../api/keymap/db/blanks";
 import Keymap, { KeymapDB } from "../../api/keymap";
 import { rgb2w } from "../../api/color";
 import Backup from "../../api/backup";
+import showRestoreWarnings from "@Renderer/utils/restoreWarnings";
 import { confirmBox } from "../utils/messageBox";
 import {
   convertColormapRtoR2,
@@ -531,15 +532,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             const neurons = store.get("neurons") as Neuron[];
             const latestBackup = await Backup.getLatestBackup(backupFolder, chipID, currentDevice);
             await Backup.restoreBackup(neurons, chipID, latestBackup, currentDevice);
-            Backup.takeRestoreWarnings().forEach(warning => {
-              toast.warn(
-                <ToastMessage title="Not everything was restored" content={warning} icon={<IconArrowDownWithLine />} />,
-                {
-                  autoClose: false,
-                  icon: "",
-                },
-              );
-            });
+            showRestoreWarnings();
             log.info("repaired successfully");
             handleSetRestoredOk(true);
           } catch (error) {

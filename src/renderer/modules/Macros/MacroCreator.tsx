@@ -45,7 +45,9 @@ import MediaAndLightTab from "../KeysTabs/MediaAndLightTab";
 import MouseTab from "../KeysTabs/MouseTab";
 import { KeymapDB } from "../../../api/keymap";
 import { LanguageType } from "../../../api/keymap/types";
+import { MACRO_STEP } from "../../../api/parsers/macros";
 import { addModToKey, assignColor, createConversion, revertConversion } from "./utils";
+import { classifyChar } from "./textChars";
 
 const Styles = Styled.div`
 .card {
@@ -181,10 +183,12 @@ interface Props {
   addToActions: (actions: MacroActionsType[]) => void;
   selectedlanguage: LanguageType;
   triggerDeleteLastItem: any;
+  /* Turn characters the selected language cannot type into Unicode steps */
+  unicodeSteps: boolean;
 }
 
 const MacroCreator = (props: Props) => {
-  const { macro, macros, selected, addToActions, selectedlanguage, triggerDeleteLastItem } = props;
+  const { macro, macros, selected, addToActions, selectedlanguage, triggerDeleteLastItem, unicodeSteps } = props;
   const prevProps = useRef<Props>(props);
   const [keymapDB] = useState(new KeymapDB());
   const [addText, setAddText] = useState("");
@@ -223,30 +227,26 @@ const MacroCreator = (props: Props) => {
     const aux = addText;
     let newRows: RowsRepresentation[] = [];
     newRows = newRows.concat(
-      aux.split("").flatMap((symbol, index) => {
-        let item = symbol.toUpperCase();
-        let upper = false;
-        if (symbol.toLowerCase() !== symbol) {
-          upper = true;
-        }
-        switch (item) {
-          case " ":
-            item = "SPACE";
-            break;
-          case "    ":
-            item = "TAB";
-            break;
-          case "\n":
-            item = "ENTER";
-            break;
-          default:
-            break;
-        }
+      // Walk code points, so a character outside the BMP is one step
+      Array.from(aux).flatMap((symbol, index) => {
         const randID = new Date().getTime() + Math.floor(Math.random() * 1000);
-        let keyCode = keymapDB.reverse(item);
-        if (upper) {
-          keyCode += 2048;
+        const charClass = classifyChar(symbol, label => keymapDB.reverse(label), unicodeSteps);
+
+        if (charClass.kind === "unicode") {
+          return [
+            {
+              symbol,
+              keyCode: charClass.codePoint,
+              type: MACRO_STEP.UNICODE,
+              id: index + newRows.length,
+              color: "#ededed",
+              uid: randID,
+              ucolor: "transparent",
+            },
+          ];
         }
+
+        const { item, keyCode } = charClass;
         let actions = [
           {
             symbol: item,

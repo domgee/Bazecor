@@ -41,6 +41,7 @@ import { BackupType } from "@Renderer/types/backups";
 import { VirtualType } from "@Renderer/types/virtual";
 import Banner from "@Renderer/components/atoms/Banner";
 import Backup from "../../../api/backup";
+import showRestoreWarnings from "@Renderer/utils/restoreWarnings";
 import { alertBox } from "../../utils/messageBox";
 
 const store = Store.getStore();
@@ -68,12 +69,7 @@ const BackupSettings = (props: BackupSettingsProps) => {
       openPerformingBackup();
       toggleBackup(true);
       await Backup.restoreBackup(neurons, neuronID, backup, state.currentDevice);
-      Backup.takeRestoreWarnings().forEach(warning => {
-        toast.warn(<ToastMessage title="Not everything was restored" content={warning} icon={<IconArrowDownWithLine />} />, {
-          autoClose: false,
-          icon: "",
-        });
-      });
+      showRestoreWarnings();
       toast.success(
         <ToastMessage
           title="Backup restored successfully"
@@ -100,12 +96,7 @@ const BackupSettings = (props: BackupSettingsProps) => {
       openPerformingBackup();
       toggleBackup(true);
       await Backup.restoreVirtual(virtual, state.currentDevice);
-      Backup.takeRestoreWarnings().forEach(warning => {
-        toast.warn(<ToastMessage title="Not everything was restored" content={warning} icon={<IconArrowDownWithLine />} />, {
-          autoClose: false,
-          icon: "",
-        });
-      });
+      showRestoreWarnings();
       toast.success(
         <ToastMessage
           title="Backup restored successfully"
