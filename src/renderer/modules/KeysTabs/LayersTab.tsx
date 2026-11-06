@@ -31,6 +31,9 @@ const SWAP_CONTROLS = [
   },
 ];
 
+/* Index of the hold action in a Superkey, as listed in SuperkeyActions */
+const SUPERKEY_HOLD_ACTION = 1;
+
 interface LayersTabProps {
   keyCode?: SegmentedKeyType;
   onKeySelect: (value: number) => void;
@@ -64,6 +67,13 @@ const LayersTab = ({
   const store = Store.getStore();
   const sk20 = Boolean(store.get("capabilities.sk20"));
   const swapHands = Boolean(store.get("capabilities.swapHands"));
+  const swapHandsSuperHold = Boolean(store.get("capabilities.swapHandsSuperHold"));
+  /* Offer every swap key in the Layout editor, and only Hold on a Superkey's hold action, which older firmware ignores */
+  const swapInEditor = swapHands && activeTab === "editor";
+  const swapOnSuperHold = swapHands && swapHandsSuperHold && activeTab === "super" && action === SUPERKEY_HOLD_ACTION;
+  const swapControls = swapOnSuperHold
+    ? SWAP_CONTROLS.filter(control => control.code === SwapHandsCodes.SWAP_HANDS_MON)
+    : SWAP_CONTROLS;
   const [openSwapPopover, setOpenSwapPopover] = useState<boolean>(false);
 
   const layers = useMemo(
@@ -448,17 +458,19 @@ const LayersTab = ({
               )}
             </div>
           </div>
-          {swapHands && activeTab === "editor" && (
+          {(swapInEditor || swapOnSuperHold) && (
             <div className="flex flex-col gap-2 mt-4">
               <Heading renderAs="h4" headingLevel={3} className="text-base flex leading-6 gap-1">
                 Swap hands
               </Heading>
               <p className="description text-ssm font-medium text-gray-400 dark:text-gray-300 max-w-xl">
-                Each key acts as the key in the mirrored position on the other half. Swap keys never move.
+                {swapOnSuperHold
+                  ? "Swap hands while the Superkey is held. Each key acts as the key in the mirrored position on the other half."
+                  : "Each key acts as the key in the mirrored position on the other half. Swap keys never move."}
               </p>
               <TooltipProvider delayDuration={100}>
                 <div className="flex flex-wrap gap-2 items-center">
-                  {SWAP_CONTROLS.map(control => (
+                  {swapControls.map(control => (
                     <Tooltip key={`swapHands-${control.code}`}>
                       <TooltipTrigger asChild>
                         <div>
@@ -478,26 +490,28 @@ const LayersTab = ({
                       </TooltipContent>
                     </Tooltip>
                   ))}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div>
-                        <Button
-                          variant="config"
-                          onClick={handleSwapTap}
-                          selected={isSwapTap(KC)}
-                          size="sm"
-                          className="min-w-16 text-ssm h-9"
-                        >
-                          Hold, key on tap
-                        </Button>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent size="sm" className="max-w-xs">
-                      Tap to type the chosen key, hold to swap hands. Pressing and releasing another key while holding swaps it. If
-                      you release this key first, you get the tap.
-                    </TooltipContent>
-                  </Tooltip>
-                  {isSwapTap(KC) && (
+                  {swapInEditor && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div>
+                          <Button
+                            variant="config"
+                            onClick={handleSwapTap}
+                            selected={isSwapTap(KC)}
+                            size="sm"
+                            className="min-w-16 text-ssm h-9"
+                          >
+                            Hold, key on tap
+                          </Button>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent size="sm" className="max-w-xs">
+                        Tap to type the chosen key, hold to swap hands. Pressing and releasing another key while holding swaps it.
+                        If you release this key first, you get the tap.
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {swapInEditor && isSwapTap(KC) && (
                     <>
                       <Heading renderAs="h4" headingLevel={3} className="text-base flex leading-6 gap-1 ml-4">
                         Key <span className="text-gray-400 dark:text-gray-300"> on tap</span>

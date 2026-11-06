@@ -27,9 +27,9 @@ vi.mock("@Renderer/modules/KeyPickerKeyboard", () => ({
   ),
 }));
 
-const renderTab = (base: number, modified: number, activeTab = "editor") => {
+const renderTab = (base: number, modified: number, activeTab = "editor", action?: number) => {
   const onKeySelect = vi.fn();
-  render(<LayersTab keyCode={{ base, modified }} onKeySelect={onKeySelect} activeTab={activeTab} />);
+  render(<LayersTab keyCode={{ base, modified }} onKeySelect={onKeySelect} activeTab={activeTab} action={action} />);
   return { onKeySelect };
 };
 
@@ -40,6 +40,7 @@ describe("LayersTab swap hands", () => {
     // Turn on sk20 to show that the tap key picker does not depend on it
     storeValues["capabilities.sk20"] = true;
     storeValues["capabilities.swapHands"] = true;
+    storeValues["capabilities.swapHandsSuperHold"] = false;
   });
 
   afterEach(() => {
@@ -111,6 +112,78 @@ describe("LayersTab swap hands", () => {
     storeValues["capabilities.swapHands"] = false;
 
     renderTab(4, 0);
+
+    expect(screen.queryByText("Swap hands")).toBeNull();
+  });
+});
+
+describe("LayersTab swap hands on a Superkey", () => {
+  // Superkey actions: 0 tap, 1 hold, 2 tap and hold, 3 double tap, 4 double tap and hold
+  const HOLD_ACTION = 1;
+
+  beforeEach(() => {
+    storeValues["capabilities.sk20"] = true;
+    storeValues["capabilities.swapHands"] = true;
+    storeValues["capabilities.swapHandsSuperHold"] = true;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  test("the hold action offers only Hold", () => {
+    renderTab(4, 0, "super", HOLD_ACTION);
+
+    expect(screen.getByText("Swap hands")).not.toBeNull();
+    expect(button("Hold")).not.toBeNull();
+    expect(
+      ["Toggle", "Tap-toggle", "One-shot", "Hold, key on tap"].filter(name => screen.queryByRole("button", { name })),
+    ).toEqual([]);
+  });
+
+  test("Hold on the hold action selects 54372", () => {
+    const { onKeySelect } = renderTab(4, 0, "super", HOLD_ACTION);
+
+    fireEvent.click(button("Hold"));
+
+    expect(onKeySelect).toHaveBeenCalledWith(54372);
+  });
+
+  test("Hold shows as selected on a hold action that has it", () => {
+    renderTab(54372, 0, "super", HOLD_ACTION);
+
+    expect(button("Hold").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  test.each([
+    [0], // tap
+    [2], // tap and hold
+    [3], // double tap
+    [4], // double tap and hold
+  ])("the block is hidden on action %i", action => {
+    renderTab(4, 0, "super", action);
+
+    expect(screen.queryByText("Swap hands")).toBeNull();
+  });
+
+  test("the block is hidden on firmware that ignores swap keys from a Superkey", () => {
+    storeValues["capabilities.swapHandsSuperHold"] = false;
+
+    renderTab(4, 0, "super", HOLD_ACTION);
+
+    expect(screen.queryByText("Swap hands")).toBeNull();
+  });
+
+  test("the block is hidden on firmware without swap hands", () => {
+    storeValues["capabilities.swapHands"] = false;
+
+    renderTab(4, 0, "super", HOLD_ACTION);
+
+    expect(screen.queryByText("Swap hands")).toBeNull();
+  });
+
+  test.each([["combo"], ["macro"]])("the block is hidden in the %s picker on the hold action index", activeTab => {
+    renderTab(4, 0, activeTab, HOLD_ACTION);
 
     expect(screen.queryByText("Swap hands")).toBeNull();
   });

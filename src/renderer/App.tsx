@@ -69,8 +69,8 @@ import HID from "../api/hid/hid";
 const store = Store.getStore();
 
 // Reads the FW version and stores, as capabilities.<feature>, every capability that depends on it
-// (SK 2.0, Layer Lens, Combos, Autoshift, CapsWord, layer hold and key repeat on previous-key rules). Runs on connect and again
-// after a firmware update, since the keyboard stays connected through it.
+// (SK 2.0, Layer Lens, Combos, Autoshift, CapsWord, layer hold and key repeat on previous-key rules, swap hands Hold on Superkeys).
+// Runs on connect and again after a firmware update, since the keyboard stays connected through it.
 // The minimum FW per product for each capability lives in src/versionRules.json.
 // Also reads help for capabilities.layerHold, capabilities.altRepeat, capabilities.keyOverrides, capabilities.quickTap,
 // capabilities.conditionalLayers and capabilities.swapHands, which official firmware of the same version lacks.

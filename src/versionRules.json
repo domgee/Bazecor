@@ -72,6 +72,12 @@
       "minFirmware": {
         "Sonsei": "1.2.4"
       }
+    },
+    "swapHandsSuperHold": {
+      "description": "Swap hands Hold on a Superkey's hold action (Sonsei fork). Shown only together with capabilities.swapHands, which comes from help. v1.2.10 has the command but ignores swap keys sent by a Superkey.",
+      "minFirmware": {
+        "Sonsei": "1.2.11"
+      }
     }
   }
 }
