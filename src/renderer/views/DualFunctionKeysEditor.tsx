@@ -29,6 +29,13 @@ import Callout from "@Renderer/components/molecules/Callout/Callout";
 import { PageHeader } from "@Renderer/modules/PageHeader";
 import { keyboardCanvasStyles } from "@Renderer/modules/KeyboardCanvas/keyboardCanvasStyles";
 import { backupAfterSave } from "@Renderer/modules/KeyOverrides/backupAfterSave";
+import {
+  HOLD_TIMEOUT_COMMAND,
+  PRIOR_INTERVAL_COMMAND,
+  firstUnreadable,
+  parseGlobalNumber,
+  previewCommands,
+} from "@Renderer/modules/DualFunctionKeys/previewReads";
 import OverridePanel from "@Renderer/modules/DualFunctionKeys/OverridePanel";
 import { dualFunctionBadgeBaseStyles, dualFunctionBadgeStyles } from "@Renderer/modules/DualFunctionKeys/dualFunctionBadges";
 import {
@@ -79,23 +86,37 @@ const Styles = Styled.div`
   }
 `;
 
-const parseNumber = (raw: unknown): number | null => {
-  if (typeof raw !== "string" || !/^\s*\d+\s*$/.test(raw)) {
-    return null;
-  }
-
-  return parseInt(raw, 10);
-};
-
 /* Read uncached, and once more after a failure, because a failed reply stays in the Device cache and the backup after a save records it */
 const readGlobalNumber = async (device: Device, command: string): Promise<number | null> => {
-  const first = parseNumber(await device.noCacheCommand(command));
+  const first = parseGlobalNumber(await device.noCacheCommand(command));
 
   if (first !== null) {
     return first;
   }
 
-  return parseNumber(await device.noCacheCommand(command));
+  return parseGlobalNumber(await device.noCacheCommand(command));
+};
+
+/* Mark a backup left out because a preview command still can not be read. The save itself stands */
+class BackupSkippedError extends Error {
+  command: string;
+
+  constructor(command: string) {
+    super(`${command} could not be read`);
+    this.command = command;
+  }
+}
+
+/* Read every preview command again uncached, so the backup records the keyboard's values and not a failed reply from the load */
+const rereadPreviews = async (device: Device): Promise<string | null> => {
+  const replies: { command: string; raw: unknown }[] = [];
+
+  for (const command of previewCommands(Boolean(store.get("capabilities.quickTap")))) {
+    // eslint-disable-next-line no-await-in-loop
+    replies.push({ command, raw: await device.noCacheCommand(command) });
+  }
+
+  return firstUnreadable(replies);
 };
 
 function DualFunctionKeysEditor(props: DualFunctionKeysEditorProps) {
@@ -199,9 +220,9 @@ function DualFunctionKeysEditor(props: DualFunctionKeysEditorProps) {
 
       /* Show "Use global" without a value for a global setting that can not be read */
       setGlobals({
-        holdTimeout: await readGlobalNumber(currentDevice, "qukeys.holdTimeout"),
+        holdTimeout: await readGlobalNumber(currentDevice, HOLD_TIMEOUT_COMMAND),
         quickTapTerm: store.get("capabilities.quickTap") ? await readQuickTapTerm(currentDevice) : null,
-        priorInterval: await readGlobalNumber(currentDevice, "qukeys.minimumPriorInterval"),
+        priorInterval: await readGlobalNumber(currentDevice, PRIOR_INTERVAL_COMMAND),
         options: await readDualFunctionGlobals(currentDevice),
       });
 
@@ -251,13 +272,27 @@ function DualFunctionKeysEditor(props: DualFunctionKeysEditorProps) {
       await backupAfterSave(
         currentDevice.file !== false,
         async () => {
+          const unreadable = await rereadPreviews(currentDevice);
+
+          if (unreadable !== null) {
+            throw new BackupSkippedError(unreadable);
+          }
+
           const chipID = await currentDevice.command("hardware.chip_id");
           const neuronID = typeof chipID === "string" ? chipID.replace(/\s/g, "") : "";
           const commands = await Backup.Commands(currentDevice);
           const backup = await bkp.DoBackup(commands, neuronID, currentDevice);
           Backup.SaveBackup(backup, currentDevice);
         },
-        error => log.warn("[DualFunctionKeys] backup after save failed", error),
+        error => {
+          log.warn("[DualFunctionKeys] backup after save failed", error);
+
+          if (error instanceof BackupSkippedError) {
+            toast.warn(<ToastMessage title={strings.title} content={strings.backupSkipped.replace("{0}", error.command)} />, {
+              autoClose: 4000,
+            });
+          }
+        },
       );
     } catch (error) {
       log.error("[DualFunctionKeys] failed to save", error);

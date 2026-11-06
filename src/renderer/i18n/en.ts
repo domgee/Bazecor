@@ -679,6 +679,7 @@ const English = {
       saveFailed: "The keyboard did not store the dual-function key settings.",
       saved: "Your dual-function key settings are now on the keyboard.",
       savedTitle: "Dual-function keys saved",
+      backupSkipped: "The settings are saved, but the backup was skipped because {0} could not be read.",
     },
     oldMacroModal: {
       title: "Update your macros",
