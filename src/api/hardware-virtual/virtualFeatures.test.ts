@@ -241,6 +241,41 @@ describe("quick tap", () => {
   });
 });
 
+describe("dual-function options", () => {
+  test("the Sonsei lists both commands in help, erasable and off", () => {
+    expect(SonseiWireless.virtual.help.data.split("\r\n")).toEqual(
+      expect.arrayContaining(["qukeys.dualFunction", "qukeys.perKey"]),
+    );
+    expect(SonseiWireless.virtual["qukeys.dualFunction"]).toEqual({ data: "0 0 0 0 0 0 0", eraseable: true });
+    expect(SonseiWireless.virtual["qukeys.perKey"]).toEqual({ data: "0", eraseable: true });
+  });
+
+  test.each([
+    ["Defy wireless", DefyWireless],
+    ["Raise 2 ANSI", Raise2ANSI],
+  ])("the %s does not", (_, template) => {
+    expect(template.virtual.help.data.split("\r\n")).not.toContain("qukeys.dualFunction");
+    expect(template.virtual.help.data.split("\r\n")).not.toContain("qukeys.perKey");
+    expect(template.virtual["qukeys.dualFunction"]).toBeUndefined();
+    expect(template.virtual["qukeys.perKey"]).toBeUndefined();
+  });
+
+  test("addMissingVirtualCommands adds both to a Sonsei file saved before them", () => {
+    const vk: VirtualType = JSON.parse(JSON.stringify(SonseiWireless));
+    delete vk.virtual["qukeys.dualFunction"];
+    delete vk.virtual["qukeys.perKey"];
+    vk.virtual.help.data = vk.virtual.help.data
+      .split("\r\n")
+      .filter(c => c !== "qukeys.dualFunction" && c !== "qukeys.perKey")
+      .join("\r\n");
+
+    const added = addMissingVirtualCommands(vk);
+
+    expect(added).toEqual(["qukeys.dualFunction", "qukeys.perKey"]);
+    expect(vk.virtual.help.data.split("\r\n")).toEqual(expect.arrayContaining(["qukeys.dualFunction", "qukeys.perKey"]));
+  });
+});
+
 describe("conditional layers", () => {
   test("the Sonsei lists conditional.map in help, erasable and empty", () => {
     expect(SonseiWireless.virtual.help.data.split("\r\n")).toContain("conditional.map");

@@ -69,6 +69,7 @@ import { Neuron } from "@Renderer/types/neurons";
 import Backup from "../../api/backup";
 import { delay } from "../../api/flash/delay";
 import { readQuickTapTerm, saveQuickTapTerm } from "../../api/parsers/quickTap";
+import { readDualFunctionGlobals, saveDualFunctionGlobals } from "../../api/parsers/dualFunction";
 import { confirmBox } from "../utils/messageBox";
 
 const store = Store.getStore();
@@ -106,7 +107,7 @@ const initialWireless = {
   true_sleep_time: 0,
 };
 
-const initialKBData = {
+const initialKBData: KBDataPref = {
   keymap: {
     custom: new Array<number>(),
     default: new Array<number>(),
@@ -121,6 +122,7 @@ const initialKBData = {
   qukeysMinHold: 0,
   qukeysMinPrior: 0,
   qukeysQuickTapTerm: -1,
+  dualFunction: null,
   SuperTimeout: 0,
   SuperRepeat: 20,
   SuperWaitfor: 500,
@@ -259,6 +261,15 @@ const Preferences = (props: PreferencesProps) => {
         const term = await readQuickTapTerm(state.currentDevice);
         log.info("[QuickTap] read term ->", term);
         newKbData.qukeysQuickTapTerm = term ?? -1;
+      }
+
+      /* Reset the shared initialKBData. Keep null on a failed read to hide the options, so a save never turns them off */
+      newKbData.dualFunction = null;
+
+      if (store.get("capabilities.dualFunction")) {
+        const globals = await readDualFunctionGlobals(state.currentDevice);
+        log.info("[DualFunction] read options ->", globals);
+        newKbData.dualFunction = globals;
       }
 
       // SuperKeys variables commands
@@ -554,7 +565,12 @@ const Preferences = (props: PreferencesProps) => {
       await saveKeymapChanges();
       await saveWirelessChanges();
 
-      /* Save quick tap last, so a rejection skips only the backup */
+      /* Save the dual-function options and quick tap last, so a rejection skips only the backup */
+      if (store.get("capabilities.dualFunction")) {
+        log.info("[DualFunction] saving options", kbData.dualFunction);
+        await saveDualFunctionGlobals(state.currentDevice, kbData.dualFunction);
+      }
+
       if (store.get("capabilities.quickTap")) {
         log.info(`[QuickTap] saving term=${kbData.qukeysQuickTapTerm}`);
         await saveQuickTapTerm(state.currentDevice, kbData.qukeysQuickTapTerm);

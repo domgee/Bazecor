@@ -18,10 +18,16 @@ import { ALT_REPEAT_COMMAND, AltRepeatDevice, restoreAltRepeat } from "../parser
 import { KEY_OVERRIDES_COMMAND, restoreKeyOverrides } from "../parsers/keyOverrides";
 import { QUICK_TAP_COMMAND, restoreQuickTap } from "../parsers/quickTap";
 import { CONDITIONAL_LAYERS_COMMAND, restoreConditionalLayers } from "../parsers/conditionalLayers";
+import {
+  DUAL_FUNCTION_COMMAND,
+  PER_KEY_COMMAND,
+  restoreDualFunctionGlobals,
+  restorePerKeyOverrides,
+} from "../parsers/dualFunction";
 
-/** Restore one backup command. Validate and read back the previous-key rules, the key overrides, the conditional layers and the quick tap
- * term, whose rejection must fail the restore. Send the rest plain. `keysPerLayer` runs only for the previous-key rules, so a plain
- * command never needs the keyboard's layout. */
+/** Restore one backup command. Validate and read back the previous-key rules, the key overrides, the conditional layers, the quick tap
+ * term and the dual-function options, whose rejection must fail the restore. Send the rest plain. `keysPerLayer` runs only for the
+ * previous-key rules, so a plain command never needs the keyboard's layout. */
 export const restoreCommand = async (
   device: AltRepeatDevice,
   command: string,
@@ -46,6 +52,16 @@ export const restoreCommand = async (
 
   if (command === QUICK_TAP_COMMAND) {
     await restoreQuickTap(device, data);
+    return;
+  }
+
+  if (command === DUAL_FUNCTION_COMMAND) {
+    await restoreDualFunctionGlobals(device, data);
+    return;
+  }
+
+  if (command === PER_KEY_COMMAND) {
+    await restorePerKeyOverrides(device, data);
     return;
   }
 

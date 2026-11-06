@@ -57,6 +57,7 @@ import { hasAltRepeatCommand } from "../api/parsers/altRepeat";
 import { hasKeyOverridesCommand } from "../api/parsers/keyOverrides";
 import { hasConditionalLayersCommand } from "../api/parsers/conditionalLayers";
 import { hasQuickTapCommand } from "../api/parsers/quickTap";
+import { hasDualFunctionCommands } from "../api/parsers/dualFunction";
 import { version } from "../../package.json";
 import "../api/keymap";
 import "../api/colormap";
@@ -73,7 +74,7 @@ const store = Store.getStore();
 // Runs on connect and again after a firmware update, since the keyboard stays connected through it.
 // The minimum FW per product for each capability lives in src/versionRules.json.
 // Also reads help for capabilities.layerHold, capabilities.altRepeat, capabilities.keyOverrides, capabilities.quickTap,
-// capabilities.conditionalLayers and capabilities.swapHands, which official firmware of the same version lacks.
+// capabilities.dualFunction, capabilities.conditionalLayers and capabilities.swapHands, which official firmware of the same version lacks.
 const detectFirmwareCapabilities = async (currentDevice: Device) => {
   try {
     const versionStr = (await currentDevice.noCacheCommand("version")) as string;
@@ -90,8 +91,8 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     log.info("[Capabilities] all disabled due to firmware version read/parse error");
   }
 
-  /* Detect Hold until layer change, previous-key rules, key overrides, quick tap, conditional layers and swap hands through help, because
-   * official firmware of the same version lacks them */
+  /* Detect Hold until layer change, previous-key rules, key overrides, quick tap, dual-function options, conditional layers and swap hands
+   * through help, because official firmware of the same version lacks them */
   try {
     const help = await currentDevice.noCacheCommand("help");
     const available = hasLayerHoldMarker(help);
@@ -106,6 +107,9 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     const quickTap = hasQuickTapCommand(help);
     store.set("capabilities.quickTap", quickTap);
     log.info(`[Capabilities] quickTap -> available: ${quickTap}`);
+    const dualFunction = hasDualFunctionCommands(help);
+    store.set("capabilities.dualFunction", dualFunction);
+    log.info(`[Capabilities] dualFunction -> available: ${dualFunction}`);
     const conditionalLayers = hasConditionalLayersCommand(help);
     store.set("capabilities.conditionalLayers", conditionalLayers);
     log.info(`[Capabilities] conditionalLayers -> available: ${conditionalLayers}`);
@@ -113,11 +117,15 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     store.set("capabilities.swapHands", swapHands);
     log.info(`[Capabilities] swapHands -> available: ${swapHands}`);
   } catch (e) {
-    log.warn("Error reading help for layerHold, altRepeat, keyOverrides, quickTap, conditionalLayers and swapHands", e);
+    log.warn(
+      "Error reading help for layerHold, altRepeat, keyOverrides, quickTap, dualFunction, conditionalLayers and swapHands",
+      e,
+    );
     store.set("capabilities.layerHold", false);
     store.set("capabilities.altRepeat", false);
     store.set("capabilities.keyOverrides", false);
     store.set("capabilities.quickTap", false);
+    store.set("capabilities.dualFunction", false);
     store.set("capabilities.conditionalLayers", false);
     store.set("capabilities.swapHands", false);
   }

@@ -14,6 +14,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+import { DualFunctionGlobals } from "../../api/parsers/dualFunction";
 import { Neuron } from "./neurons";
 import { WirelessInterface } from "./wireless";
 
@@ -48,6 +49,8 @@ export interface KBDataPref {
   qukeysMinPrior: number;
   /** Quick tap term in ms, 0 = off. -1 = not read, which means the read failed when capabilities.quickTap is true. */
   qukeysQuickTapTerm: number;
+  /** Global dual-function key options. Null = not read, which means the read failed when capabilities.dualFunction is true. */
+  dualFunction: DualFunctionGlobals | null;
   SuperTimeout: number;
   SuperRepeat: number;
   SuperWaitfor: number;

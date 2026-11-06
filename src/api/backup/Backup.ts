@@ -37,6 +37,13 @@ import { needsAltRepeatClear, writeAltRepeatRules } from "../parsers/altRepeat";
 import { needsKeyOverridesClear, writeKeyOverrides } from "../parsers/keyOverrides";
 import { needsConditionalLayersClear, writeConditionalLayers } from "../parsers/conditionalLayers";
 import { needsQuickTapClear, writeQuickTapTerm } from "../parsers/quickTap";
+import {
+  DUAL_FUNCTION_DEFAULTS,
+  needsDualFunctionClear,
+  needsPerKeyClear,
+  writeDualFunctionGlobals,
+  writePerKeyOverrides,
+} from "../parsers/dualFunction";
 import restoreCommand from "./restoreCommand";
 import { fitPaletteToFormat } from "../parsers/palette";
 import { rgb2w } from "../color";
@@ -396,7 +403,8 @@ export default class Backup {
     // firmware's backup carries some, so only send what the target lists in `help`.
     data = await Backup.keepSupportedCommands(data, device);
     data = data.filter(c => typeof c.command === "string" && c.command.trim().length > 0);
-    /* Clear the rules, the key overrides and the conditional layers, and turn quick tap off, when the backup predates them */
+    /* Clear the rules, the key overrides, the conditional layers and the per-key dual-function overrides, and turn quick tap and the
+     * dual-function options off, when the backup predates them */
     const supported = await Backup.supportedCommands(device);
     const clearAltRepeat = needsAltRepeatClear(
       data.map(c => c.command),
@@ -411,6 +419,14 @@ export default class Backup {
       supported,
     );
     const clearConditionalLayers = needsConditionalLayersClear(
+      data.map(c => c.command),
+      supported,
+    );
+    const clearDualFunction = needsDualFunctionClear(
+      data.map(c => c.command),
+      supported,
+    );
+    const clearPerKey = needsPerKeyClear(
       data.map(c => c.command),
       supported,
     );
@@ -459,7 +475,8 @@ export default class Backup {
           }
           log.info(`Going to send ${data[i].command} to keyboard`);
 
-          /* Validate and read back the rules, key overrides, quick tap and conditional layers writes so a rejection fails the restore */
+          /* Validate and read back the rules, key overrides, quick tap, conditional layers and dual-function writes so a rejection fails
+           * the restore */
           const { command } = data[i];
           const value = String(val).trim();
           const keysPerLayer = () => device.device.keyboard.rows * device.device.keyboard.columns;
@@ -481,6 +498,14 @@ export default class Backup {
 
         if (clearConditionalLayers) {
           await writeConditionalLayers(device, []);
+        }
+
+        if (clearDualFunction) {
+          await writeDualFunctionGlobals(device, { ...DUAL_FUNCTION_DEFAULTS });
+        }
+
+        if (clearPerKey) {
+          await writePerKeyOverrides(device, []);
         }
 
         await device.noCacheCommand("led.mode 0");
@@ -608,7 +633,8 @@ export default class Backup {
           }
         }
 
-        /* Clear the rules, the key overrides and the conditional layers, and turn quick tap off, when the file predates them */
+        /* Clear the rules, the key overrides, the conditional layers and the per-key dual-function overrides, and turn quick tap and the
+         * dual-function options off, when the file predates them */
         if (needsAltRepeatClear(Object.keys(data), supported)) {
           await writeAltRepeatRules(device, [], 0, 0);
         }
@@ -623,6 +649,14 @@ export default class Backup {
 
         if (needsConditionalLayersClear(Object.keys(data), supported)) {
           await writeConditionalLayers(device, []);
+        }
+
+        if (needsDualFunctionClear(Object.keys(data), supported)) {
+          await writeDualFunctionGlobals(device, { ...DUAL_FUNCTION_DEFAULTS });
+        }
+
+        if (needsPerKeyClear(Object.keys(data), supported)) {
+          await writePerKeyOverrides(device, []);
         }
 
         log.info("Settings restored OK");

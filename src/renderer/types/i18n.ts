@@ -711,6 +711,41 @@ export interface Qukeys {
   quickTapTermTip2: string;
   quickTapTermTip3: string;
   quickTapTermTipDefault: string;
+  dualFunctionReadError: string;
+  dualFunctionOff: string;
+  decisionMode: string;
+  decisionModeTip1: string;
+  decisionModeTip2: string;
+  decisionModeTip3: string;
+  decisionModeTip4: string;
+  decisionModeTipDefault: string;
+  modePermissive: string;
+  modeHoldOnOtherKey: string;
+  modeTimeoutOnly: string;
+  chordalHold: string;
+  chordalHoldTip1: string;
+  chordalHoldTip2: string;
+  chordalHoldTip3: string;
+  chordalHoldTipDefault: string;
+  speculativeHold: string;
+  speculativeHoldTip1: string;
+  speculativeHoldTip2: string;
+  speculativeHoldTip3: string;
+  speculativeHoldTipDefault: string;
+  speculativeOneKey: string;
+  speculativeOneKeyTip: string;
+  speculativeFlowTerm: string;
+  speculativeFlowTermTip: string;
+  retroTapping: string;
+  retroTappingTip1: string;
+  retroTappingTip2: string;
+  retroTappingTipDefault: string;
+  neutralizer: string;
+  neutralizerTip1: string;
+  neutralizerTip2: string;
+  neutralizerTipDefault: string;
+  neutralizerKeycode: string;
+  perKeyNote: string;
 }
 
 export interface ResetEEPROM {

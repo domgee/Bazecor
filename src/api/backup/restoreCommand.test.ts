@@ -3,6 +3,7 @@ import { ALT_REPEAT_COMMAND } from "../parsers/altRepeat";
 import { KEY_OVERRIDES_COMMAND } from "../parsers/keyOverrides";
 import { QUICK_TAP_COMMAND } from "../parsers/quickTap";
 import { CONDITIONAL_LAYERS_COMMAND } from "../parsers/conditionalLayers";
+import { DUAL_FUNCTION_COMMAND, PER_KEY_COMMAND } from "../parsers/dualFunction";
 import restoreCommand from "./restoreCommand";
 
 /* A keyboard that stores each table it is sent and replies with it */
@@ -128,6 +129,40 @@ describe("restoreCommand", () => {
     const sendPlain = vi.fn();
 
     await expect(restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, data, () => 60, sendPlain)).rejects.toThrow("Malformed");
+    expect(noCacheCommand).not.toHaveBeenCalled();
+    expect(sendPlain).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [DUAL_FUNCTION_COMMAND, "1 1 1 1 120 1 109"],
+    [PER_KEY_COMMAND, "1 8 250 65535 255 3 3 3 3"],
+  ])("validates %s and reads it back, with no plain send", async (command, data) => {
+    const { device, noCacheCommand } = mockDevice();
+    const sendPlain = vi.fn(async () => "");
+
+    await restoreCommand(device, command, data, () => 60, sendPlain);
+
+    expect(noCacheCommand.mock.calls).toEqual([[command, data], [command]]);
+    expect(sendPlain).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [DUAL_FUNCTION_COMMAND, "1 1 1 1 120 1 109"],
+    [PER_KEY_COMMAND, "1 8 250 65535 255 3 3 3 3"],
+  ])("rejects when the keyboard replies error to the %s write", async (command, data) => {
+    const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "error" : "0"));
+
+    await expect(restoreCommand({ noCacheCommand }, command, data, () => 60, vi.fn())).rejects.toThrow("rejected");
+  });
+
+  test.each([
+    [DUAL_FUNCTION_COMMAND, "0 0 0 0 0 0 222"],
+    [PER_KEY_COMMAND, "1 52 65535 65535 255 1 3 3 3"],
+  ])("rejects a malformed %s entry without sending anything", async (command, data) => {
+    const noCacheCommand = vi.fn();
+    const sendPlain = vi.fn();
+
+    await expect(restoreCommand({ noCacheCommand }, command, data, () => 60, sendPlain)).rejects.toThrow("Malformed");
     expect(noCacheCommand).not.toHaveBeenCalled();
     expect(sendPlain).not.toHaveBeenCalled();
   });
