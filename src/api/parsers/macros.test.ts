@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { MacrosType } from "@Renderer/types/macros";
 import SonseiWireless from "../hardware-virtual/SonseiWireless";
 import {
@@ -11,6 +11,15 @@ import {
   rawMacrosNeedUpgrade,
   serializeMacros,
 } from "./macros";
+
+// Let a test switch the Bazecor language that KeymapDB reads
+const settings = vi.hoisted(() => ({ language: "en-US" }));
+
+vi.mock("../../renderer/utils/Store", () => ({
+  default: {
+    getStore: () => ({ get: (key: string) => (key === "settings.language" ? settings.language : undefined), set: () => {} }),
+  },
+}));
 
 const parse = (raw: string) => parseMacrosRaw(raw);
 
@@ -141,6 +150,55 @@ describe("parseMacrosRaw and serializeMacros", () => {
 
   test("an unknown step between two ENDs gives an empty macro, as the firmware cache counts it", () => {
     expect(parse("8 4 0 255 0 8 5 0 0").map(m => m.actions)).toEqual([[{ type: 8, keyCode: 4 }], [], [{ type: 8, keyCode: 5 }]]);
+  });
+
+  test("a Unicode step reads at most its lead's length, so a surplus continuation byte is skipped alone", () => {
+    expect(parse("16 195 169 169 8 4 0 0")[0].actions).toEqual([
+      { type: 16, keyCode: 0xe9 },
+      { type: 8, keyCode: 4 },
+    ]);
+  });
+
+  test("a macro with options and no actions round-trips without an implicit report", () => {
+    const raw = "14 140 0 8 4 0 0";
+
+    const macros = parse(raw);
+
+    expect(macros).toHaveLength(2);
+    expect(macros[0]).toEqual({
+      actions: [],
+      id: 0,
+      name: "",
+      macro: "",
+      options: { mode: 0, ignoreMods: true, otherKeysStop: true },
+    });
+    expect(roundTrip(raw)).toBe(raw);
+  });
+
+  test.each([
+    ["a tail with a valid action is kept as the last macro", "8 4 0 8 5", [[{ type: 8, keyCode: 4 }], [{ type: 8, keyCode: 5 }]]],
+    ["a clipped last step is dropped from the tail", "8 4 0 8 5 2 1", [[{ type: 8, keyCode: 4 }], [{ type: 8, keyCode: 5 }]]],
+    ["a tail of erased memory gives no macro", "8 4 0 255 255", [[{ type: 8, keyCode: 4 }]]],
+  ])("steps after the last END without END END: %s", (_, raw, actions) => {
+    expect(parse(raw).map(m => m.actions)).toEqual(actions);
+  });
+
+  test("a kept tail is saved with its END", () => {
+    expect(roundTrip("8 4 0 8 5")).toBe("8 4 0 8 5 0 0");
+  });
+
+  test("labels follow the language selected when the macros are parsed", () => {
+    const stored: MacrosType[] = [{ actions: [], name: "Named", macro: "" }];
+    // Key code 28 is Y in English and Z in German
+    const raw = "8 28 0 0";
+
+    settings.language = "en-US";
+    const english = parseMacrosRaw(raw, stored)[0].macro;
+    settings.language = "de-DE";
+    const german = parseMacrosRaw(raw, stored)[0].macro;
+    settings.language = "en-US";
+
+    expect([english, german]).toEqual(["Y", "Z"]);
   });
 
   test("macrosByteLength equals the serialized length, and no macros take no bytes", () => {

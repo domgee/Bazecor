@@ -44,7 +44,7 @@ export interface MacrosDevice {
 
 const macrosEraser = (tMem: number) => Array(tMem).fill("255").join(" ");
 
-/** Does this `help` reply list the macro upgrade marker? */
+/** True when this `help` reply lists the macro upgrade marker */
 export const hasMacroUpgradeMarker = (help: unknown): boolean => {
   if (typeof help !== "string") {
     return false;
@@ -53,7 +53,7 @@ export const hasMacroUpgradeMarker = (help: unknown): boolean => {
   return help.split(/\r?\n/).some(line => line.trim() === MACROS_STATE_MARKER);
 };
 
-/** The option byte for these options, MACRO_OPTIONS_CLASSIC when there are none. */
+/** The option byte for these options, MACRO_OPTIONS_CLASSIC when there are none */
 export const encodeMacroOptions = (options?: MacroOptions): number => {
   // Read null or a missing value from an imported file as classic
   if (!options) {
@@ -64,7 +64,7 @@ export const encodeMacroOptions = (options?: MacroOptions): number => {
   return OPT_VALID | mode | (options.ignoreMods ? OPT_IGNORE_MODS : 0) | (options.otherKeysStop ? OPT_OTHER_KEYS_STOP : 0);
 };
 
-/** The options of an option byte, undefined for a classic macro. A byte without bit 7 reads as classic and mode 3 as once. */
+/** The options of an option byte, undefined for a classic macro. A byte without bit 7 reads as classic and mode 3 as once */
 export const decodeMacroOptions = (byte: number): MacroOptions | undefined => {
   if ((byte & OPT_VALID) === 0) {
     return undefined;
@@ -121,7 +121,7 @@ export const utf8StepLength = (bytes: ArrayLike<number>, pos: number): number =>
   return length;
 };
 
-/** The code point of the UTF-8 bytes, or undefined for truncated, overlong, surrogate or out of range input. */
+/** The code point of the UTF-8 bytes, or undefined for truncated, overlong, surrogate or out of range input */
 export const utf8Decode = (bytes: ArrayLike<number>, pos: number, length: number): number | undefined => {
   const lead = bytes[pos];
   const expected = utf8Expected(lead);
@@ -155,7 +155,7 @@ export const utf8Decode = (bytes: ArrayLike<number>, pos: number, length: number
   return cp;
 };
 
-/** The UTF-8 bytes of a code point above U+007F. Empty for ASCII, surrogates and values above U+10FFFF. */
+/** The UTF-8 bytes of a code point above U+007F. Empty for ASCII, surrogates and values above U+10FFFF */
 export const utf8Encode = (cp: number): number[] => {
   if (!Number.isInteger(cp) || cp < 0x80 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
     return [];
@@ -172,7 +172,7 @@ export const utf8Encode = (cp: number): number[] => {
   return [0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f)];
 };
 
-/** Payload length of the step of this type whose payload starts at pos, clipped to the end of memory. Shared with the firmware. */
+/** Payload length of the step of this type whose payload starts at pos, clipped to the end of memory. Shared with the firmware */
 export const macroStepLength = (bytes: ArrayLike<number>, pos: number, type: number): number => {
   const available = Math.max(0, bytes.length - pos);
   let length = 0;
@@ -231,7 +231,7 @@ interface MacroStep {
 }
 
 /* Walk macro memory step by step. Every END closes a macro, END END ends the map and the bytes after it are ignored. Steps after the last
- * END are returned as the tail, which the firmware never plays. */
+ * END without a closing END are returned as the tail. */
 const walkMacroSteps = (bytes: ArrayLike<number>): { macros: MacroStep[][]; tail: MacroStep[] } => {
   const macros: MacroStep[][] = [];
   let current: MacroStep[] = [];
@@ -327,15 +327,22 @@ const stepsToMacro = (steps: MacroStep[], id: number): MacrosType => {
   return macro;
 };
 
-/** The macros in macro memory. Memory without any END reads as one empty macro. */
+/** The macros in macro memory. A tail without END that holds a valid action becomes the last macro, because older firmware plays it.
+ * Memory without any macro reads as one empty macro. */
 export const parseMacroBytes = (bytes: ArrayLike<number>): MacrosType[] => {
-  const { macros } = walkMacroSteps(bytes);
+  const { macros, tail } = walkMacroSteps(bytes);
+  const parsed = macros.map((steps, id) => stepsToMacro(steps, id));
+  const tailMacro = stepsToMacro(tail, parsed.length);
 
-  if (macros.length === 0) {
+  if (tailMacro.actions.length > 0) {
+    parsed.push(tailMacro);
+  }
+
+  if (parsed.length === 0) {
     return [{ actions: [], id: 0, name: "", macro: "" }];
   }
 
-  return macros.map((steps, id) => stepsToMacro(steps, id));
+  return parsed;
 };
 
 /* Bytes of a macros.map reply, with anything that is no byte read as erased memory */
@@ -358,7 +365,7 @@ const stepsNeedUpgrade = (bytes: ArrayLike<number>) => {
   return [...macros.flat(), ...tail].some(step => STEP_UPGRADE_TYPES.includes(step.type));
 };
 
-/** Does this macros.map data hold an option, release marker or Unicode step, which older firmware stops at? */
+/** True when this macros.map data holds an option, release marker or Unicode step, which older firmware stops at */
 export const rawMacrosNeedUpgrade = (raw: unknown): boolean => stepsNeedUpgrade(rawToBytes(raw));
 
 const keyBytes = (keyCode: number) => [(keyCode >> 8) & 255, keyCode & 255];
@@ -427,25 +434,23 @@ const macroBytes = (macro: MacrosType): number[] => {
   return bytes.length > 0 ? bytes : [MACRO_STEP.IMPLICIT_REPORT];
 };
 
-/** The macro memory bytes of these macros, each closed by END and the map closed by a second END. */
+/** The macro memory bytes of these macros, each closed by END and the map closed by a second END */
 export const macrosBytes = (macros: MacrosType[]): number[] => [
   ...macros.flatMap(macro => [...macroBytes(macro), MACRO_STEP.END]),
   MACRO_STEP.END,
 ];
 
-/** Bytes the macros take in macro memory, 0 for no macros. */
+/** Bytes the macros take in macro memory, 0 for no macros */
 export const macrosByteLength = (macros: MacrosType[]): number => (macros.length === 0 ? 0 : macrosBytes(macros).length);
 
-/** Does this macro write an option, release marker or Unicode step, which older firmware stops at? */
+/** True when this macro writes an option, release marker or Unicode step, which older firmware stops at */
 export const macroNeedsUpgrade = (macro: MacrosType): boolean => stepsNeedUpgrade([...macroBytes(macro), 0, 0]);
 
-/** The macro as a classic macro, without options. */
+/** The macro as a classic macro, without options */
 export const resetMacroOptions = (macro: MacrosType): MacrosType => ({ ...macro, options: undefined });
 
-const keymapDB = new KeymapDB();
-
 /* A text label for one action */
-const actionLabel = (action: MacroActionsType): unknown => {
+const actionLabel = (keymapDB: KeymapDB, action: MacroActionsType): unknown => {
   const { type, keyCode } = action;
 
   if (type === MACRO_STEP.UNICODE && typeof keyCode === "number") {
@@ -471,6 +476,9 @@ export const parseMacrosRaw = (raw: string, storedMacros?: MacrosType[]) => {
   if (stored === undefined || stored.length === 0) {
     return macros;
   }
+
+  // Build the labels in the language selected now
+  const keymapDB = new KeymapDB();
   return macros.map((macro, i) => {
     if (stored.length < i) {
       return macro;
@@ -479,7 +487,7 @@ export const parseMacrosRaw = (raw: string, storedMacros?: MacrosType[]) => {
     return {
       ...macro,
       name: stored[i]?.name,
-      macro: macro.actions.map(actionLabel).join(" "),
+      macro: macro.actions.map(action => actionLabel(keymapDB, action)).join(" "),
     };
   });
 };

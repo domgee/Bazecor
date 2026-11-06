@@ -103,10 +103,11 @@ const MacrosMemoryUsage = ({ mem, tMem, context = "macros", warningOffset = 20 }
     // setMemoryUsage(macros.map(m => m.actions).flat().length);
     setMemoryUsage(Number(((mem / tMem) * 100).toFixed(1)));
     setIsLoading(false);
+    // Keep one toast per level, since every edit near the limit runs this effect
     if (mem > tMem * 0.95 && mem < tMem - warningOffset) {
       toast.warn(
         <ToastMessage title={i18nMemoryUsage.alertTitle} content={i18nMemoryUsage.alertBody} icon={<IconFloppyDisk />} />,
-        { icon: "" },
+        { icon: "", toastId: `${context}-memory-warn` },
       );
     }
     if (mem >= tMem - warningOffset) {
@@ -121,10 +122,11 @@ const MacrosMemoryUsage = ({ mem, tMem, context = "macros", warningOffset = 20 }
           draggable: true,
           progress: undefined,
           icon: "",
+          toastId: `${context}-memory-error`,
         },
       );
     }
-  }, [mem, tMem, warningOffset, i18nMemoryUsage]);
+  }, [mem, tMem, warningOffset, i18nMemoryUsage, context]);
   if (isLoading) return null;
   return (
     <Styles

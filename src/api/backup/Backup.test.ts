@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import Backup from "./Backup";
 import Device from "../comms/Device";
+import { MACROS_NOT_RESTORED } from "../parsers/macros";
 
 vi.mock("electron", () => ({ ipcRenderer: { invoke: vi.fn(), send: vi.fn(), on: vi.fn() } }));
 
@@ -127,5 +128,53 @@ describe("Backup restore of the dual-function options", () => {
       "qukeys.dualFunction",
       "qukeys.perKey",
     ]);
+  });
+});
+
+describe("Backup restore of macros with new steps", () => {
+  const HELP = "keymap.custom\r\nmacros.map\r\nqukeys.dualFunction\r\nqukeys.perKey";
+  const UPGRADED = "14 140 8 4 0 0";
+  const ON_KEYBOARD = "8 5 0 0";
+
+  test("restoreBackup skips only macros.map without the marker and collects one warning", async () => {
+    const { device, keyboard } = sonsei({ help: HELP, "macros.map": ON_KEYBOARD });
+    const backup = [
+      { command: "keymap.custom", data: "1 2 3" },
+      { command: "macros.map", data: UPGRADED },
+    ];
+
+    const restored = await Backup.restoreBackup([], "neuron", backup as never, device);
+
+    expect(restored).toBe(true);
+    expect(keyboard["keymap.custom"]).toBe("1 2 3");
+    expect(keyboard["macros.map"]).toBe(ON_KEYBOARD);
+    expect(Backup.takeRestoreWarnings()).toEqual([MACROS_NOT_RESTORED]);
+  });
+
+  test("restoreVirtual skips only macros.map without the marker and collects one warning", async () => {
+    const { device, keyboard } = sonsei({ help: HELP, "macros.map": ON_KEYBOARD });
+    const virtual = {
+      device: { info: { product: "Sonsei" } },
+      virtual: {
+        "keymap.custom": { data: "1 2 3", eraseable: true },
+        "macros.map": { data: UPGRADED, eraseable: true },
+      },
+    };
+
+    const restored = await Backup.restoreVirtual(virtual as never, device);
+
+    expect(restored).toBe(true);
+    expect(keyboard["keymap.custom"]).toBe("1 2 3");
+    expect(keyboard["macros.map"]).toBe(ON_KEYBOARD);
+    expect(Backup.takeRestoreWarnings()).toEqual([MACROS_NOT_RESTORED]);
+  });
+
+  test("restoreBackup sends the macros when help lists the marker", async () => {
+    const { device, keyboard } = sonsei({ help: `${HELP}\r\nmacros.state`, "macros.map": ON_KEYBOARD });
+
+    await Backup.restoreBackup([], "neuron", [{ command: "macros.map", data: UPGRADED }] as never, device);
+
+    expect(keyboard["macros.map"]).toBe(UPGRADED);
+    expect(Backup.takeRestoreWarnings()).toEqual([]);
   });
 });
