@@ -312,13 +312,14 @@ export type ComboBreakReason = "lens" | "superkey" | "swaphands";
  * Why `keyCode` would stop a combo it sits in from firing, or null if it
  * would not.
  *
- * Lens keys, swap hands keys and superkeys break a combo, except a superkey that behaves as a
- * Qukey. Qukeys, autoshift and CapsWord are fine.
+ * Lens keys, swap hands keys and superkeys break a combo, except a superkey that behaves as a Qukey. Qukeys, autoshift and CapsWord are fine.
  */
 export const comboBreakReason = (keyCode: number, superkeys: SuperkeysType[] = []): ComboBreakReason | null => {
   if (LENS_KEYS.includes(keyCode)) return "lens";
 
-  if (isSwapHandsCode(keyCode)) return "swaphands";
+  if (isSwapHandsCode(keyCode)) {
+    return "swaphands";
+  }
 
   if (keyCode >= SUPERKEY_FIRST && keyCode < SUPERKEY_FIRST + SUPERKEY_COUNT) {
     return isQukeySuperkey(superkeys[keyCode - SUPERKEY_FIRST]) ? null : "superkey";
