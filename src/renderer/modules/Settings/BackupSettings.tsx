@@ -40,8 +40,8 @@ import WaitForRestoreDialog from "@Renderer/components/molecules/CustomModal/Wai
 import { BackupType } from "@Renderer/types/backups";
 import { VirtualType } from "@Renderer/types/virtual";
 import Banner from "@Renderer/components/atoms/Banner";
-import Backup from "../../../api/backup";
 import showRestoreWarnings from "@Renderer/utils/restoreWarnings";
+import Backup from "../../../api/backup";
 import { alertBox } from "../../utils/messageBox";
 
 const store = Store.getStore();

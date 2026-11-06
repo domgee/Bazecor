@@ -107,7 +107,7 @@ const KeyMacro = (props: KeyMacroProps) => {
     infoTitle = i18n.general.key;
     visualKeycode = item.keyCode as number;
   } else if (item.type === MACRO_STEP.UNICODE) {
-    visualKeycode = formatCodePoint(item.keyCode as number);
+    visualKeycode = formatCodePoint(item.keyCode);
   }
 
   return (
@@ -257,7 +257,7 @@ const KeyMacro = (props: KeyMacroProps) => {
                       )}
                     </div>
                     <div className="keyMacroItemOptions flex flex-col gap-1 mt-1">
-                      {/* The firmware honours only the first release marker, so a clone would do nothing */}
+                      {/* Hide Clone on the release marker, since the firmware honours only the first one */}
                       {!isReleaseMarker && (
                         <Button
                           variant="dropdownLink"

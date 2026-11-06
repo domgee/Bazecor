@@ -63,11 +63,11 @@ import { ClearLayerDialog } from "@Renderer/components/molecules/CustomModal/Cle
 import { ComboBreakDialog } from "@Renderer/components/molecules/CustomModal/ComboBreakDialog";
 import { AltRepeatBreakDialog } from "@Renderer/components/molecules/CustomModal/AltRepeatBreakDialog";
 import { DygmaDeviceInfoType } from "@Renderer/types/dygmaDefs";
+import showRestoreWarnings from "@Renderer/utils/restoreWarnings";
 import BlankTable from "../../api/keymap/db/blanks";
 import Keymap, { KeymapDB } from "../../api/keymap";
 import { rgb2w } from "../../api/color";
 import Backup from "../../api/backup";
-import showRestoreWarnings from "@Renderer/utils/restoreWarnings";
 import { confirmBox } from "../utils/messageBox";
 import {
   convertColormapRtoR2,

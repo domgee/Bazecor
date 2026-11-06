@@ -1,10 +1,12 @@
 /* eslint-disable no-bitwise */
 import { MacroActionsType, MacroEAType, MacroModType, MacrosType, RowsRepresentation } from "@Renderer/types/macros";
 import React from "react";
+import { i18n } from "@Renderer/i18n";
 
 import { MdUnfoldLess, MdKeyboardArrowUp, MdKeyboardArrowDown, MdTimer } from "react-icons/md";
 import { KeymapDB } from "../../../api/keymap";
 import { MACRO_STEP } from "../../../api/parsers/macros";
+import { unicodeStepText } from "./textChars";
 
 const keymapDB = new KeymapDB();
 
@@ -326,7 +328,7 @@ export const createConversion = (actions: MacroActionsType[], macros: MacrosType
         };
       case MACRO_STEP.RELEASE:
         return {
-          symbol: "Release",
+          symbol: i18n.editor.macros.releaseMarker,
           keyCode: 0,
           type: action.type,
           id: i,
@@ -336,7 +338,7 @@ export const createConversion = (actions: MacroActionsType[], macros: MacrosType
         };
       case MACRO_STEP.UNICODE:
         return {
-          symbol: String.fromCodePoint(action.keyCode as number),
+          symbol: unicodeStepText(action.keyCode),
           keyCode: action.keyCode,
           type: action.type,
           id: i,

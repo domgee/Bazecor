@@ -232,6 +232,7 @@ const English = {
       successFlash: "Successfully sent the macros to the device",
       previewMacro: "Preview macro",
       clearMacro: "Clear macro",
+      releaseMarker: "Release",
       tooLargeTitle: "Macros too large",
       tooLargeBody: "The macros need {0} of {1} bytes. Remove steps before saving.",
       needsUpgradeTitle: "Macros use features this firmware lacks",

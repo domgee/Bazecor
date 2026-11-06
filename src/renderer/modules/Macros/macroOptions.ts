@@ -20,8 +20,8 @@ export const effectiveOptions = (macro: MacrosType): MacroOptions => macro.optio
 export const normalizeOptions = (options?: MacroOptions): MacroOptions | undefined =>
   decodeMacroOptions(encodeMacroOptions(options));
 
-/** The firmware ignores the release marker in loop modes, so the loop modes need a macro without one */
+/** Allow the loop modes only without a release marker, since the firmware ignores it in loop modes */
 export const loopModesAllowed = (macro: MacrosType): boolean => !hasReleaseMarker(macro);
 
-/** The firmware honours only the first marker and only in once mode */
+/** Allow a new marker only in once mode and only when there is none, since the firmware honours just the first one */
 export const canAddMarker = (macro: MacrosType): boolean => effectiveOptions(macro).mode === 0 && !hasReleaseMarker(macro);

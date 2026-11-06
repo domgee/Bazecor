@@ -53,6 +53,7 @@ import MacroCreator from "@Renderer/modules/Macros/MacroCreator";
 import TimelineEditorManager from "@Renderer/modules/Macros/TimelineEditorManager";
 import { findMacroActionRefs } from "@Renderer/modules/Macros/macroReferences";
 import { NEW_MACRO_OPTIONS, normalizeOptions } from "@Renderer/modules/Macros/macroOptions";
+import { isUnicodeStepCodePoint } from "@Renderer/modules/Macros/textChars";
 
 // Tools
 import { useDevice } from "@Renderer/DeviceContext";
@@ -627,7 +628,8 @@ function MacroEditor(props: MacroEditorProps) {
     const aux = macros;
     const newID = aux.length;
     const imported: MacrosType = {
-      actions: macro.actions,
+      // Drop Unicode steps with an invalid code point, which the timeline cannot show and the serializer would drop
+      actions: macro.actions.filter(action => action?.type !== MACRO_STEP.UNICODE || isUnicodeStepCodePoint(action.keyCode)),
       name: macro.name,
       id: newID,
       macro: macro.macro,

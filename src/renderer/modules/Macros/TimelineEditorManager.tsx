@@ -31,6 +31,7 @@ import { MACRO_STEP } from "../../../api/parsers/macros";
 import TimelineEditorForm from "./TimelineEditorForm";
 import MacroOptionsPanel from "./MacroOptionsPanel";
 import { actionTypes } from "./utils";
+import { unicodeStepText } from "./textChars";
 
 const Styles = Styled.div`
 .card {
@@ -196,9 +197,9 @@ const MacroManager = (props: Props) => {
       case MACRO_STEP.TAPCODE:
         return parseKey(item.keyCode as number);
       case MACRO_STEP.RELEASE:
-        return "Release";
+        return i18n.editor.macros.releaseMarker;
       case MACRO_STEP.UNICODE:
-        return String.fromCodePoint(item.keyCode as number);
+        return unicodeStepText(item.keyCode);
       default:
         return actionTypes[item.type]?.name ?? "";
     }
