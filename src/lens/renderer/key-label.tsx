@@ -688,15 +688,22 @@ export function comboBadgeNearLabel(text: string, cx: number, cy: number, rotati
 }
 
 // The badge texts of a key, the first combo's output and the second one's or "+<n-1>". One badge may take `maxWidth`. Two share a band
-// `band` wide with a gap between them, and a badge that needs less than half leaves the rest to the other.
+// `band` wide with a gap between them, and a badge that needs less than half leaves the rest to the other. The counter is never cut.
 function comboBadgeLines(texts: string[], maxWidth: number, band: number): string[] {
   if (texts.length <= 1) {
     return [fitText(texts[0] ?? "", COMBO_BADGE_FS, maxWidth)];
   }
 
   const first = texts[0];
-  const second = texts.length === 2 ? texts[1] : `+${texts.length - 1}`;
   const share = band - COMBO_BADGE_GAP - 2 * COMBO_BADGE_PAD;
+
+  // Keep the counter whole and give the first label what is left
+  if (texts.length > 2) {
+    const counter = `+${texts.length - 1}`;
+    return [fitText(first, COMBO_BADGE_FS, Math.min(maxWidth, share - textWidth(counter, COMBO_BADGE_FS))), counter];
+  }
+
+  const second = texts[1];
   const half = share / 2;
   const firstWidth = Math.min(textWidth(first, COMBO_BADGE_FS), maxWidth);
   const secondWidth = Math.min(textWidth(second, COMBO_BADGE_FS), maxWidth);
@@ -719,7 +726,7 @@ function comboBadgePair(lines: string[], left: number, right: number, top: numbe
 }
 
 /**
- * The expanded combo badges of a rect key at (x, y), `w` wide: the first in today's top right corner, the second in the top left.
+ * The expanded combo badges of a rect key at (x, y), `w` wide. The first sits in today's top right corner, the second in the top left.
  */
 export function comboBadgeRow(texts: string[], x: number, y: number, w: number): JSX.Element {
   const left = x + 1;

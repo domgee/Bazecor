@@ -387,6 +387,27 @@ describe("Lens views with Expand combos on", () => {
   });
 
   test.each([
+    ["rect key", 11, 0],
+    ["rect key", 32, 0],
+    ["thumb", 11, 49],
+    ["thumb", 32, 49],
+  ])("LongFirstOutputOn %s in %s combos_CounterWhole", (_, count, index) => {
+    const model = {
+      ...createExpandModel("Sonsei", {}, []),
+      macroNames: ["Copy everything to the clipboard"],
+      combos: combosOn([index], MACRO_1, ...new Array<number>(count - 1).fill(4)),
+    };
+
+    const container = renderExpanded(model, false, false, true);
+
+    const [first, second] = [...container.querySelectorAll(COMBO_BADGE)].map(badgeBox);
+    const [firstText, counter] = badgeTexts(container);
+    expect({ cut: firstText?.endsWith("…"), counter }).toEqual({ cut: true, counter: `+${count - 1}` });
+    // Keep the 2 px gap between the top left badge and the top right one
+    expect(second.right + 2).toBeLessThanOrEqual(first.left + 1e-9);
+  });
+
+  test.each([
     ["rect macro key", 0, MACRO_1, "MACRO"],
     ["thumb space key", 49, SPACE, "SPACE"],
   ])("ThreeCombosOn %s_BadgesAboveTheLabel", (_, index, code, primary) => {
