@@ -3,7 +3,7 @@ import { createHash } from "crypto";
 import { renderToStaticMarkup } from "react-dom/server";
 import { render as renderDom } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { KeyboardModel } from "../shared/types";
+import type { KeyboardModel, LensCombo } from "../shared/types";
 import { KeyboardView } from "./KeyboardView";
 import { SONSEI_KEYS } from "./geometry-sonsei";
 
@@ -61,7 +61,7 @@ const createModel = (product: string, keyboardType?: string): KeyboardModel => {
     ],
     // Leave the names empty and pass no layerNames prop, so the caption falls back to "Layer 0"
     layerNames: [],
-    combos: [{ positions: [0, 49, 51, 65, 69, 73, 31], layer: 0 }],
+    combos: [{ positions: [0, 49, 51, 65, 69, 73, 31], layer: 0, action: 41 }],
   };
 };
 
@@ -106,7 +106,14 @@ describe("Lens views with the expand settings off", () => {
     const model = createModel(product, keyboardType);
 
     const markup = renderToStaticMarkup(
-      <KeyboardView model={model} activeLayer={0} layout="en-US" expandSuperkeys={false} expandMacros={false} />,
+      <KeyboardView
+        model={model}
+        activeLayer={0}
+        layout="en-US"
+        expandSuperkeys={false}
+        expandMacros={false}
+        expandCombos={false}
+      />,
     );
 
     expect(sha(markup)).toBe(sha(render(model)));
@@ -128,14 +135,21 @@ const createExpandModel = (product: string, keys: Record<number, number>, comboK
     ...createModel(product, keyboardType),
     keymap: [layer],
     superkeys: [SUPERKEY_1_ACTIONS],
-    combos: comboKeys.length > 0 ? [{ positions: comboKeys, layer: 0 }] : [],
+    combos: comboKeys.length > 0 ? [{ positions: comboKeys, layer: 0, action: 6 }] : [],
   };
   return model;
 };
 
-const renderExpanded = (model: KeyboardModel, expandSuperkeys: boolean, expandMacros: boolean) =>
+const renderExpanded = (model: KeyboardModel, expandSuperkeys: boolean, expandMacros: boolean, expandCombos = false) =>
   renderDom(
-    <KeyboardView model={model} activeLayer={0} layout="en-US" expandSuperkeys={expandSuperkeys} expandMacros={expandMacros} />,
+    <KeyboardView
+      model={model}
+      activeLayer={0}
+      layout="en-US"
+      expandSuperkeys={expandSuperkeys}
+      expandMacros={expandMacros}
+      expandCombos={expandCombos}
+    />,
   ).container;
 
 const sonseiKey = (index: number) => {
@@ -216,5 +230,141 @@ describe("Lens views with the expand settings on", () => {
     expect(container.querySelector("g[data-slot]")).toBeNull();
     expect(container.textContent).toContain("SUPER");
     expect(container.textContent).toContain("⌘TAB");
+  });
+});
+
+const OS_C = 4102;
+const ESCAPE = 41;
+
+const combosOn = (positions: number[], ...actions: number[]): LensCombo[] =>
+  actions.map(action => ({ positions, layer: 0, action }));
+
+const badgeTexts = (container: Element) => [...container.querySelectorAll(`${COMBO_BADGE} + text`)].map(t => t.textContent);
+
+describe("Lens views with Expand combos on", () => {
+  beforeEach(() => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Macintosh");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("OneComboOnRectKey_OutputOnTheBadge", () => {
+    const model = { ...createExpandModel("Sonsei", {}, []), combos: combosOn([0], OS_C) };
+
+    const container = renderExpanded(model, false, false, true);
+
+    expect(badgeTexts(container)).toEqual(["⌘C"]);
+  });
+
+  test("TwoCombosOnRectKey_TwoStackedBadges", () => {
+    const key0 = sonseiKey(0);
+    const model = { ...createExpandModel("Sonsei", {}, []), combos: combosOn([0], OS_C, ESCAPE) };
+
+    const container = renderExpanded(model, false, false, true);
+
+    const badgeYs = [...container.querySelectorAll(COMBO_BADGE)].map(badge => numberAttr(badge, "y"));
+    expect(badgeTexts(container)).toEqual(["⌘C", "ESC"]);
+    // Each badge is 12 high with a gap of 1
+    expect(badgeYs).toEqual([key0.y - 3, key0.y - 3 + 13]);
+  });
+
+  test("ThreeCombosOnRectKey_SecondBadgeCountsTheRest", () => {
+    const model = { ...createExpandModel("Sonsei", {}, []), combos: combosOn([0], OS_C, ESCAPE, 4) };
+
+    const container = renderExpanded(model, false, false, true);
+
+    expect(badgeTexts(container)).toEqual(["⌘C", "+2"]);
+  });
+
+  test("ExpandedSuperkeyInTwoCombos_OneBadgeWithCount", () => {
+    const model = { ...createExpandModel("Sonsei", { 0: SUPERKEY_1 }, []), combos: combosOn([0], OS_C, ESCAPE) };
+
+    const container = renderExpanded(model, true, false, true);
+
+    expect(badgeTexts(container)).toEqual(["⌘C +1"]);
+  });
+
+  test("LongOutput_CutToTheFace", () => {
+    const key0 = sonseiKey(0);
+    const model = {
+      ...createExpandModel("Sonsei", {}, []),
+      macroNames: ["Copy everything to the clipboard"],
+      combos: combosOn([0], MACRO_1),
+    };
+
+    const container = renderExpanded(model, false, false, true);
+
+    const [text] = badgeTexts(container);
+    const badgeWidth = numberAttr(container.querySelector(COMBO_BADGE), "width");
+    expect(text?.endsWith("…")).toBe(true);
+    // The text may take the face width less 8, and the badge adds 6 around it
+    expect(badgeWidth).toBeLessThanOrEqual(key0.w - 8 - 8 + 6);
+  });
+
+  test("ExpandedMacroOutput_ItsKeys", () => {
+    const model = { ...createExpandModel("Sonsei", {}, []), combos: combosOn([0], MACRO_1) };
+
+    const container = renderExpanded(model, false, true, true);
+
+    expect(badgeTexts(container)).toEqual(["⌘TAB"]);
+  });
+
+  test("SonseiThumb_OutputOnTheBadge", () => {
+    const key49 = sonseiKey(49);
+    const model = { ...createExpandModel("Sonsei", {}, []), combos: combosOn([49], ESCAPE) };
+
+    const container = renderExpanded(model, false, false, true);
+
+    const thumb = container.querySelector(`g[transform="translate(${key49.x},${key49.y})"]`);
+    expect(badgeTexts(thumb ?? container)).toEqual(["ESC"]);
+  });
+
+  test("DefyRotatedThumb_BadgeTurnsWithTheKey", () => {
+    // Key 67 is the defy-t4 thumb, turned 37 degrees
+    const model = { ...createExpandModel("Defy", {}, []), combos: combosOn([67], ESCAPE, OS_C) };
+
+    const container = renderExpanded(model, false, false, true);
+
+    const turns = [...container.querySelectorAll(COMBO_BADGE)].map(badge => badge.parentElement?.getAttribute("transform"));
+    expect(badgeTexts(container)).toEqual(["ESC", "⌘C"]);
+    expect(turns.every(turn => turn?.startsWith("rotate(37,"))).toBe(true);
+  });
+
+  test("Raise2IsoEnter_OutputOnTheBadge", () => {
+    const model = { ...createExpandModel("Raise2", {}, [], "ISO"), combos: combosOn([31], ESCAPE) };
+
+    const container = renderExpanded(model, false, false, true);
+
+    expect(badgeTexts(container)).toEqual(["ESC"]);
+  });
+
+  test("ExpandedSuperkeyOnThumb_OneLiftedBadge", () => {
+    const key49 = sonseiKey(49);
+    const model = { ...createExpandModel("Sonsei", { 49: SUPERKEY_1 }, []), combos: combosOn([49], ESCAPE, OS_C) };
+
+    const container = renderExpanded(model, true, false, true);
+
+    const thumb = container.querySelector(`g[transform="translate(${key49.x},${key49.y})"]`);
+    expect(badgeTexts(container)).toEqual(["ESC +1"]);
+    // The thumb label centre is at y 27.9, and the badge sits 22 above it plus the lift of 6
+    expect(numberAttr(thumb?.querySelector(COMBO_BADGE), "y")).toBeCloseTo(27.9 - 28);
+  });
+
+  test("OnlyExpandCombos_SuperkeysAndMacrosAsBefore", () => {
+    const model = { ...createExpandModel("Sonsei", { 0: SUPERKEY_1, 1: MACRO_1 }, []), combos: combosOn([0, 1], ESCAPE) };
+    const withoutBadges = (container: HTMLElement) => {
+      container.querySelectorAll(COMBO_BADGE).forEach(badge => badge.parentElement?.remove());
+      return container.innerHTML;
+    };
+
+    const expanded = renderExpanded(model, false, false, true);
+    const collapsed = renderExpanded(model, false, false, false);
+
+    expect(badgeTexts(expanded)).toEqual(["ESC", "ESC"]);
+    expect(withoutBadges(expanded)).toBe(withoutBadges(collapsed));
+    expect(expanded.textContent).toContain("SUPER");
+    expect(expanded.textContent).toContain("Copy");
   });
 });

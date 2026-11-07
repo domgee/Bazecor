@@ -7,12 +7,13 @@ import {
   MOD_ORDER,
   SLOT_FS_CORNER,
   SLOT_FS_TAP,
+  comboOutputLabel,
   fitFontSize,
   fitText,
   slotMaxWidth,
   textWidth,
 } from "./action-labels";
-import type { SlotLabels } from "./action-labels";
+import type { LabelContext, SlotLabels } from "./action-labels";
 
 export { fitFontSize } from "./action-labels";
 
@@ -586,6 +587,12 @@ export function superkeySlots(
 
 const COMBO_BADGE_H = 12;
 const COMBO_BADGE_FS = 8;
+const COMBO_BADGE_PAD = 6;
+const COMBO_BADGE_STEP = COMBO_BADGE_H + 1;
+// Cap the text of an expanded badge at the face width minus this on a rect key
+const COMBO_BADGE_FACE_MARGIN = 8;
+// Cap the text of an expanded badge at this width on a silhouette
+const COMBO_BADGE_SILHOUETTE_MAX_W = 40;
 
 /**
  * Key offset -> combo badge text for the combos that apply on `layer`: "C1",
@@ -604,12 +611,31 @@ export function comboNumbersForLayer(combos: LensCombo[] | undefined, layer: num
 }
 
 /**
- * The "C<n>" chip Bazecor's Layout Editor draws on a key that belongs to a
- * combo (see src/renderer/modules/KeyboardCanvas/comboBadges.ts), with its
- * top-right corner at (right, top). `text` comes from comboNumbersForLayer.
+ * Key offset -> one badge text per combo that applies on `layer`, in combo order, by the same layer rule as comboNumbersForLayer.
+ * With `expand` each text is what the combo sends, or "C<n>" when Lens cannot name it.
  */
-export function comboBadge(text: string, right: number, top: number, transform?: string): JSX.Element {
-  const w = 6 + text.length * 5;
+export function comboBadgesForLayer(
+  combos: LensCombo[] | undefined,
+  layer: number,
+  ctx: LabelContext,
+  expand: boolean,
+): Map<number, string[]> {
+  const out = new Map<number, string[]>();
+
+  (combos ?? []).forEach((combo, index) => {
+    if (combo.layer !== COMBO_LAYER_ANY && combo.layer !== layer) {
+      return;
+    }
+
+    const number = `C${index + 1}`;
+    const text = expand ? (comboOutputLabel(combo.action, ctx) ?? number) : number;
+    combo.positions.forEach(position => out.set(position, (out.get(position) ?? []).concat([text])));
+  });
+
+  return out;
+}
+
+function drawComboBadge(text: string, right: number, top: number, w: number, transform?: string): JSX.Element {
   return (
     <g transform={transform} pointerEvents="none">
       <rect
@@ -639,6 +665,15 @@ export function comboBadge(text: string, right: number, top: number, transform?:
 }
 
 /**
+ * The "C<n>" chip Bazecor's Layout Editor draws on a key that belongs to a
+ * combo (see src/renderer/modules/KeyboardCanvas/comboBadges.ts), with its
+ * top-right corner at (right, top). `text` comes from comboNumbersForLayer.
+ */
+export function comboBadge(text: string, right: number, top: number, transform?: string): JSX.Element {
+  return drawComboBadge(text, right, top, COMBO_BADGE_PAD + text.length * 5, transform);
+}
+
+/**
  * Badge for a key drawn as a silhouette (thumb wings, ISO Enter), whose
  * bounding-box corner can fall outside the shape. Anchored to the label
  * centre instead and turned with it, so it always sits on the key face.
@@ -647,4 +682,58 @@ export function comboBadge(text: string, right: number, top: number, transform?:
 export function comboBadgeNearLabel(text: string, cx: number, cy: number, rotation = 0, lift = 0): JSX.Element {
   const transform = rotation ? `rotate(${rotation},${cx},${cy})` : undefined;
   return comboBadge(text, cx + 22, cy - 22 - lift, transform);
+}
+
+/**
+ * The badge texts for a key in `texts.length` combos, each cut to `maxWidth`. Two combos give two badges, three or more give the
+ * first and "+<n-1>". `single` gives one badge with a " +<n-1>" suffix, for a key whose Superkey slots leave room for one only.
+ */
+function comboBadgeLines(texts: string[], maxWidth: number, single: boolean): string[] {
+  const more = texts.length - 1;
+
+  if (more <= 0) {
+    return [fitText(texts[0] ?? "", COMBO_BADGE_FS, maxWidth)];
+  }
+
+  if (single) {
+    const suffix = ` +${more}`;
+    return [`${fitText(texts[0], COMBO_BADGE_FS, maxWidth - textWidth(suffix, COMBO_BADGE_FS))}${suffix}`];
+  }
+
+  const second = more === 1 ? fitText(texts[1], COMBO_BADGE_FS, maxWidth) : `+${more}`;
+  return [fitText(texts[0], COMBO_BADGE_FS, maxWidth), second];
+}
+
+function comboBadgeLinesAt(lines: string[], right: number, top: number, transform?: string): JSX.Element {
+  const badge = (text: string, row: number) =>
+    drawComboBadge(text, right, top + row * COMBO_BADGE_STEP, COMBO_BADGE_PAD + textWidth(text, COMBO_BADGE_FS), transform);
+
+  return (
+    <>
+      {badge(lines[0], 0)}
+      {lines.length > 1 && badge(lines[1], 1)}
+    </>
+  );
+}
+
+/**
+ * The expanded combo badges of a rect key, stacked down from today's badge with its top-right corner at (right, top).
+ * `faceW` is the width of the key face, `single` draws one badge for a key with Superkey slots.
+ */
+export function comboBadgeStack(texts: string[], right: number, top: number, faceW: number, single: boolean): JSX.Element {
+  return comboBadgeLinesAt(comboBadgeLines(texts, faceW - COMBO_BADGE_FACE_MARGIN, single), right, top);
+}
+
+/** comboBadgeStack for a silhouette key, anchored and turned like comboBadgeNearLabel */
+export function comboBadgeStackNearLabel(
+  texts: string[],
+  cx: number,
+  cy: number,
+  single: boolean,
+  rotation = 0,
+  lift = 0,
+): JSX.Element {
+  const transform = rotation ? `rotate(${rotation},${cx},${cy})` : undefined;
+  const lines = comboBadgeLines(texts, COMBO_BADGE_SILHOUETTE_MAX_W, single);
+  return comboBadgeLinesAt(lines, cx + 22, cy - 22 - lift, transform);
 }

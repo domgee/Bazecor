@@ -17,7 +17,7 @@ describe("Lens combos", () => {
   test("parses the six-key format", () => {
     const combos = parseCombos(reply([[48, 49, 50, 51, 52, 53, 2, 1, 29]], 9));
 
-    expect(combos).toEqual([{ positions: [48, 49, 50, 51, 52, 53], layer: 2 }]);
+    expect(combos).toEqual([{ positions: [48, 49, 50, 51, 52, 53], layer: 2, action: 29 }]);
   });
 
   test("parses a backup from the first firmware, where 255 meant every layer", () => {
@@ -32,22 +32,22 @@ describe("Lens combos", () => {
     );
 
     expect(combos).toEqual([
-      { positions: [48, 49], layer: COMBO_LAYER_ANY },
-      { positions: [50, 51], layer: 1 },
+      { positions: [48, 49], layer: COMBO_LAYER_ANY, action: 29 },
+      { positions: [50, 51], layer: 1, action: 30 },
     ]);
   });
 
-  test("a disabled combo keeps its number but badges nothing", () => {
+  test("a disabled combo keeps its number and its action but badges nothing", () => {
     const combos = parseCombos(reply([[48, 49, 255, 255, 255, 255, 0, 0, 29]], 9));
 
-    expect(combos).toEqual([{ positions: [], layer: 0 }]);
+    expect(combos).toEqual([{ positions: [], layer: 0, action: 29 }]);
   });
 
   test("a key in several combos gets every number, on its layer only", () => {
     const combos = [
-      { positions: [48, 49], layer: 0 },
-      { positions: [49, 50], layer: 0 },
-      { positions: [49], layer: 1 },
+      { positions: [48, 49], layer: 0, action: 4 },
+      { positions: [49, 50], layer: 0, action: 5 },
+      { positions: [49], layer: 1, action: 6 },
     ];
 
     expect(comboNumbersForLayer(combos, 0).get(49)).toBe("C1 C2");

@@ -160,10 +160,11 @@ export function parseCombos(raw: string): LensCombo[] {
     const positions = nums.slice(base, base + members).filter(p => p !== COMBO_POSITION_UNUSED);
     const storedLayer = nums[base + members];
     const flags = nums[base + members + 1];
+    const action = nums[base + members + 2];
     const layer = legacy && storedLayer === LEGACY_COMBO_LAYER_ANY ? COMBO_LAYER_ANY : storedLayer;
     // Disabled combos keep their slot so the numbering matches Bazecor's "C<n>".
     // eslint-disable-next-line no-bitwise
-    out.push({ positions: flags & COMBO_FLAG_ENABLED ? positions : [], layer });
+    out.push({ positions: flags & COMBO_FLAG_ENABLED ? positions : [], layer, action });
   }
   return out;
 }

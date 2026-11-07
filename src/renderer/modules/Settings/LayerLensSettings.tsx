@@ -31,6 +31,7 @@ interface LensSettingsShape {
   resizeMode: boolean;
   expandSuperkeys: boolean;
   expandMacros: boolean;
+  expandCombos: boolean;
 }
 
 interface LensStateShape {
@@ -46,6 +47,7 @@ const LayerLensSettings = () => {
   const [overlayOpacity, setOverlayOpacity] = useState([85]);
   const [expandSuperkeys, setExpandSuperkeys] = useState(false);
   const [expandMacros, setExpandMacros] = useState(false);
+  const [expandCombos, setExpandCombos] = useState(false);
   const [runInBackground, setRunInBackground] = useState(false);
   const [hidPermissionDenied, setHidPermissionDenied] = useState(false);
 
@@ -62,6 +64,10 @@ const LayerLensSettings = () => {
 
     if (typeof s.expandMacros === "boolean") {
       setExpandMacros(s.expandMacros);
+    }
+
+    if (typeof s.expandCombos === "boolean") {
+      setExpandCombos(s.expandCombos);
     }
   };
 
@@ -120,6 +126,11 @@ const LayerLensSettings = () => {
   const handleExpandMacros = (checked: boolean) => {
     setExpandMacros(checked);
     ipcRenderer.invoke("lens:set-expand-macros", checked).catch(() => {});
+  };
+
+  const handleExpandCombos = (checked: boolean) => {
+    setExpandCombos(checked);
+    ipcRenderer.invoke("lens:set-expand-combos", checked).catch(() => {});
   };
 
   const handleOverlayOpacity = (value: number[]) => {
@@ -362,6 +373,34 @@ const LayerLensSettings = () => {
                 id="expandMacrosSwitch"
                 checked={expandMacros}
                 onCheckedChange={handleExpandMacros}
+                variant="default"
+                size="sm"
+              />
+            </div>
+
+            <div className="flex items-center w-full justify-between py-2 border-b-[1px] border-gray-50 dark:border-gray-700">
+              <div className="flex items-center gap-1.5">
+                <label htmlFor="expandCombosSwitch" className="m-0 text-sm font-semibold tracking-tight">
+                  Expand combos
+                </label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex cursor-help text-purple-100 dark:text-purple-200">
+                      <IconInformation size="sm" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs">
+                      Shows what each combo sends on the badge of its keys instead of its number. A key in several combos gets one
+                      badge per combo.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Switch
+                id="expandCombosSwitch"
+                checked={expandCombos}
+                onCheckedChange={handleExpandCombos}
                 variant="default"
                 size="sm"
               />

@@ -176,6 +176,7 @@ export function App() {
             layerNames={layerNames}
             expandSuperkeys={settings.expandSuperkeys}
             expandMacros={settings.expandMacros}
+            expandCombos={settings.expandCombos}
           />
           <ResizeFrame />
         </div>

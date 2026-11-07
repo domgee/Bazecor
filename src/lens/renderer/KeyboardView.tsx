@@ -11,6 +11,9 @@ import {
   splitLongWord,
   comboBadge,
   comboBadgeNearLabel,
+  comboBadgeStack,
+  comboBadgeStackNearLabel,
+  comboBadgesForLayer,
   comboNumbersForLayer,
   superkeySlots,
   SILHOUETTE_HALF_W,
@@ -25,6 +28,7 @@ interface Props {
   layerNames?: string[];
   expandSuperkeys?: boolean;
   expandMacros?: boolean;
+  expandCombos?: boolean;
 }
 
 const SVG_W = 1270;
@@ -74,7 +78,15 @@ const THUMB_SLOT_CENTER: Record<number, [number, number]> = {
   57: [37.0, 35.3],
 };
 
-export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, layerNames, expandSuperkeys, expandMacros }) => {
+export const KeyboardView: React.FC<Props> = ({
+  model,
+  activeLayer,
+  layout,
+  layerNames,
+  expandSuperkeys,
+  expandMacros,
+  expandCombos,
+}) => {
   // Each product has its own geometry; dispatch to the matching view. The Sonsei
   // rendering below is the default (also covers unknown products).
   if (model.product?.toLowerCase() === "defy") {
@@ -86,6 +98,7 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
         layerNames={layerNames}
         expandSuperkeys={expandSuperkeys}
         expandMacros={expandMacros}
+        expandCombos={expandCombos}
       />
     );
   }
@@ -98,6 +111,7 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
         layerNames={layerNames}
         expandSuperkeys={expandSuperkeys}
         expandMacros={expandMacros}
+        expandCombos={expandCombos}
       />
     );
   }
@@ -108,6 +122,7 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
   const colormapLayer = model.colormap[layer] ?? [];
   const { palette } = model;
   const comboNumbers = comboNumbersForLayer(model.combos, layer);
+  const comboBadges = expandCombos ? comboBadgesForLayer(model.combos, layer, ctx, true) : null;
 
   function getColor(ledIndex: number) {
     const pi = colormapLayer[ledIndex] ?? 0;
@@ -121,6 +136,7 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
     const fgColor = fg(color.r, color.g, color.b);
     const hasSub = Boolean(label.subtitle);
     const comboNumber = comboNumbers.get(key.index);
+    const comboTexts = comboBadges?.get(key.index);
 
     const thumbPath = THUMB_PATHS[key.index];
     if (thumbPath) {
@@ -128,6 +144,7 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
       const [sx, sy] = THUMB_SLOT_CENTER[key.index] ?? [tx, ty];
       const tr = rotKeyType ? (DEFY_THUMB_ROTATION[rotKeyType] ?? 0) : 0;
       const rot = tr === 0 ? undefined : `rotate(${tr},${tx},${ty})`;
+      const [bx, by, badgeLift] = slots ? [sx, sy, SLOT_BADGE_LIFT] : [tx, ty, 0];
       let thumbLabel: JSX.Element | null = null;
       if (slots) {
         thumbLabel = superkeySlots(sx, sy, SILHOUETTE_HALF_W, slots, fgColor, tr);
@@ -223,10 +240,9 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
           <path d={thumbPath} fill={color.css} />
           <path d={thumbPath} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
           {thumbLabel}
-          {comboNumber !== undefined &&
-            (slots
-              ? comboBadgeNearLabel(comboNumber, sx, sy, tr, SLOT_BADGE_LIFT)
-              : comboBadgeNearLabel(comboNumber, tx, ty, tr))}
+          {comboTexts
+            ? comboBadgeStackNearLabel(comboTexts, bx, by, Boolean(slots), tr, badgeLift)
+            : comboNumber !== undefined && comboBadgeNearLabel(comboNumber, bx, by, tr, badgeLift)}
         </g>
       );
     }
@@ -244,7 +260,9 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill={color.css} />
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
         {slots ? superkeySlots(cx, cy, (w - 8) / 2, slots, fgColor) : keyLabel(cx, cy, y, h, label, fgColor)}
-        {comboNumber !== undefined && comboBadge(comboNumber, x + w - 1, y - 3)}
+        {comboTexts
+          ? comboBadgeStack(comboTexts, x + w - 1, y - 3, w - 8, Boolean(slots))
+          : comboNumber !== undefined && comboBadge(comboNumber, x + w - 1, y - 3)}
       </g>
     );
   }

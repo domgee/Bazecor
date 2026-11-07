@@ -1,8 +1,10 @@
 import React from "react";
 import { render } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
-import type { SlotLabels } from "./action-labels";
-import { superkeySlots } from "./key-label";
+import { COMBO_LAYER_ANY } from "../shared/types";
+import type { LabelContext, SlotLabels } from "./action-labels";
+import { comboBadgesForLayer, superkeySlots } from "./key-label";
+import { layoutOverrides, symbolOverrides } from "./keycodes";
 
 const renderSlots = (slots: SlotLabels, rotation = 0) =>
   render(<svg>{superkeySlots(100, 100, 24.5, slots, "#fff", rotation)}</svg>).container;
@@ -59,5 +61,42 @@ describe("superkeySlots", () => {
     const container = renderSlots([{ text: "", icon: "play-pause" }, null, null, null, null]);
 
     expect(container.querySelector('g[data-slot="tap"] svg')).not.toBeNull();
+  });
+});
+
+const labelCtx: LabelContext = {
+  overrides: layoutOverrides("us"),
+  symbols: symbolOverrides("us"),
+  layerNames: [],
+  macroNames: [],
+  superkeyNames: [],
+  modStyle: "mac",
+};
+
+describe("comboBadgesForLayer", () => {
+  // OS + C, Escape and an empty action
+  const combos = [
+    { positions: [48, 49], layer: 0, action: 4102 },
+    { positions: [49, 50], layer: COMBO_LAYER_ANY, action: 41 },
+    { positions: [49], layer: 0, action: 0 },
+    { positions: [48], layer: 1, action: 4 },
+  ];
+
+  test("Expanded_OutputsInComboOrderOnTheLayer", () => {
+    const badges = comboBadgesForLayer(combos, 0, labelCtx, true);
+
+    expect(Object.fromEntries(badges)).toEqual({ 48: ["⌘C"], 49: ["⌘C", "ESC", "C3"], 50: ["ESC"] });
+  });
+
+  test("OtherLayer_OnlyItsCombos", () => {
+    const badges = comboBadgesForLayer(combos, 1, labelCtx, true);
+
+    expect(Object.fromEntries(badges)).toEqual({ 48: ["A"], 49: ["ESC"], 50: ["ESC"] });
+  });
+
+  test("NotExpanded_Numbers", () => {
+    const badges = comboBadgesForLayer(combos, 0, labelCtx, false);
+
+    expect(Object.fromEntries(badges)).toEqual({ 48: ["C1"], 49: ["C1", "C2", "C3"], 50: ["C2"] });
   });
 });

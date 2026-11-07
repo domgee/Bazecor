@@ -13,6 +13,7 @@ export const LENS_DEFAULTS: LensSettings = {
   resizeMode: false,
   expandSuperkeys: false,
   expandMacros: false,
+  expandCombos: false,
 };
 
 export const AUTO_SHOW_DURATION_MIN_MS = 1000;
@@ -39,6 +40,7 @@ export function sanitizeLensSettings(s: Partial<LensSettings>): LensSettings {
     resizeMode: typeof s.resizeMode === "boolean" ? s.resizeMode : LENS_DEFAULTS.resizeMode,
     expandSuperkeys: typeof s.expandSuperkeys === "boolean" ? s.expandSuperkeys : LENS_DEFAULTS.expandSuperkeys,
     expandMacros: typeof s.expandMacros === "boolean" ? s.expandMacros : LENS_DEFAULTS.expandMacros,
+    expandCombos: typeof s.expandCombos === "boolean" ? s.expandCombos : LENS_DEFAULTS.expandCombos,
   };
 }
 

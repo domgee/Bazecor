@@ -8,6 +8,9 @@ import {
   fg,
   comboBadge,
   comboBadgeNearLabel,
+  comboBadgeStack,
+  comboBadgeStackNearLabel,
+  comboBadgesForLayer,
   comboNumbersForLayer,
   superkeySlots,
   SILHOUETTE_HALF_W,
@@ -21,6 +24,7 @@ interface Props {
   layerNames?: string[];
   expandSuperkeys?: boolean;
   expandMacros?: boolean;
+  expandCombos?: boolean;
 }
 
 /**
@@ -31,13 +35,22 @@ interface Props {
  * face). Unlike the Sonsei view the two halves are not rotated — the Defy
  * coordinates already bake the split-ergo stagger into their y values.
  */
-export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, layerNames, expandSuperkeys, expandMacros }) => {
+export const DefyKeyboardView: React.FC<Props> = ({
+  model,
+  activeLayer,
+  layout,
+  layerNames,
+  expandSuperkeys,
+  expandMacros,
+  expandCombos,
+}) => {
   const ctx = faceContext(model, layout, layerNames, { expandSuperkeys, expandMacros });
   const layer = Math.min(activeLayer, model.keymap.length - 1);
   const keymapLayer = model.keymap[layer] ?? [];
   const colormapLayer = model.colormap[layer] ?? [];
   const { palette } = model;
   const comboNumbers = comboNumbersForLayer(model.combos, layer);
+  const comboBadges = expandCombos ? comboBadgesForLayer(model.combos, layer, ctx, true) : null;
 
   function getColor(ledIndex: number) {
     const pi = colormapLayer[ledIndex] ?? 0;
@@ -50,6 +63,7 @@ export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, 
     const { label, slots } = keyFace(keymapLayer[key.index] ?? 0, ctx);
     const fgColor = fg(color.r, color.g, color.b);
     const comboNumber = comboNumbers.get(key.index);
+    const comboTexts = comboBadges?.get(key.index);
     const { x, y, w, h } = key;
 
     // Thumb keys: draw the editor silhouette (outer bezel + inset color face) in a
@@ -60,6 +74,7 @@ export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, 
       const [lcx, lcy] = key.thumbType ? (DEFY_THUMB_CENTER[key.thumbType] ?? fallbackCenter) : fallbackCenter;
       const rotation = key.thumbType ? (DEFY_THUMB_ROTATION[key.thumbType] ?? 0) : 0;
       const [scx, scy] = (key.thumbType && DEFY_THUMB_SLOT_CENTER[key.thumbType]) || [lcx, lcy];
+      const [bx, by, badgeLift] = slots ? [scx, scy, SLOT_BADGE_LIFT] : [lcx, lcy, 0];
       return (
         <g key={`k-${key.index}`} transform={`translate(${x},${y})`}>
           <g className="key-shadow-hover" transform="translate(0,4)">
@@ -77,10 +92,9 @@ export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, 
           {slots
             ? superkeySlots(scx, scy, SILHOUETTE_HALF_W, slots, fgColor, rotation)
             : keyLabel(lcx, lcy, 0, h, label, fgColor, rotation)}
-          {comboNumber !== undefined &&
-            (slots
-              ? comboBadgeNearLabel(comboNumber, scx, scy, rotation, SLOT_BADGE_LIFT)
-              : comboBadgeNearLabel(comboNumber, lcx, lcy, rotation))}
+          {comboTexts
+            ? comboBadgeStackNearLabel(comboTexts, bx, by, Boolean(slots), rotation, badgeLift)
+            : comboNumber !== undefined && comboBadgeNearLabel(comboNumber, bx, by, rotation, badgeLift)}
         </g>
       );
     }
@@ -96,7 +110,9 @@ export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, 
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill={color.css} />
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
         {slots ? superkeySlots(cx, cy, (w - 8) / 2, slots, fgColor) : keyLabel(cx, cy, y, h, label, fgColor)}
-        {comboNumber !== undefined && comboBadge(comboNumber, x + w - 1, y - 3)}
+        {comboTexts
+          ? comboBadgeStack(comboTexts, x + w - 1, y - 3, w - 8, Boolean(slots))
+          : comboNumber !== undefined && comboBadge(comboNumber, x + w - 1, y - 3)}
       </g>
     );
   }

@@ -276,6 +276,12 @@ export function compactActionText(code: number, ctx: LabelContext): string {
   return label.text;
 }
 
+/** What a combo sends as badge text, null when it sends nothing Lens can name */
+export function comboOutputLabel(action: number, ctx: LabelContext): string | null {
+  const text = compactActionText(action, ctx);
+  return text.trim() ? text : null;
+}
+
 /** Labels for the 5 slots of a Superkey, null when it has no actions */
 export function superkeySlotLabels(actions: number[] | undefined, ctx: LabelContext): SlotLabels | null {
   if (!actions || actions.slice(0, 5).every(isEmptyAction)) {

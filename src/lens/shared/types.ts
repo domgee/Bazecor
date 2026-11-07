@@ -16,6 +16,8 @@ export interface LensCombo {
   positions: number[];
   /** The layer the combo works on, or COMBO_LAYER_ANY. */
   layer: number;
+  /** The keycode the combo sends. */
+  action: number;
 }
 
 /** One macro action, as far as the overlay needs it */
@@ -73,6 +75,8 @@ export interface LensSettings {
   expandSuperkeys: boolean;
   /** Show the keys a macro sends instead of its name. */
   expandMacros: boolean;
+  /** Show what each combo sends on the badge of its keys instead of its number. */
+  expandCombos: boolean;
 }
 
 /** Last position/size of the overlay window, persisted so the overlay reopens

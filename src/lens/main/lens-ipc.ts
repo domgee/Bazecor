@@ -66,6 +66,12 @@ export function registerLensIpc(onRunInBackgroundChange: (v: boolean) => void): 
     return s;
   });
 
+  ipcMain.handle("lens:set-expand-combos", (_, v: boolean): LensSettings => {
+    const s = setLensSettings({ expandCombos: v });
+    broadcastSettings(s);
+    return s;
+  });
+
   ipcMain.handle("lens:set-layout", (_, v: string): LensSettings => {
     const s = setLensSettings({ layout: v });
     broadcastSettings(s);

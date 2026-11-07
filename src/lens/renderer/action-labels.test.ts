@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { LensMacroAction } from "../shared/types";
 import {
+  comboOutputLabel,
   compactActionLabel,
   fitFontSize,
   fitMacroSubtitle,
@@ -357,5 +358,55 @@ describe("bounded cut", () => {
     );
     expect(names).toEqual(["hi hi hi hi…"]);
     expect(names).toEqual([unbounded]);
+  });
+});
+
+describe("comboOutputLabel", () => {
+  test("PlainKey_KeyLabel", () => {
+    expect(comboOutputLabel(41, ctx())).toBe("ESC");
+  });
+
+  test.each([
+    ["mac", "⌘C"],
+    ["text", "O+C"],
+  ])("KeyWithModifier %s_ModifierStyle", (modStyle, expected) => {
+    // OS + C
+    expect(comboOutputLabel(4102, ctx("us", modStyle as ModStyle))).toBe(expected);
+  });
+
+  test.each([
+    [23785, "VOL+"],
+    [22733, "⏯"],
+  ])("MediaKey %s_SpelledOut", (code, expected) => {
+    expect(comboOutputLabel(code, ctx())).toBe(expected);
+  });
+
+  test("Macro_ItsName", () => {
+    expect(comboOutputLabel(53852, ctx("us", "mac", { macroNames: ["Copy"] }))).toBe("Copy");
+  });
+
+  test("MacroWithExpandedNames_ItsKeys", () => {
+    // Expand macros puts the keys a macro sends into macroNames
+    expect(comboOutputLabel(53852, ctx("us", "mac", { macroNames: ["⌘C"] }))).toBe("⌘C");
+  });
+
+  test("UnnamedMacro_Number", () => {
+    expect(comboOutputLabel(53853, ctx())).toBe("M2");
+  });
+
+  test("Superkey_ItsName", () => {
+    expect(comboOutputLabel(53981, ctx("us", "mac", { superkeyNames: ["", "Nav"] }))).toBe("Nav");
+  });
+
+  test("UnnamedSuperkey_Number", () => {
+    expect(comboOutputLabel(53980, ctx())).toBe("SK1");
+  });
+
+  test.each([0, 1, 65535])("EmptyAction %s_Null", code => {
+    expect(comboOutputLabel(code, ctx())).toBeNull();
+  });
+
+  test("BlankLabel_Null", () => {
+    expect(comboOutputLabel(53852, ctx("us", "mac", { macroNames: [" "] }))).toBeNull();
   });
 });

@@ -38,4 +38,19 @@ describe("sanitizeLensSettings", () => {
       expandMacros: false,
     });
   });
+
+  test("NoSettings_ExpandCombosOff", () => {
+    expect(sanitizeLensSettings({}).expandCombos).toBe(false);
+  });
+
+  test("ExpandCombosOn_KeptOn", () => {
+    expect(sanitizeLensSettings({ expandCombos: true }).expandCombos).toBe(true);
+  });
+
+  test.each(["yes", 1])("ExpandCombosNotBoolean %s_Off", expandCombos => {
+    // Simulate a hand-edited store with a value of the wrong type
+    const settings = sanitizeLensSettings({ expandCombos } as unknown as Partial<LensSettings>);
+
+    expect(settings.expandCombos).toBe(false);
+  });
 });

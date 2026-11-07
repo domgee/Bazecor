@@ -173,6 +173,7 @@ const schema: Schema<StorageType> = {
       resizeMode: { type: "boolean" },
       expandSuperkeys: { type: "boolean" },
       expandMacros: { type: "boolean" },
+      expandCombos: { type: "boolean" },
       keyboard: {
         type: "object",
         properties: {
