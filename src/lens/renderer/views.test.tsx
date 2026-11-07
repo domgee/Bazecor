@@ -8,12 +8,17 @@ import { KeyboardView } from "./KeyboardView";
 // Superkey 1, macro 1, a layer shift key, OS+Tab, a media key, A, Left Shift, Superkey 2, Numpad 7 and a dual function key
 const FILL = [53980, 53852, 17450, 4139, 22733, 4, 225, 53981, 95, 51222];
 const SUPERKEY_1 = 53980;
+const SUPERKEY_2 = 53981;
+const MACRO_1 = 53852;
 
-// Keys drawn from their own silhouette path, so the Superkey label is rendered on every shape
-const SILHOUETTE_KEYS: Record<string, number[]> = {
-  Sonsei: [48, 49, 50, 51, 56, 57, 58, 59],
-  Defy: Array.from({ length: 16 }, (_, i) => 64 + i),
-  Raise2: [69, 73],
+const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
+
+// Put a named Superkey, an unnamed Superkey and a macro on the keys drawn from their own silhouette path, so each label is rendered on
+// those shapes. Raise2 ANSI has only two such keys, so its unnamed Superkey sits on the ISO Enter only.
+const SILHOUETTE_KEYS: Record<string, Record<number, number[]>> = {
+  Sonsei: { [SUPERKEY_1]: [48, 49, 50, 51, 56, 57], [SUPERKEY_2]: [58], [MACRO_1]: [59] },
+  Defy: { [SUPERKEY_1]: range(64, 77), [SUPERKEY_2]: [78], [MACRO_1]: [79] },
+  Raise2: { [SUPERKEY_1]: [69], [MACRO_1]: [73] },
 };
 const RAISE2_ISO_ENTER = 31;
 
@@ -21,12 +26,14 @@ const createModel = (product: string, keyboardType?: string): KeyboardModel => {
   const keysPerLayer = product === "Sonsei" ? 60 : 80;
   const layer = Array.from({ length: keysPerLayer }, (_, i) => FILL[i % FILL.length]);
 
-  for (const index of SILHOUETTE_KEYS[product]) {
-    layer[index] = SUPERKEY_1;
+  for (const [code, indexes] of Object.entries(SILHOUETTE_KEYS[product])) {
+    for (const index of indexes) {
+      layer[index] = Number(code);
+    }
   }
 
   if (keyboardType === "ISO") {
-    layer[RAISE2_ISO_ENTER] = SUPERKEY_1;
+    layer[RAISE2_ISO_ENTER] = SUPERKEY_2;
   }
 
   return {
@@ -64,25 +71,25 @@ const render = (model: KeyboardModel) => renderToStaticMarkup(<KeyboardView mode
 describe("Lens views", () => {
   test("Sonsei", () => {
     expect(sha(render(createModel("Sonsei")))).toMatchInlineSnapshot(
-      `"76a2e1b092f4af85952704b5fddd2d40793a87dc7d213d22617190b73dab8ceb"`,
+      `"3c4ba68c41d82e0fcdae64a4d3ccc9ed9c9ffed130c0532e2b8d3d1846e456cb"`,
     );
   });
 
   test("Defy", () => {
     expect(sha(render(createModel("Defy")))).toMatchInlineSnapshot(
-      `"3930f2175567fb16a0f070e6423210933c400f5305605747635efbe4d6a54bf2"`,
+      `"abe0e627a0ca7736ffa0626e5c9fa781b2d1e6265e576dbbbf6dae23ca93482c"`,
     );
   });
 
   test("Raise2 ANSI", () => {
     expect(sha(render(createModel("Raise2", "ANSI")))).toMatchInlineSnapshot(
-      `"18ead85913457895ae68589fec15fc1827ad0ed62ef3689e60c7957d8a083286"`,
+      `"2e909802c6c46471d55eeefaf9a578827e6903a6d16112a5a2be0f72c5c3bec2"`,
     );
   });
 
   test("Raise2 ISO", () => {
     expect(sha(render(createModel("Raise2", "ISO")))).toMatchInlineSnapshot(
-      `"5f99106f5af3e5487897300c0210f79d6dbc9791e02f577cb9c6d20931352885"`,
+      `"a18c32a35556715cbbb70c37a9c3e8b0e0e37a796eb15c42da4138e1b2bd2ed2"`,
     );
   });
 });

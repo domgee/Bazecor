@@ -57,11 +57,19 @@ describe("Lens combos", () => {
 });
 
 describe("Lens superkeys", () => {
-  test("splits at each end marker and stops at the erased fill", () => {
+  test("splits at each end marker and stops at the double end marker", () => {
     expect(parseSuperkeys("4 5 6 7 8 0 9 10 11 12 13 0 0 65535 65535")).toEqual([
       [4, 5, 6, 7, 8],
       [9, 10, 11, 12, 13],
     ]);
+  });
+
+  test("stops at the erased fill", () => {
+    expect(parseSuperkeys("4 1 1 1 1 0 65535 65535")).toEqual([[4, 1, 1, 1, 1]]);
+  });
+
+  test("keeps an unterminated last Superkey", () => {
+    expect(parseSuperkeys("4 5")).toEqual([[4, 5, 1, 1, 1]]);
   });
 
   test("pads a short Superkey with empty actions", () => {

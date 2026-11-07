@@ -18,7 +18,7 @@ export interface LensCombo {
   layer: number;
 }
 
-/** One macro action, as far as the overlay needs it. */
+/** One macro action, as far as the overlay needs it */
 export interface LensMacroAction {
   type: number;
   keyCode: number | number[];
