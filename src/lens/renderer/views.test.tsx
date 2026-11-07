@@ -239,6 +239,15 @@ const ESCAPE = 41;
 const combosOn = (positions: number[], ...actions: number[]): LensCombo[] =>
   actions.map(action => ({ positions, layer: 0, action }));
 
+const MACRO_2 = 53853;
+const SPACE = 44;
+
+const badgeBox = (badge: Element) => {
+  const left = numberAttr(badge, "x");
+  const top = numberAttr(badge, "y");
+  return { left, right: left + numberAttr(badge, "width"), top, bottom: top + numberAttr(badge, "height") };
+};
+
 const badgeTexts = (container: Element) => [...container.querySelectorAll(`${COMBO_BADGE} + text`)].map(t => t.textContent);
 
 describe("Lens views with Expand combos on", () => {
@@ -258,16 +267,19 @@ describe("Lens views with Expand combos on", () => {
     expect(badgeTexts(container)).toEqual(["⌘C"]);
   });
 
-  test("TwoCombosOnRectKey_TwoStackedBadges", () => {
+  test("TwoCombosOnRectKey_SecondBadgeTopLeft", () => {
     const key0 = sonseiKey(0);
     const model = { ...createExpandModel("Sonsei", {}, []), combos: combosOn([0], OS_C, ESCAPE) };
 
     const container = renderExpanded(model, false, false, true);
 
-    const badgeYs = [...container.querySelectorAll(COMBO_BADGE)].map(badge => numberAttr(badge, "y"));
+    const [first, second] = [...container.querySelectorAll(COMBO_BADGE)].map(badgeBox);
     expect(badgeTexts(container)).toEqual(["⌘C", "ESC"]);
-    // Each badge is 12 high with a gap of 1
-    expect(badgeYs).toEqual([key0.y - 3, key0.y - 3 + 13]);
+    expect({ firstRight: first.right, secondLeft: second.left, tops: [first.top, second.top] }).toEqual({
+      firstRight: key0.x + key0.w - 1,
+      secondLeft: key0.x + 1,
+      tops: [key0.y - 3, key0.y - 3],
+    });
   });
 
   test("ThreeCombosOnRectKey_SecondBadgeCountsTheRest", () => {
@@ -278,12 +290,12 @@ describe("Lens views with Expand combos on", () => {
     expect(badgeTexts(container)).toEqual(["⌘C", "+2"]);
   });
 
-  test("ExpandedSuperkeyInTwoCombos_OneBadgeWithCount", () => {
+  test("ExpandedSuperkeyInTwoCombos_BothBadges", () => {
     const model = { ...createExpandModel("Sonsei", { 0: SUPERKEY_1 }, []), combos: combosOn([0], OS_C, ESCAPE) };
 
     const container = renderExpanded(model, true, false, true);
 
-    expect(badgeTexts(container)).toEqual(["⌘C +1"]);
+    expect(badgeTexts(container)).toEqual(["⌘C", "ESC"]);
   });
 
   test("LongOutput_CutToTheFace", () => {
@@ -340,16 +352,53 @@ describe("Lens views with Expand combos on", () => {
     expect(badgeTexts(container)).toEqual(["ESC"]);
   });
 
-  test("ExpandedSuperkeyOnThumb_OneLiftedBadge", () => {
+  test("ExpandedSuperkeyOnThumb_BothBadgesLiftedAndMirrored", () => {
     const key49 = sonseiKey(49);
     const model = { ...createExpandModel("Sonsei", { 49: SUPERKEY_1 }, []), combos: combosOn([49], ESCAPE, OS_C) };
 
     const container = renderExpanded(model, true, false, true);
 
     const thumb = container.querySelector(`g[transform="translate(${key49.x},${key49.y})"]`);
-    expect(badgeTexts(container)).toEqual(["ESC +1"]);
-    // The thumb label centre is at y 27.9, and the badge sits 22 above it plus the lift of 6
-    expect(numberAttr(thumb?.querySelector(COMBO_BADGE), "y")).toBeCloseTo(27.9 - 28);
+    const [first, second] = [...(thumb?.querySelectorAll(COMBO_BADGE) ?? [])].map(badgeBox);
+    expect(badgeTexts(container)).toEqual(["ESC", "⌘C"]);
+    // The thumb label centre is (31.1, 27.9), the badges reach 22 to each side and sit 22 above it plus the lift of 6
+    expect(first.right).toBeCloseTo(31.1 + 22);
+    expect(second.left).toBeCloseTo(31.1 - 22);
+    expect(first.top).toBeCloseTo(27.9 - 28);
+    expect(second.top).toBeCloseTo(27.9 - 28);
+  });
+
+  test.each([
+    ["rect key", 0],
+    ["thumb", 49],
+  ])("TwoLongOutputsOn %s_BadgesDoNotMeet", (_, index) => {
+    const model = {
+      ...createExpandModel("Sonsei", {}, []),
+      macroNames: ["Copy everything to the clipboard", "Paste everything from the clipboard"],
+      combos: combosOn([index], MACRO_1, MACRO_2),
+    };
+
+    const container = renderExpanded(model, false, false, true);
+
+    const [first, second] = [...container.querySelectorAll(COMBO_BADGE)].map(badgeBox);
+    expect(badgeTexts(container).every(text => text?.endsWith("…"))).toBe(true);
+    // Keep the 2 px gap between the top left badge and the top right one
+    expect(second.right + 2).toBeLessThanOrEqual(first.left + 1e-9);
+  });
+
+  test.each([
+    ["rect macro key", 0, MACRO_1, "MACRO"],
+    ["thumb space key", 49, SPACE, "SPACE"],
+  ])("ThreeCombosOn %s_BadgesAboveTheLabel", (_, index, code, primary) => {
+    const model = { ...createExpandModel("Sonsei", { [index]: code }, []), combos: combosOn([index], OS_C, ESCAPE, 4) };
+
+    const container = renderExpanded(model, false, false, true);
+
+    const label = [...container.querySelectorAll("text")].find(t => t.textContent === primary);
+    const labelTop = numberAttr(label, "y") - numberAttr(label, "font-size") / 2;
+    const badgeBottoms = [...container.querySelectorAll(COMBO_BADGE)].map(badge => badgeBox(badge).bottom);
+    expect(badgeTexts(container)).toEqual(["⌘C", "+2"]);
+    expect(badgeBottoms.every(bottom => bottom < labelTop)).toBe(true);
   });
 
   test("OnlyExpandCombos_SuperkeysAndMacrosAsBefore", () => {

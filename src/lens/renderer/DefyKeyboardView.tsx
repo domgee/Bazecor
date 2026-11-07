@@ -8,8 +8,8 @@ import {
   fg,
   comboBadge,
   comboBadgeNearLabel,
-  comboBadgeStack,
-  comboBadgeStackNearLabel,
+  comboBadgeRow,
+  comboBadgeRowNearLabel,
   comboBadgesForLayer,
   comboNumbersForLayer,
   superkeySlots,
@@ -93,7 +93,7 @@ export const DefyKeyboardView: React.FC<Props> = ({
             ? superkeySlots(scx, scy, SILHOUETTE_HALF_W, slots, fgColor, rotation)
             : keyLabel(lcx, lcy, 0, h, label, fgColor, rotation)}
           {comboTexts
-            ? comboBadgeStackNearLabel(comboTexts, bx, by, Boolean(slots), rotation, badgeLift)
+            ? comboBadgeRowNearLabel(comboTexts, bx, by, rotation, badgeLift)
             : comboNumber !== undefined && comboBadgeNearLabel(comboNumber, bx, by, rotation, badgeLift)}
         </g>
       );
@@ -110,9 +110,7 @@ export const DefyKeyboardView: React.FC<Props> = ({
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill={color.css} />
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
         {slots ? superkeySlots(cx, cy, (w - 8) / 2, slots, fgColor) : keyLabel(cx, cy, y, h, label, fgColor)}
-        {comboTexts
-          ? comboBadgeStack(comboTexts, x + w - 1, y - 3, w - 8, Boolean(slots))
-          : comboNumber !== undefined && comboBadge(comboNumber, x + w - 1, y - 3)}
+        {comboTexts ? comboBadgeRow(comboTexts, x, y, w) : comboNumber !== undefined && comboBadge(comboNumber, x + w - 1, y - 3)}
       </g>
     );
   }

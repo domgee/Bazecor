@@ -588,11 +588,14 @@ export function superkeySlots(
 const COMBO_BADGE_H = 12;
 const COMBO_BADGE_FS = 8;
 const COMBO_BADGE_PAD = 6;
-const COMBO_BADGE_STEP = COMBO_BADGE_H + 1;
+// Keep two expanded badges on one key at least this far apart
+const COMBO_BADGE_GAP = 2;
 // Cap the text of an expanded badge at the face width minus this on a rect key
 const COMBO_BADGE_FACE_MARGIN = 8;
 // Cap the text of an expanded badge at this width on a silhouette
 const COMBO_BADGE_SILHOUETTE_MAX_W = 40;
+// Distance from the label centre to the outer edge of a silhouette badge
+const COMBO_BADGE_REACH = 22;
 
 /**
  * Key offset -> combo badge text for the combos that apply on `layer`: "C1",
@@ -681,59 +684,53 @@ export function comboBadge(text: string, right: number, top: number, transform?:
  */
 export function comboBadgeNearLabel(text: string, cx: number, cy: number, rotation = 0, lift = 0): JSX.Element {
   const transform = rotation ? `rotate(${rotation},${cx},${cy})` : undefined;
-  return comboBadge(text, cx + 22, cy - 22 - lift, transform);
+  return comboBadge(text, cx + COMBO_BADGE_REACH, cy - COMBO_BADGE_REACH - lift, transform);
 }
 
-/**
- * The badge texts for a key in `texts.length` combos, each cut to `maxWidth`. Two combos give two badges, three or more give the
- * first and "+<n-1>". `single` gives one badge with a " +<n-1>" suffix, for a key whose Superkey slots leave room for one only.
- */
-function comboBadgeLines(texts: string[], maxWidth: number, single: boolean): string[] {
-  const more = texts.length - 1;
-
-  if (more <= 0) {
+// The badge texts of a key, the first combo's output and the second one's or "+<n-1>". One badge may take `maxWidth`. Two share a band
+// `band` wide with a gap between them, and a badge that needs less than half leaves the rest to the other.
+function comboBadgeLines(texts: string[], maxWidth: number, band: number): string[] {
+  if (texts.length <= 1) {
     return [fitText(texts[0] ?? "", COMBO_BADGE_FS, maxWidth)];
   }
 
-  if (single) {
-    const suffix = ` +${more}`;
-    return [`${fitText(texts[0], COMBO_BADGE_FS, maxWidth - textWidth(suffix, COMBO_BADGE_FS))}${suffix}`];
-  }
-
-  const second = more === 1 ? fitText(texts[1], COMBO_BADGE_FS, maxWidth) : `+${more}`;
-  return [fitText(texts[0], COMBO_BADGE_FS, maxWidth), second];
+  const first = texts[0];
+  const second = texts.length === 2 ? texts[1] : `+${texts.length - 1}`;
+  const share = band - COMBO_BADGE_GAP - 2 * COMBO_BADGE_PAD;
+  const half = share / 2;
+  const firstWidth = Math.min(textWidth(first, COMBO_BADGE_FS), maxWidth);
+  const secondWidth = Math.min(textWidth(second, COMBO_BADGE_FS), maxWidth);
+  const firstCap = Math.min(maxWidth, Math.max(half, share - secondWidth));
+  const secondCap = Math.min(maxWidth, Math.max(half, share - firstWidth));
+  return [fitText(first, COMBO_BADGE_FS, firstCap), fitText(second, COMBO_BADGE_FS, secondCap)];
 }
 
-function comboBadgeLinesAt(lines: string[], right: number, top: number, transform?: string): JSX.Element {
-  const badge = (text: string, row: number) =>
-    drawComboBadge(text, right, top + row * COMBO_BADGE_STEP, COMBO_BADGE_PAD + textWidth(text, COMBO_BADGE_FS), transform);
+// The first badge grows leftwards from `right`, the second rightwards from `left`
+function comboBadgePair(lines: string[], left: number, right: number, top: number, transform?: string): JSX.Element {
+  const width = (text: string) => COMBO_BADGE_PAD + textWidth(text, COMBO_BADGE_FS);
+  const secondWidth = lines.length > 1 ? width(lines[1]) : 0;
 
   return (
     <>
-      {badge(lines[0], 0)}
-      {lines.length > 1 && badge(lines[1], 1)}
+      {drawComboBadge(lines[0], right, top, width(lines[0]), transform)}
+      {lines.length > 1 && drawComboBadge(lines[1], left + secondWidth, top, secondWidth, transform)}
     </>
   );
 }
 
 /**
- * The expanded combo badges of a rect key, stacked down from today's badge with its top-right corner at (right, top).
- * `faceW` is the width of the key face, `single` draws one badge for a key with Superkey slots.
+ * The expanded combo badges of a rect key at (x, y), `w` wide: the first in today's top right corner, the second in the top left.
  */
-export function comboBadgeStack(texts: string[], right: number, top: number, faceW: number, single: boolean): JSX.Element {
-  return comboBadgeLinesAt(comboBadgeLines(texts, faceW - COMBO_BADGE_FACE_MARGIN, single), right, top);
+export function comboBadgeRow(texts: string[], x: number, y: number, w: number): JSX.Element {
+  const left = x + 1;
+  const right = x + w - 1;
+  const lines = comboBadgeLines(texts, w - 8 - COMBO_BADGE_FACE_MARGIN, right - left);
+  return comboBadgePair(lines, left, right, y - 3);
 }
 
-/** comboBadgeStack for a silhouette key, anchored and turned like comboBadgeNearLabel */
-export function comboBadgeStackNearLabel(
-  texts: string[],
-  cx: number,
-  cy: number,
-  single: boolean,
-  rotation = 0,
-  lift = 0,
-): JSX.Element {
+/** comboBadgeRow for a silhouette key, the first badge where comboBadgeNearLabel puts it and the second mirrored about the centre */
+export function comboBadgeRowNearLabel(texts: string[], cx: number, cy: number, rotation = 0, lift = 0): JSX.Element {
   const transform = rotation ? `rotate(${rotation},${cx},${cy})` : undefined;
-  const lines = comboBadgeLines(texts, COMBO_BADGE_SILHOUETTE_MAX_W, single);
-  return comboBadgeLinesAt(lines, cx + 22, cy - 22 - lift, transform);
+  const lines = comboBadgeLines(texts, COMBO_BADGE_SILHOUETTE_MAX_W, 2 * COMBO_BADGE_REACH);
+  return comboBadgePair(lines, cx - COMBO_BADGE_REACH, cx + COMBO_BADGE_REACH, cy - COMBO_BADGE_REACH - lift, transform);
 }

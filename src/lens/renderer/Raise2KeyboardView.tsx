@@ -10,8 +10,8 @@ import {
   fg,
   comboBadge,
   comboBadgeNearLabel,
-  comboBadgeStack,
-  comboBadgeStackNearLabel,
+  comboBadgeRow,
+  comboBadgeRowNearLabel,
   comboBadgesForLayer,
   comboNumbersForLayer,
   superkeySlots,
@@ -98,7 +98,7 @@ export const Raise2KeyboardView: React.FC<Props> = ({
         <>
           {keyLabel(lcx, lcy, 0, h, label, fgColor)}
           {comboTexts
-            ? comboBadgeStackNearLabel(comboTexts, lcx, lcy, false)
+            ? comboBadgeRowNearLabel(comboTexts, lcx, lcy)
             : comboNumber !== undefined && comboBadgeNearLabel(comboNumber, lcx, lcy)}
         </>
       );
@@ -117,7 +117,7 @@ export const Raise2KeyboardView: React.FC<Props> = ({
           <>
             {superkeySlots(sx, sy, halfW, slots, fgColor)}
             {comboTexts
-              ? comboBadgeStackNearLabel(comboTexts, sx, sy, true, 0, SLOT_BADGE_LIFT)
+              ? comboBadgeRowNearLabel(comboTexts, sx, sy, 0, SLOT_BADGE_LIFT)
               : comboNumber !== undefined && comboBadgeNearLabel(comboNumber, sx, sy, 0, SLOT_BADGE_LIFT)}
           </>
         );
@@ -153,9 +153,7 @@ export const Raise2KeyboardView: React.FC<Props> = ({
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill={color.css} />
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
         {slots ? superkeySlots(cx, cy, (w - 8) / 2, slots, fgColor) : keyLabel(cx, cy, y, h, label, fgColor)}
-        {comboTexts
-          ? comboBadgeStack(comboTexts, x + w - 1, y - 3, w - 8, Boolean(slots))
-          : comboNumber !== undefined && comboBadge(comboNumber, x + w - 1, y - 3)}
+        {comboTexts ? comboBadgeRow(comboTexts, x, y, w) : comboNumber !== undefined && comboBadge(comboNumber, x + w - 1, y - 3)}
       </g>
     );
   }
