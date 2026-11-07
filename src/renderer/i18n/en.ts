@@ -255,9 +255,9 @@ const English = {
         addMarker: "Add pause until release",
         addLayerMarker: "Add pause until layer off",
         markerHint:
-          "The macro plays up to Pause until release when you press its key and the rest when you release it. Pressing its key again always stops a running macro.",
+          "The macro plays up to Pause until release when you press its key and the rest when you release it. Pressing its key again stops a running macro.",
         layerMarkerHint:
-          "Pause until layer off plays the rest when the layer of the macro key turns off, and pressing the key while it waits plays the part before the pause again. On the first layer it works like Pause until release.",
+          "Pause until layer off plays the rest when the layer of the macro key turns off, and pressing the key while it waits plays the part before the pause again. On the first layer it works like Pause until release. With Other keys stop on, a combo pressed again while the macro is still typing stops it.",
         unicodeNote:
           "Text your keyboard language in Bazecor cannot type becomes Unicode steps. They need the Unicode Hex Input source on macOS.",
         unsupported: "This macro uses play options this firmware lacks.",
