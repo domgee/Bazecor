@@ -230,6 +230,8 @@ export default class Backup {
       "layerhold.state",
       "swaphands.state",
       "macros.state",
+      // Read-only reply of the highest macro step type the firmware plays
+      "macros.steps",
     ];
     const commands = await device.command("help");
     // A blank line in `help` used to end up in every backup as an empty command.

@@ -5,10 +5,14 @@ import {
   decodeMacroOptions,
   encodeMacroOptions,
   hasMacroUpgradeMarker,
+  macroHighestStep,
   macroNeedsUpgrade,
+  macroStepLimit,
   macrosByteLength,
   parseMacrosRaw,
+  rawMacrosHighestStep,
   rawMacrosNeedUpgrade,
+  readMacroStepLimit,
   serializeMacros,
 } from "./macros";
 
@@ -93,6 +97,28 @@ describe("parseMacrosRaw and serializeMacros", () => {
   test.each([["15 0 0"], ["15 8 27 0 0"]])("the release marker in %s round-trips", raw => {
     expect(parse(raw)[0].actions[0]).toEqual({ type: 15, keyCode: 0 });
     expect(roundTrip(raw)).toBe(raw);
+  });
+
+  test("the layer off marker has no payload and round-trips", () => {
+    const raw = "14 140 6 227 8 43 17 7 227 0 0";
+
+    const [parsed] = parse(raw);
+
+    expect(parsed.actions).toEqual([
+      { type: 6, keyCode: 227 },
+      { type: 8, keyCode: 43 },
+      { type: 17, keyCode: 0 },
+      { type: 7, keyCode: 227 },
+    ]);
+    expect(roundTrip(raw)).toBe(raw);
+  });
+
+  test("the stored names label shows the layer off marker as Layer off", () => {
+    const stored: MacrosType[] = [{ actions: [], name: "Switcher", macro: "" }];
+
+    const [parsed] = parseMacrosRaw("17 0 0", stored);
+
+    expect(parsed.macro).toBe("Layer off");
   });
 
   test.each([
@@ -253,6 +279,30 @@ describe("macro upgrade detection", () => {
     expect(rawMacrosNeedUpgrade("8 14 0 0")).toBe(false);
   });
 
+  test("a macro whose only new step is the layer off marker needs the upgrade", () => {
+    expect(macroNeedsUpgrade(macro([{ type: 17, keyCode: 0 }]))).toBe(true);
+    expect(rawMacrosNeedUpgrade("8 4 17 0 0")).toBe(true);
+  });
+
+  test.each([
+    ["the layer off marker", macro([{ type: 15, keyCode: 0 }, { type: 17, keyCode: 0 }]), 17],
+    ["Unicode", macro([{ type: 16, keyCode: 0xe9 }], { mode: 0, ignoreMods: true, otherKeysStop: true }), 16],
+    ["only classic steps", macro([{ type: 13, keyCode: [4, 5] }]), 13],
+    ["no steps, written as an implicit report", macro([]), 10],
+  ])("macroHighestStep with %s", (_, m, highest) => {
+    expect(macroHighestStep(m)).toBe(highest);
+  });
+
+  test.each([
+    ["the layer off marker", "8 4 0 17 0 0", 17],
+    ["the release marker and Unicode", "15 16 195 169 0 0", 16],
+    ["only a tap", "8 4 0 0", 8],
+    ["erased memory between two ENDs", "8 4 0 255 0 0", 8],
+    ["no macros", "", 0],
+  ])("rawMacrosHighestStep with %s", (_, raw, highest) => {
+    expect(rawMacrosHighestStep(raw)).toBe(highest);
+  });
+
   test("hasMacroUpgradeMarker reads help lines and rejects non-strings", () => {
     expect(hasMacroUpgradeMarker("macros.map\r\nmacros.state\r\nmacros.memory")).toBe(true);
     expect(hasMacroUpgradeMarker("macros.map\nmacros.memory")).toBe(false);
@@ -275,5 +325,78 @@ describe("macro upgrade detection", () => {
       expect(decodeMacroOptions(byte)).toEqual(options);
       expect(encodeMacroOptions(options)).toBe(byte);
     });
+  });
+});
+
+describe("macro step limit", () => {
+  const stepsDevice = (reply: () => Promise<unknown>) => {
+    const noCacheCommand = vi.fn(reply);
+    return { device: { noCacheCommand }, noCacheCommand };
+  };
+
+  test("help without macros.state gives 13 and reads nothing", async () => {
+    const { device, noCacheCommand } = stepsDevice(async () => "17");
+
+    const limit = await readMacroStepLimit(device, "macros.map\r\nmacros.memory");
+
+    expect(limit).toBe(13);
+    expect(noCacheCommand).not.toHaveBeenCalled();
+  });
+
+  test("help with macros.state only gives 16 and does not read macros.steps", async () => {
+    const { device, noCacheCommand } = stepsDevice(async () => "17");
+
+    const limit = await readMacroStepLimit(device, "macros.map\r\nmacros.state");
+
+    expect(limit).toBe(16);
+    expect(noCacheCommand).not.toHaveBeenCalled();
+  });
+
+  test("help with macros.steps gives its reply", async () => {
+    const { device, noCacheCommand } = stepsDevice(async () => "17");
+
+    const limit = await readMacroStepLimit(device, "macros.map\r\nmacros.state\r\nmacros.steps");
+
+    expect(limit).toBe(17);
+    expect(noCacheCommand.mock.calls).toEqual([["macros.steps"]]);
+  });
+
+  test.each([
+    ["garbage", async (): Promise<unknown> => "abc"],
+    ["a value below 17", async (): Promise<unknown> => "15"],
+    ["a value above 255", async (): Promise<unknown> => "300"],
+    ["a fraction", async (): Promise<unknown> => "17.5"],
+    ["an Error", async (): Promise<unknown> => new Error("timeout")],
+    [
+      "a throw",
+      async (): Promise<unknown> => {
+        throw new Error("port closed");
+      },
+    ],
+  ])("a macros.steps reply that is %s gives 16", async (_, reply) => {
+    const { device } = stepsDevice(reply);
+
+    expect(await readMacroStepLimit(device, "macros.state\r\nmacros.steps")).toBe(16);
+  });
+
+  test.each([
+    ["no upgrade ignores the stored value", 17, false, 13],
+    ["no upgrade without a stored value", undefined, false, 13],
+    ["upgrade without a stored value", undefined, true, 16],
+    ["upgrade with a stored 16", 16, true, 16],
+    ["upgrade with a stored 17", 17, true, 17],
+    ["upgrade with a stored 13", 13, true, 16],
+    ["upgrade with a stored string", "17", true, 16],
+    ["upgrade with a stored fraction", 17.5, true, 16],
+  ])("macroStepLimit: %s", (_, stored, upgrade, limit) => {
+    expect(macroStepLimit(stored, upgrade)).toBe(limit);
+  });
+
+  test("the virtual Sonsei lists macros.steps and replies 17", async () => {
+    const { virtual } = SonseiWireless;
+    const device = { noCacheCommand: async (cmd: string) => virtual[cmd]?.data };
+
+    expect(await readMacroStepLimit(device, virtual.help.data)).toBe(17);
+    expect(virtual["macros.steps"]).toEqual({ data: "17", eraseable: false });
   });
 });

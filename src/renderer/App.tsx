@@ -59,7 +59,7 @@ import { hasKeyOverridesCommand } from "../api/parsers/keyOverrides";
 import { hasConditionalLayersCommand } from "../api/parsers/conditionalLayers";
 import { hasQuickTapCommand } from "../api/parsers/quickTap";
 import { hasDualFunctionCommands } from "../api/parsers/dualFunction";
-import { hasMacroUpgradeMarker } from "../api/parsers/macros";
+import { MACRO_STEP_LIMIT_CLASSIC, hasMacroUpgradeMarker, readMacroStepLimit } from "../api/parsers/macros";
 import { version } from "../../package.json";
 import "../api/keymap";
 import "../api/colormap";
@@ -76,8 +76,8 @@ const store = Store.getStore();
 // Runs on connect and again after a firmware update, since the keyboard stays connected through it.
 // The minimum FW per product for each capability lives in src/versionRules.json.
 // Also reads help for capabilities.layerHold, capabilities.altRepeat, capabilities.keyOverrides, capabilities.quickTap,
-// capabilities.dualFunction, capabilities.conditionalLayers, capabilities.swapHands and capabilities.macroUpgrade, which official firmware
-// of the same version lacks.
+// capabilities.dualFunction, capabilities.conditionalLayers, capabilities.swapHands, capabilities.macroUpgrade and capabilities.macroSteps,
+// which official firmware of the same version lacks.
 const detectFirmwareCapabilities = async (currentDevice: Device) => {
   try {
     const versionStr = (await currentDevice.noCacheCommand("version")) as string;
@@ -94,8 +94,8 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     log.info("[Capabilities] all disabled due to firmware version read/parse error");
   }
 
-  /* Detect Hold until layer change, previous-key rules, key overrides, quick tap, dual-function options, conditional layers, swap hands and
-   * the macro options, release marker and Unicode steps through help, because official firmware of the same version lacks them */
+  /* Detect Hold until layer change, previous-key rules, key overrides, quick tap, dual-function options, conditional layers, swap hands,
+   * the macro options and the highest macro step type through help, because official firmware of the same version lacks them */
   try {
     const help = await currentDevice.noCacheCommand("help");
     const available = hasLayerHoldMarker(help);
@@ -122,9 +122,12 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     const macroUpgrade = hasMacroUpgradeMarker(help);
     store.set("capabilities.macroUpgrade", macroUpgrade);
     log.info(`[Capabilities] macroUpgrade -> available: ${macroUpgrade}`);
+    const macroSteps = await readMacroStepLimit(currentDevice, help);
+    store.set("capabilities.macroSteps", macroSteps);
+    log.info(`[Capabilities] macroSteps -> highest step: ${macroSteps}`);
   } catch (e) {
     log.warn(
-      "Error reading help for layerHold, altRepeat, keyOverrides, quickTap, dualFunction, conditionalLayers, swapHands and macroUpgrade",
+      "Error reading help for layerHold, altRepeat, keyOverrides, quickTap, dualFunction, conditionalLayers, swapHands, macroUpgrade and macroSteps",
       e,
     );
     store.set("capabilities.layerHold", false);
@@ -135,6 +138,7 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     store.set("capabilities.conditionalLayers", false);
     store.set("capabilities.swapHands", false);
     store.set("capabilities.macroUpgrade", false);
+    store.set("capabilities.macroSteps", MACRO_STEP_LIMIT_CLASSIC);
   }
 };
 

@@ -106,6 +106,7 @@ export const actionTypes: MacroEAType[] = [
   { enum: "MACRO_ACTION_STEP_OPTIONS", name: "Options", icon: <></>, smallIcon: <></> },
   { enum: "MACRO_ACTION_STEP_RELEASE", name: "Pause until release", icon: <></>, smallIcon: <></> },
   { enum: "MACRO_ACTION_STEP_UNICODE", name: "Unicode", icon: <></>, smallIcon: <></> },
+  { enum: "MACRO_ACTION_STEP_LAYER_OFF", name: "Pause until layer off", icon: <></>, smallIcon: <></> },
 ];
 
 export const translator: { [key: number]: number } = {
@@ -329,6 +330,16 @@ export const createConversion = (actions: MacroActionsType[], macros: MacrosType
       case MACRO_STEP.RELEASE:
         return {
           symbol: i18n.editor.macros.releaseMarker,
+          keyCode: 0,
+          type: action.type,
+          id: i,
+          uid: randID,
+          color: RELEASE_MARKER_COLOR,
+          ucolor: "transparent",
+        };
+      case MACRO_STEP.LAYER_OFF:
+        return {
+          symbol: i18n.editor.macros.layerOffMarker,
           keyCode: 0,
           type: action.type,
           id: i,

@@ -80,9 +80,12 @@ import {
   serializeAltRepeat,
   writeAltRepeatRules,
 } from "../../api/parsers/altRepeat";
-import { MACRO_STEP, macroNeedsUpgrade, macrosByteLength, resetMacroOptions } from "../../api/parsers/macros";
+import { MACRO_STEP, macroHighestStep, macroStepLimit, macrosByteLength, resetMacroOptions } from "../../api/parsers/macros";
 
 const store = Store.getStore();
+
+/* The highest macro step type the connected firmware plays, read from the stored capabilities */
+const currentStepLimit = () => macroStepLimit(store.get("capabilities.macroSteps"), Boolean(store.get("capabilities.macroUpgrade")));
 
 const Styles = Styled.div`
   .toggle-button{
@@ -158,6 +161,7 @@ function MacroEditor(props: MacroEditorProps) {
     altRepeatState: "unsupported",
     deletedMacroIdx: -1,
     macroUpgrade: Boolean(store.get("capabilities.macroUpgrade")),
+    macroSteps: currentStepLimit(),
   };
   const [state, setState] = useState(initialState);
   const { state: deviceState } = useDevice();
@@ -209,8 +213,8 @@ function MacroEditor(props: MacroEditorProps) {
     updateSelectedMacro(macro => ({ ...macro, options: normalizeOptions(options) }));
   };
 
-  const addMarker = () => {
-    addToActions([{ type: MACRO_STEP.RELEASE, keyCode: 0 }]);
+  const addMarker = (type: number) => {
+    addToActions([{ type, keyCode: 0 }]);
   };
 
   const resetOptions = () => {
@@ -276,11 +280,11 @@ function MacroEditor(props: MacroEditorProps) {
       return;
     }
 
-    // Older firmware stops a macro at an option, release marker or Unicode step
-    const needUpgrade = macros.flatMap((m, i) => (macroNeedsUpgrade(m) ? [`#${i + 1}`] : []));
+    // Read the step limit fresh, since older firmware stops at or skips a step it lacks
+    const stepLimit = currentStepLimit();
+    const needUpgrade = macros.flatMap((m, i) => (macroHighestStep(m) > stepLimit ? [`#${i + 1}`] : []));
 
-    // Read the capability fresh, since writing new steps to older firmware breaks its macros
-    if (!store.get("capabilities.macroUpgrade") && needUpgrade.length > 0) {
+    if (needUpgrade.length > 0) {
       const content = i18n.editor.macros.needsUpgradeBody.replace("{0}", needUpgrade.join(", "));
       toast.error(<ToastMessage title={i18n.editor.macros.needsUpgradeTitle} content={content} icon={<IconFloppyDisk />} />, {
         icon: "",
@@ -589,6 +593,7 @@ function MacroEditor(props: MacroEditorProps) {
       state.modified = false;
       state.totalMemory = tMem;
       state.macroUpgrade = Boolean(store.get("capabilities.macroUpgrade"));
+      state.macroSteps = currentStepLimit();
       state.loading = false;
       setState({ ...state });
       cancelContext();
@@ -639,7 +644,7 @@ function MacroEditor(props: MacroEditorProps) {
     updateMacros(aux);
     changeSelected(newID);
 
-    if (!store.get("capabilities.macroUpgrade") && macroNeedsUpgrade(imported)) {
+    if (macroHighestStep(imported) > currentStepLimit()) {
       toast.warn(
         <ToastMessage
           title={i18n.editor.macros.importNeedsUpgradeTitle}
@@ -774,6 +779,7 @@ function MacroEditor(props: MacroEditorProps) {
     loading,
     scrollPos,
     macroUpgrade,
+    macroSteps,
   } = state;
 
   let ListOfDeletes = listToDelete.map(({ layer, pos, key, newKey }) => {
@@ -891,6 +897,7 @@ function MacroEditor(props: MacroEditorProps) {
               updateScroll={updateScroll}
               scrollPos={scrollPos}
               macroUpgrade={macroUpgrade}
+              layerPause={macroSteps >= MACRO_STEP.LAYER_OFF}
               onOptionsChange={updateOptions}
               onAddMarker={addMarker}
               onResetOptions={resetOptions}

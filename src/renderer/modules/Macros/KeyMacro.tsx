@@ -20,6 +20,7 @@ import OSKey from "@Renderer/components/molecules/KeyTags/OSKey";
 import { RowsRepresentation } from "@Renderer/types/macros";
 import { MACRO_STEP } from "../../../api/parsers/macros";
 import { formatCodePoint } from "./textChars";
+import { isPauseMarker } from "./macroOptions";
 
 interface Modifier {
   id: number;
@@ -64,7 +65,7 @@ const KeyMacro = (props: KeyMacroProps) => {
   const isDelay = item.type === MACRO_STEP.RANDOM_DELAY || item.type === MACRO_STEP.WAIT;
   // Only key steps can change their function or get a modifier
   const isKeyStep = item.type >= MACRO_STEP.KEYDOWN && item.type <= MACRO_STEP.TAPCODE;
-  const isReleaseMarker = item.type === MACRO_STEP.RELEASE;
+  const isReleaseMarker = isPauseMarker(item.type);
   const isModifier = useMemo(
     () => isKeyStep && (item.keyCode as number) > 223 && (item.keyCode as number) < 232,
     [item, isKeyStep],

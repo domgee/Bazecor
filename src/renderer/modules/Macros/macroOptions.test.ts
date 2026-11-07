@@ -1,10 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { MacroActionsType, MacroOptions, MacrosType } from "@Renderer/types/macros";
 import { macroNeedsUpgrade, resetMacroOptions } from "../../../api/parsers/macros";
-import { canAddMarker, effectiveOptions, hasMacroOptions, loopModesAllowed, normalizeOptions } from "./macroOptions";
+import { canAddMarker, effectiveOptions, hasMacroOptions, hasPauseMarker, loopModesAllowed, normalizeOptions } from "./macroOptions";
 
 const TAP_A: MacroActionsType = { type: 8, keyCode: 4 };
 const RELEASE: MacroActionsType = { type: 15, keyCode: 0 };
+const LAYER_OFF: MacroActionsType = { type: 17, keyCode: 0 };
 
 const macro = (actions: MacroActionsType[], options?: MacroOptions): MacrosType => ({ actions, name: "", macro: "", options });
 
@@ -27,6 +28,18 @@ describe("canAddMarker and loopModesAllowed", () => {
     expect([canAddMarker(m), loopModesAllowed(m)]).toEqual([false, false]);
   });
 
+  test("a layer off marker blocks both markers and the loop modes", () => {
+    const m = macro([TAP_A, LAYER_OFF, TAP_A], { mode: 0, ignoreMods: true, otherKeysStop: true });
+
+    expect([canAddMarker(m), loopModesAllowed(m)]).toEqual([false, false]);
+  });
+
+  test("hasPauseMarker is true for both pause steps and false without one", () => {
+    const macros = [macro([TAP_A, RELEASE]), macro([LAYER_OFF]), macro([TAP_A])];
+
+    expect(macros.map(hasPauseMarker)).toEqual([true, true, false]);
+  });
+
   test("a loop mode blocks the marker", () => {
     const repeat = macro([TAP_A], { mode: 1, ignoreMods: true, otherKeysStop: true });
     const toggle = macro([TAP_A], { mode: 2, ignoreMods: false, otherKeysStop: false });
@@ -46,6 +59,15 @@ describe("resetMacroOptions", () => {
     const m = macro([TAP_A, RELEASE], { mode: 2, ignoreMods: true, otherKeysStop: true });
 
     expect(macroNeedsUpgrade(resetMacroOptions(m))).toBe(true);
+  });
+
+  test("a macro with a layer off marker keeps it and still needs the upgrade after the reset", () => {
+    const m = macro([TAP_A, LAYER_OFF], { mode: 0, ignoreMods: true, otherKeysStop: true });
+
+    const reset = resetMacroOptions(m);
+
+    expect(reset.actions).toEqual([TAP_A, LAYER_OFF]);
+    expect(macroNeedsUpgrade(reset)).toBe(true);
   });
 });
 

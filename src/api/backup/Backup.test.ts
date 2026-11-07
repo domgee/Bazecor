@@ -36,6 +36,15 @@ describe("Backup.Commands", () => {
     expect(commands).toContain("macros.map");
     expect(commands).not.toContain("macros.state");
   });
+
+  test("leaves out the macro step limit", async () => {
+    const device = { command: async () => "macros.map\r\nmacros.state\r\nmacros.steps" } as unknown as Device;
+
+    const commands = await Backup.Commands(device);
+
+    expect(commands).toContain("macros.map");
+    expect(commands).not.toContain("macros.steps");
+  });
 });
 
 /* A Sonsei that stores each command it is sent and replies with it, as the firmware with the dual-function commands does */
@@ -134,6 +143,7 @@ describe("Backup restore of the dual-function options", () => {
 describe("Backup restore of macros with new steps", () => {
   const HELP = "keymap.custom\r\nmacros.map\r\nqukeys.dualFunction\r\nqukeys.perKey";
   const UPGRADED = "14 140 8 4 0 0";
+  const LAYER_OFF = "14 140 8 4 17 0 0";
   const ON_KEYBOARD = "8 5 0 0";
 
   test("restoreBackup skips only macros.map without the marker and collects one warning", async () => {
@@ -175,6 +185,28 @@ describe("Backup restore of macros with new steps", () => {
     await Backup.restoreBackup([], "neuron", [{ command: "macros.map", data: UPGRADED }] as never, device);
 
     expect(keyboard["macros.map"]).toBe(UPGRADED);
+    expect(Backup.takeRestoreWarnings()).toEqual([]);
+  });
+
+  test("restoreBackup skips a layer off marker on firmware with the marker alone", async () => {
+    const { device, keyboard } = sonsei({ help: `${HELP}\r\nmacros.state`, "macros.map": ON_KEYBOARD });
+
+    await Backup.restoreBackup([], "neuron", [{ command: "macros.map", data: LAYER_OFF }] as never, device);
+
+    expect(keyboard["macros.map"]).toBe(ON_KEYBOARD);
+    expect(Backup.takeRestoreWarnings()).toEqual([MACROS_NOT_RESTORED]);
+  });
+
+  test("restoreBackup sends a layer off marker when macros.steps replies 17", async () => {
+    const { device, keyboard } = sonsei({
+      help: `${HELP}\r\nmacros.state\r\nmacros.steps`,
+      "macros.steps": "17",
+      "macros.map": ON_KEYBOARD,
+    });
+
+    await Backup.restoreBackup([], "neuron", [{ command: "macros.map", data: LAYER_OFF }] as never, device);
+
+    expect(keyboard["macros.map"]).toBe(LAYER_OFF);
     expect(Backup.takeRestoreWarnings()).toEqual([]);
   });
 });

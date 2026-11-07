@@ -2,7 +2,8 @@
 import { MacroActionsType, MacroOptions, MacrosType } from "@Renderer/types/macros";
 import { KeymapDB } from "../keymap";
 
-/* Step types in macro memory. 14-16 exist only on firmware that lists MACROS_STATE_MARKER in help */
+/* Step types in macro memory. 14-16 exist only on firmware that lists MACROS_STATE_MARKER in help, 17 and up only on firmware whose
+ * MACROS_STEPS_COMMAND reply reaches them */
 export const MACRO_STEP = {
   END: 0,
   RANDOM_DELAY: 1,
@@ -21,12 +22,25 @@ export const MACRO_STEP = {
   OPTIONS: 14,
   RELEASE: 15,
   UNICODE: 16,
+  LAYER_OFF: 17,
 } as const;
+
+/* The highest step type Bazecor knows */
+const MACRO_STEP_LAST = MACRO_STEP.LAYER_OFF;
 
 export const MACROS_COMMAND = "macros.map";
 
 /* Command the firmware lists in `help` when it plays options, the release marker and Unicode steps */
 export const MACROS_STATE_MARKER = "macros.state";
+
+/* Read-only command that replies the highest step type the firmware plays */
+export const MACROS_STEPS_COMMAND = "macros.steps";
+
+/* Highest step type of firmware without the macro upgrade */
+export const MACRO_STEP_LIMIT_CLASSIC = 13;
+
+/* Highest step type of firmware that lists MACROS_STATE_MARKER but not MACROS_STEPS_COMMAND */
+export const MACRO_STEP_LIMIT_UPGRADE = 16;
 
 /* Option byte of a classic macro, which has no option step */
 export const MACRO_OPTIONS_CLASSIC = 0x80;
@@ -44,13 +58,57 @@ export interface MacrosDevice {
 
 const macrosEraser = (tMem: number) => Array(tMem).fill("255").join(" ");
 
-/** True when this `help` reply lists the macro upgrade marker */
-export const hasMacroUpgradeMarker = (help: unknown): boolean => {
+const helpLists = (help: unknown, command: string): boolean => {
   if (typeof help !== "string") {
     return false;
   }
 
-  return help.split(/\r?\n/).some(line => line.trim() === MACROS_STATE_MARKER);
+  return help.split(/\r?\n/).some(line => line.trim() === command);
+};
+
+/** True when this `help` reply lists the macro upgrade marker */
+export const hasMacroUpgradeMarker = (help: unknown): boolean => helpLists(help, MACROS_STATE_MARKER);
+
+/* The step limit a MACROS_STEPS_COMMAND reply gives, MACRO_STEP_LIMIT_UPGRADE for anything but an integer from 17 to 255 */
+const parseStepLimit = (reply: unknown): number => {
+  if (typeof reply !== "string" || !/^\d+$/.test(reply.trim())) {
+    return MACRO_STEP_LIMIT_UPGRADE;
+  }
+
+  const limit = Number(reply.trim());
+  return limit > MACRO_STEP_LIMIT_UPGRADE && limit <= 255 ? limit : MACRO_STEP_LIMIT_UPGRADE;
+};
+
+/** The highest step type the keyboard plays, from its `help` reply and, when help lists it, the MACROS_STEPS_COMMAND reply.
+ * A failed read gives MACRO_STEP_LIMIT_UPGRADE. */
+export const readMacroStepLimit = async (device: MacrosDevice, help: unknown): Promise<number> => {
+  if (!helpLists(help, MACROS_STATE_MARKER)) {
+    return MACRO_STEP_LIMIT_CLASSIC;
+  }
+
+  if (!helpLists(help, MACROS_STEPS_COMMAND)) {
+    return MACRO_STEP_LIMIT_UPGRADE;
+  }
+
+  try {
+    return parseStepLimit(await device.noCacheCommand(MACROS_STEPS_COMMAND));
+  } catch (error) {
+    return MACRO_STEP_LIMIT_UPGRADE;
+  }
+};
+
+/** The step limit to use from the stored capabilities. Without the upgrade it is MACRO_STEP_LIMIT_CLASSIC, with it a stored integer
+ * from 16 to 255 is kept and anything else gives MACRO_STEP_LIMIT_UPGRADE. */
+export const macroStepLimit = (stored: unknown, upgrade: boolean): number => {
+  if (!upgrade) {
+    return MACRO_STEP_LIMIT_CLASSIC;
+  }
+
+  if (typeof stored === "number" && Number.isInteger(stored) && stored >= MACRO_STEP_LIMIT_UPGRADE && stored <= 255) {
+    return stored;
+  }
+
+  return MACRO_STEP_LIMIT_UPGRADE;
 };
 
 /** The option byte for these options, MACRO_OPTIONS_CLASSIC when there are none */
@@ -281,6 +339,7 @@ const stepToAction = ({ type, payload }: MacroStep): MacroActionsType | undefine
     case MACRO_STEP.IMPLICIT_REPORT:
     case MACRO_STEP.SEND_REPORT:
     case MACRO_STEP.RELEASE:
+    case MACRO_STEP.LAYER_OFF:
       return { type, keyCode: 0 };
     case MACRO_STEP.TAP_SEQUENCE: {
       const keys: number[] = [];
@@ -358,15 +417,17 @@ const rawToBytes = (raw: unknown): number[] => {
     .map(n => (Number.isInteger(n) && n >= 0 && n <= 255 ? n : 255));
 };
 
-const STEP_UPGRADE_TYPES: number[] = [MACRO_STEP.OPTIONS, MACRO_STEP.RELEASE, MACRO_STEP.UNICODE];
-
-const stepsNeedUpgrade = (bytes: ArrayLike<number>) => {
+/* The highest known step type in the walked steps, 0 for none. Unknown types such as erased memory between two ENDs are left out */
+const highestStep = (bytes: ArrayLike<number>): number => {
   const { macros, tail } = walkMacroSteps(bytes);
-  return [...macros.flat(), ...tail].some(step => STEP_UPGRADE_TYPES.includes(step.type));
+  return [...macros.flat(), ...tail].reduce((highest, step) => (step.type <= MACRO_STEP_LAST ? Math.max(highest, step.type) : highest), 0);
 };
 
-/** True when this macros.map data holds an option, release marker or Unicode step, which older firmware stops at */
-export const rawMacrosNeedUpgrade = (raw: unknown): boolean => stepsNeedUpgrade(rawToBytes(raw));
+/** The highest step type this macros.map data holds, 0 when it holds none */
+export const rawMacrosHighestStep = (raw: unknown): number => highestStep(rawToBytes(raw));
+
+/** True when this macros.map data holds a step above 13, which firmware without the macro upgrade stops at */
+export const rawMacrosNeedUpgrade = (raw: unknown): boolean => rawMacrosHighestStep(raw) > MACRO_STEP_LIMIT_CLASSIC;
 
 const keyBytes = (keyCode: number) => [(keyCode >> 8) & 255, keyCode & 255];
 
@@ -401,6 +462,7 @@ const actionBytes = (action: MacroActionsType): number[] => {
     case MACRO_STEP.IMPLICIT_REPORT:
     case MACRO_STEP.SEND_REPORT:
     case MACRO_STEP.RELEASE:
+    case MACRO_STEP.LAYER_OFF:
       return [type];
     case MACRO_STEP.TAP_SEQUENCE: {
       const keys = (Array.isArray(keyCode) ? keyCode : [keyCode]).filter(k => (k & 0xffff) !== 0);
@@ -443,8 +505,11 @@ export const macrosBytes = (macros: MacrosType[]): number[] => [
 /** Bytes the macros take in macro memory, 0 for no macros */
 export const macrosByteLength = (macros: MacrosType[]): number => (macros.length === 0 ? 0 : macrosBytes(macros).length);
 
-/** True when this macro writes an option, release marker or Unicode step, which older firmware stops at */
-export const macroNeedsUpgrade = (macro: MacrosType): boolean => stepsNeedUpgrade([...macroBytes(macro), 0, 0]);
+/** The highest step type this macro writes */
+export const macroHighestStep = (macro: MacrosType): number => highestStep([...macroBytes(macro), 0, 0]);
+
+/** True when this macro writes a step above 13, which firmware without the macro upgrade stops at */
+export const macroNeedsUpgrade = (macro: MacrosType): boolean => macroHighestStep(macro) > MACRO_STEP_LIMIT_CLASSIC;
 
 /** The macro as a classic macro, without options */
 export const resetMacroOptions = (macro: MacrosType): MacrosType => ({ ...macro, options: undefined });
@@ -459,6 +524,10 @@ const actionLabel = (keymapDB: KeymapDB, action: MacroActionsType): unknown => {
 
   if (type === MACRO_STEP.RELEASE) {
     return "Release";
+  }
+
+  if (type === MACRO_STEP.LAYER_OFF) {
+    return "Layer off";
   }
 
   if (Array.isArray(keyCode)) {
@@ -500,14 +569,16 @@ export const serializeMacros = (macros: MacrosType[], tMem: number) => {
   return macrosBytes(macros).join(" ");
 };
 
-/** Restore a backed-up macros.map. Refuse data with steps 14-16 when the keyboard lacks the marker, because older firmware stops at
- * them, and return the warning instead of sending. A failed help read counts as no marker. */
+/** Restore a backed-up macros.map. Refuse data with a step above the keyboard's step limit, because older firmware stops at or skips
+ * it, and return the warning instead of sending. A failed help read counts as no marker. */
 export const restoreMacrosMap = async (
   device: MacrosDevice,
   data: string,
   sendPlain: () => Promise<unknown>,
 ): Promise<string | undefined> => {
-  if (rawMacrosNeedUpgrade(data)) {
+  const highest = rawMacrosHighestStep(data);
+
+  if (highest > MACRO_STEP_LIMIT_CLASSIC) {
     let help: unknown;
 
     try {
@@ -516,7 +587,14 @@ export const restoreMacrosMap = async (
       help = undefined;
     }
 
-    if (!hasMacroUpgradeMarker(help)) {
+    // Read MACROS_STEPS_COMMAND only for steps that firmware with the marker alone lacks
+    let limit = hasMacroUpgradeMarker(help) ? MACRO_STEP_LIMIT_UPGRADE : MACRO_STEP_LIMIT_CLASSIC;
+
+    if (highest > MACRO_STEP_LIMIT_UPGRADE) {
+      limit = await readMacroStepLimit(device, help);
+    }
+
+    if (highest > limit) {
       return MACROS_NOT_RESTORED;
     }
   }

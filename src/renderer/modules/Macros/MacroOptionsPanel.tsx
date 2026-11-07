@@ -6,17 +6,20 @@ import { Label } from "@Renderer/components/atoms/Label";
 import Heading from "@Renderer/components/atoms/Heading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@Renderer/components/atoms/Select";
 import { MacroOptions, MacrosType } from "@Renderer/types/macros";
+import { MACRO_STEP } from "../../../api/parsers/macros";
 import { canAddMarker, effectiveOptions, hasMacroOptions, loopModesAllowed } from "./macroOptions";
 
 interface MacroOptionsPanelProps {
   macro: MacrosType;
   macroUpgrade: boolean;
+  /* The firmware plays Pause until layer off */
+  layerPause: boolean;
   onOptionsChange: (options: MacroOptions) => void;
-  onAddMarker: () => void;
+  onAddMarker: (type: number) => void;
   onResetOptions: () => void;
 }
 
-const MacroOptionsPanel = ({ macro, macroUpgrade, onOptionsChange, onAddMarker, onResetOptions }: MacroOptionsPanelProps) => {
+const MacroOptionsPanel = ({ macro, macroUpgrade, layerPause, onOptionsChange, onAddMarker, onResetOptions }: MacroOptionsPanelProps) => {
   const strings = i18n.editor.macros.options;
 
   // Offer only a way back to a macro older firmware can play
@@ -37,6 +40,7 @@ const MacroOptionsPanel = ({ macro, macroUpgrade, onOptionsChange, onAddMarker, 
 
   const options = effectiveOptions(macro);
   const loopsAllowed = loopModesAllowed(macro);
+  const markerAllowed = canAddMarker(macro);
   const setOption = (change: Partial<MacroOptions>) => onOptionsChange({ ...options, ...change });
 
   return (
@@ -84,9 +88,26 @@ const MacroOptionsPanel = ({ macro, macroUpgrade, onOptionsChange, onAddMarker, 
           {strings.otherKeysStop}
         </Label>
       </div>
-      <Button variant="outline" size="sm" onClick={onAddMarker} disabled={!canAddMarker(macro)} className="w-full">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onAddMarker(MACRO_STEP.RELEASE)}
+        disabled={!markerAllowed}
+        className="w-full"
+      >
         {strings.addMarker}
       </Button>
+      {layerPause && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onAddMarker(MACRO_STEP.LAYER_OFF)}
+          disabled={!markerAllowed}
+          className="w-full"
+        >
+          {strings.addLayerMarker}
+        </Button>
+      )}
       <p className="text-ssm text-gray-400 dark:text-gray-300 m-0">{strings.markerHint}</p>
       <p className="text-ssm text-gray-400 dark:text-gray-300 m-0">{strings.unicodeNote}</p>
     </div>

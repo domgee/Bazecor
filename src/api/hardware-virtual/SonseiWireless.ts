@@ -52,7 +52,7 @@ const SonseiWireless: VirtualType = {
      * and the macro upgrade. Help lines turn them on */
     help: {
       ...DefyWireless.virtual.help,
-      data: `${DefyWireless.virtual.help.data}\r\nlayerhold.state\r\naltrepeat.map\r\nkeyoverrides.map\r\nqukeys.quickTapTerm\r\nqukeys.dualFunction\r\nqukeys.perKey\r\nconditional.map\r\nswaphands.state\r\nmacros.state`,
+      data: `${DefyWireless.virtual.help.data}\r\nlayerhold.state\r\naltrepeat.map\r\nkeyoverrides.map\r\nqukeys.quickTapTerm\r\nqukeys.dualFunction\r\nqukeys.perKey\r\nconditional.map\r\nswaphands.state\r\nmacros.state\r\nmacros.steps`,
     },
     "layerhold.state": {
       data: "0 0",
@@ -64,6 +64,10 @@ const SonseiWireless: VirtualType = {
     },
     "macros.state": {
       data: "0 0",
+      eraseable: false,
+    },
+    "macros.steps": {
+      data: "17",
       eraseable: false,
     },
     "altrepeat.map": {

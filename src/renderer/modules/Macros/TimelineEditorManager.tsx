@@ -106,8 +106,9 @@ interface Props {
   scrollPos: number;
   updateScroll: (scrollPos: number) => void;
   macroUpgrade: boolean;
+  layerPause: boolean;
   onOptionsChange: (options: MacroOptions) => void;
-  onAddMarker: () => void;
+  onAddMarker: (type: number) => void;
   onResetOptions: () => void;
 }
 
@@ -120,6 +121,7 @@ const MacroManager = (props: Props) => {
     scrollPos,
     updateScroll,
     macroUpgrade,
+    layerPause,
     onOptionsChange,
     onAddMarker,
     onResetOptions,
@@ -198,6 +200,8 @@ const MacroManager = (props: Props) => {
         return parseKey(item.keyCode as number);
       case MACRO_STEP.RELEASE:
         return i18n.editor.macros.releaseMarker;
+      case MACRO_STEP.LAYER_OFF:
+        return i18n.editor.macros.layerOffMarker;
       case MACRO_STEP.UNICODE:
         return unicodeStepText(item.keyCode);
       default:
@@ -248,6 +252,7 @@ const MacroManager = (props: Props) => {
             <MacroOptionsPanel
               macro={macro}
               macroUpgrade={macroUpgrade}
+              layerPause={layerPause}
               onOptionsChange={onOptionsChange}
               onAddMarker={onAddMarker}
               onResetOptions={onResetOptions}

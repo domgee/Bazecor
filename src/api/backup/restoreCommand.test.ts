@@ -209,6 +209,49 @@ describe("restoreCommand", () => {
       expect(sendPlain).not.toHaveBeenCalled();
     });
 
+    describe("with the layer off marker", () => {
+      const LAYER_OFF = "14 140 6 227 8 43 17 7 227 0 0";
+
+      /* A keyboard that replies help and macros.steps */
+      const stepsDevice = (help: string) => {
+        const noCacheCommand = vi.fn(async (cmd: string): Promise<unknown> => (cmd === "help" ? help : "17"));
+        return { device: { noCacheCommand }, noCacheCommand };
+      };
+
+      test("skips it and returns a warning when help lists the marker but not macros.steps", async () => {
+        const { device, noCacheCommand } = stepsDevice("macros.map\r\nmacros.state");
+        const sendPlain = vi.fn(async () => "");
+
+        const warning = await restoreCommand(device, MACROS_COMMAND, LAYER_OFF, () => 60, sendPlain);
+
+        expect(warning).toBe(MACROS_NOT_RESTORED);
+        expect(sendPlain).not.toHaveBeenCalled();
+        expect(noCacheCommand.mock.calls).toEqual([["help"]]);
+      });
+
+      test("sends it plain when macros.steps replies 17", async () => {
+        const { device, noCacheCommand } = stepsDevice("macros.map\r\nmacros.state\r\nmacros.steps");
+        const sendPlain = vi.fn(async () => "");
+
+        const warning = await restoreCommand(device, MACROS_COMMAND, LAYER_OFF, () => 60, sendPlain);
+
+        expect(warning).toBeUndefined();
+        expect(sendPlain).toHaveBeenCalledTimes(1);
+        expect(noCacheCommand.mock.calls).toEqual([["help"], ["macros.steps"]]);
+      });
+
+      test("steps up to 16 do not read macros.steps", async () => {
+        const { device, noCacheCommand } = stepsDevice("macros.map\r\nmacros.state\r\nmacros.steps");
+        const sendPlain = vi.fn(async () => "");
+
+        const warning = await restoreCommand(device, MACROS_COMMAND, UPGRADED, () => 60, sendPlain);
+
+        expect(warning).toBeUndefined();
+        expect(sendPlain).toHaveBeenCalledTimes(1);
+        expect(noCacheCommand.mock.calls).toEqual([["help"]]);
+      });
+    });
+
     test.each([
       ["returns an Error", async (): Promise<unknown> => new Error("timeout")],
       [

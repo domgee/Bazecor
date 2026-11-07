@@ -61,6 +61,8 @@ export interface MacroEditorInitialStateType {
   deletedMacroIdx: number;
   /* The firmware plays macro options, the release marker and Unicode steps */
   macroUpgrade: boolean;
+  /* The highest macro step type the firmware plays */
+  macroSteps: number;
 }
 
 export interface ListToDeleteType {
