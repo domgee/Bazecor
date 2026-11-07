@@ -80,7 +80,14 @@ import {
   serializeAltRepeat,
   writeAltRepeatRules,
 } from "../../api/parsers/altRepeat";
-import { MACRO_STEP, macroHighestStep, macroStepLimit, macrosByteLength, resetMacroOptions } from "../../api/parsers/macros";
+import {
+  MACRO_STEP,
+  MACRO_STEP_LIMIT_UPGRADE,
+  macroHighestStep,
+  macroStepLimit,
+  macrosByteLength,
+  resetMacroOptions,
+} from "../../api/parsers/macros";
 
 const store = Store.getStore();
 
@@ -285,7 +292,9 @@ function MacroEditor(props: MacroEditorProps) {
     const needUpgrade = macros.flatMap((m, i) => (macroHighestStep(m) > stepLimit ? [`#${i + 1}`] : []));
 
     if (needUpgrade.length > 0) {
-      const content = i18n.editor.macros.needsUpgradeBody.replace("{0}", needUpgrade.join(", "));
+      // Name only the layer off pause on firmware that plays every other new step
+      const body = stepLimit >= MACRO_STEP_LIMIT_UPGRADE ? i18n.editor.macros.needsLayerPauseBody : i18n.editor.macros.needsUpgradeBody;
+      const content = body.replace("{0}", needUpgrade.join(", "));
       toast.error(<ToastMessage title={i18n.editor.macros.needsUpgradeTitle} content={content} icon={<IconFloppyDisk />} />, {
         icon: "",
       });
@@ -644,11 +653,15 @@ function MacroEditor(props: MacroEditorProps) {
     updateMacros(aux);
     changeSelected(newID);
 
-    if (macroHighestStep(imported) > currentStepLimit()) {
+    const stepLimit = currentStepLimit();
+
+    if (macroHighestStep(imported) > stepLimit) {
       toast.warn(
         <ToastMessage
           title={i18n.editor.macros.importNeedsUpgradeTitle}
-          content={i18n.editor.macros.importNeedsUpgradeBody}
+          content={
+            stepLimit >= MACRO_STEP_LIMIT_UPGRADE ? i18n.editor.macros.importNeedsLayerPauseBody : i18n.editor.macros.importNeedsUpgradeBody
+          }
           icon={<IconArrowDownWithLine />}
         />,
         { icon: "" },

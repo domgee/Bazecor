@@ -65,7 +65,7 @@ const KeyMacro = (props: KeyMacroProps) => {
   const isDelay = item.type === MACRO_STEP.RANDOM_DELAY || item.type === MACRO_STEP.WAIT;
   // Only key steps can change their function or get a modifier
   const isKeyStep = item.type >= MACRO_STEP.KEYDOWN && item.type <= MACRO_STEP.TAPCODE;
-  const isReleaseMarker = isPauseMarker(item.type);
+  const isPauseStep = isPauseMarker(item.type);
   const isModifier = useMemo(
     () => isKeyStep && (item.keyCode as number) > 223 && (item.keyCode as number) < 232,
     [item, isKeyStep],
@@ -122,7 +122,7 @@ const KeyMacro = (props: KeyMacroProps) => {
         <div
           className={`keyMacroWrapper relative flex flex-wrap flex-col p-0 !m-0 after:absolute after:content-[' '] after:w-full after:h-[1px] after:top-[71px] after:left-0 after:bg-white/80 after:dark:bg-[#2B2C43] keyCode-${item.keyCode} ${isModifier ? "isModifier" : ""} ${
             isDelay ? "isDelay" : ""
-          } ${isReleaseMarker ? "isReleaseMarker" : ""} item-id-${item.id}`}
+          } ${isPauseStep ? "isReleaseMarker" : ""} item-id-${item.id}`}
         >
           <div className="keyMacro">
             <div className="headerDrag">
@@ -259,7 +259,7 @@ const KeyMacro = (props: KeyMacroProps) => {
                     </div>
                     <div className="keyMacroItemOptions flex flex-col gap-1 mt-1">
                       {/* Hide Clone on the release marker, since the firmware honours only the first one */}
-                      {!isReleaseMarker && (
+                      {!isPauseStep && (
                         <Button
                           variant="dropdownLink"
                           icon={<IconClone />}

@@ -285,7 +285,7 @@ describe("macro upgrade detection", () => {
   });
 
   test.each([
-    ["the layer off marker", macro([{ type: 15, keyCode: 0 }, { type: 17, keyCode: 0 }]), 17],
+    ["the layer off marker", macro([{ type: 8, keyCode: 4 }, { type: 17, keyCode: 0 }]), 17],
     ["Unicode", macro([{ type: 16, keyCode: 0xe9 }], { mode: 0, ignoreMods: true, otherKeysStop: true }), 16],
     ["only classic steps", macro([{ type: 13, keyCode: [4, 5] }]), 13],
     ["no steps, written as an implicit report", macro([]), 10],
@@ -374,9 +374,12 @@ describe("macro step limit", () => {
       },
     ],
   ])("a macros.steps reply that is %s gives 16", async (_, reply) => {
-    const { device } = stepsDevice(reply);
+    const { device, noCacheCommand } = stepsDevice(reply);
 
-    expect(await readMacroStepLimit(device, "macros.state\r\nmacros.steps")).toBe(16);
+    const limit = await readMacroStepLimit(device, "macros.state\r\nmacros.steps");
+
+    expect(limit).toBe(16);
+    expect(noCacheCommand.mock.calls).toEqual([["macros.steps"]]);
   });
 
   test.each([

@@ -109,6 +109,7 @@ const MacroOptionsPanel = ({ macro, macroUpgrade, layerPause, onOptionsChange, o
         </Button>
       )}
       <p className="text-ssm text-gray-400 dark:text-gray-300 m-0">{strings.markerHint}</p>
+      {layerPause && <p className="text-ssm text-gray-400 dark:text-gray-300 m-0">{strings.layerMarkerHint}</p>}
       <p className="text-ssm text-gray-400 dark:text-gray-300 m-0">{strings.unicodeNote}</p>
     </div>
   );
