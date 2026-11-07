@@ -10,6 +10,7 @@ import {
   parseSuperkeys,
   parseNames,
   parseCombos,
+  parseMacros,
 } from "./parsers";
 
 interface BazecorNeuronLayer {
@@ -53,6 +54,7 @@ export function parseBackupToModel(backupRaw: string, product: string, keyboardT
   const defaultLayerRaw = getCommandData(backup, "settings.defaultLayer");
   const superkeysRaw = getCommandData(backup, "superkeys.map");
   const combosRaw = getCommandData(backup, "combos.map");
+  const macrosRaw = getCommandData(backup, "macros.map");
 
   // Names are stored in backup.neuron (Bazecor electron-store), not in Focus commands.
   // Sort by id to guarantee index alignment with keymap codes.
@@ -85,6 +87,7 @@ export function parseBackupToModel(backupRaw: string, product: string, keyboardT
     superkeys: parseSuperkeys(superkeysRaw),
     superkeyNames,
     macroNames,
+    macros: parseMacros(macrosRaw),
     layerNames,
     combos: parseCombos(combosRaw),
   };

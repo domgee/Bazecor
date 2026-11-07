@@ -1,4 +1,6 @@
-import type { LensCombo, PaletteColor } from "../shared/types";
+import type { LensCombo, LensMacroAction, PaletteColor } from "../shared/types";
+import { MACRO_STEP, parseMacroBytes, rawToBytes, stepToAction, walkMacroSteps } from "../../api/parsers/macroSteps";
+import type { MacroStep } from "../../api/parsers/macroSteps";
 import { COMBO_LAYER_ANY } from "../shared/types";
 
 export function parseKeymap(raw: string, keysPerLayer: number): number[][] {
@@ -45,15 +47,87 @@ export function parseColormap(raw: string, layerSize: number): number[][] {
   return layers;
 }
 
+const MAX_SUPERKEYS = 128;
+const ACTIONS_PER_SUPERKEY = 5;
+const SUPERKEY_END = 0;
+const SUPERKEY_ERASED = 65535;
+const SUPERKEY_ACTION_EMPTY = 1;
+
+/* `superkeys.map` wire format, as in Bazecor src/api/parsers/superkeys.ts. Each Superkey is its actions and a 0, a second 0 ends the
+ * map and 65535 fills the rest. An empty action is 1. */
 export function parseSuperkeys(raw: string): number[][] {
-  if (!raw.trim()) return [];
-  const nums = raw.trim().split(/\s+/).map(Number);
-  const ACTIONS_PER_SUPERKEY = 5;
-  const out: number[][] = [];
-  for (let i = 0; i + ACTIONS_PER_SUPERKEY <= nums.length; i += ACTIONS_PER_SUPERKEY) {
-    out.push(nums.slice(i, i + ACTIONS_PER_SUPERKEY));
+  if (!raw.trim()) {
+    return [];
   }
-  return out;
+
+  const nums = raw.trim().split(/\s+/).map(Number);
+  const out: number[][] = [];
+  let current: number[] = [];
+
+  for (const n of nums) {
+    if (out.length >= MAX_SUPERKEYS) {
+      break;
+    }
+
+    if (n === SUPERKEY_END) {
+      if (current.length === 0) {
+        break;
+      }
+
+      out.push(current);
+      current = [];
+    } else if (n === SUPERKEY_ERASED && current.length === 0) {
+      break;
+    } else {
+      current.push(n);
+    }
+  }
+
+  if (current.length > 0 && out.length < MAX_SUPERKEYS) {
+    out.push(current);
+  }
+
+  return out.map(actions => {
+    const cut = actions.slice(0, ACTIONS_PER_SUPERKEY);
+    return cut.concat(new Array<number>(ACTIONS_PER_SUPERKEY - cut.length).fill(SUPERKEY_ACTION_EMPTY));
+  });
+}
+
+const MAX_MACROS = 128;
+
+/* Lens shows a macro only when every step is complete. Stricter than the editor parser, which drops what it cannot read */
+function isReadableStep(step: MacroStep): boolean {
+  const { type, payload } = step;
+
+  if (type === MACRO_STEP.OPTIONS) {
+    return payload.length === 1;
+  }
+
+  if (type === MACRO_STEP.TAP_SEQUENCE) {
+    const n = payload.length;
+    return n >= 2 && n % 2 === 0 && payload[n - 2] === 0 && payload[n - 1] === 0;
+  }
+
+  if (type === MACRO_STEP.TAP_CODE_SEQUENCE) {
+    return payload.length >= 1 && payload[payload.length - 1] === 0;
+  }
+
+  return stepToAction(step) !== undefined;
+}
+
+/** Actions of each macro in `macros.map`, in macro order. A macro with a step Lens cannot read is null, so the overlay keeps its name */
+export function parseMacros(raw: string): (LensMacroAction[] | null)[] {
+  const bytes = rawToBytes(raw);
+
+  if (bytes.length === 0) {
+    return [];
+  }
+
+  const { macros, tail } = walkMacroSteps(bytes);
+  const steps = [...macros, tail];
+  return parseMacroBytes(bytes)
+    .slice(0, MAX_MACROS)
+    .map((m, i) => (steps[i].every(isReadableStep) ? m.actions.map(({ type, keyCode }) => ({ type, keyCode })) : null));
 }
 
 /* `combos.map` wire format (Bazecor src/api/parsers/combos.ts): a count, then

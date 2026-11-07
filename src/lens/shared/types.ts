@@ -18,6 +18,12 @@ export interface LensCombo {
   layer: number;
 }
 
+/** One macro action, as far as the overlay needs it. */
+export interface LensMacroAction {
+  type: number;
+  keyCode: number | number[];
+}
+
 export interface KeyboardModel {
   /** Bazecor product name this model was parsed from (e.g. "Sonsei", "Defy").
    * Drives which keyboard geometry the renderer draws. */
@@ -33,6 +39,8 @@ export interface KeyboardModel {
   superkeys: number[][];
   superkeyNames: string[];
   macroNames: string[];
+  /** Actions of each macro from macros.map, null for a macro Lens cannot read. Empty without macros.map */
+  macros: (LensMacroAction[] | null)[];
   layerNames: string[];
   /** Combos from `combos.map`. Empty on firmware without the Combos plugin. */
   combos: LensCombo[];
