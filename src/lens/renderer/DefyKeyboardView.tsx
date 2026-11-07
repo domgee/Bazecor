@@ -1,7 +1,7 @@
 import React from "react";
 import type { KeyboardModel } from "../shared/types";
 import { DEFY_KEYS, DEFY_SVG_W, DEFY_VIEW_Y, DEFY_VIEW_H } from "./geometry-defy";
-import { DEFY_THUMB_PATHS, DEFY_THUMB_ROTATION, DEFY_THUMB_CENTER } from "./defy-thumb-paths";
+import { DEFY_THUMB_PATHS, DEFY_THUMB_ROTATION, DEFY_THUMB_CENTER, DEFY_THUMB_SLOT_CENTER } from "./defy-thumb-paths";
 import { faceContext, keyFace } from "./key-face";
 import {
   keyLabel,
@@ -59,6 +59,7 @@ export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, 
       const fallbackCenter: [number, number] = [4 + (w - 8) / 2, (h - 8) / 2];
       const [lcx, lcy] = key.thumbType ? (DEFY_THUMB_CENTER[key.thumbType] ?? fallbackCenter) : fallbackCenter;
       const rotation = key.thumbType ? (DEFY_THUMB_ROTATION[key.thumbType] ?? 0) : 0;
+      const [scx, scy] = (key.thumbType && DEFY_THUMB_SLOT_CENTER[key.thumbType]) || [lcx, lcy];
       return (
         <g key={`k-${key.index}`} transform={`translate(${x},${y})`}>
           <g className="key-shadow-hover" transform="translate(0,4)">
@@ -74,9 +75,12 @@ export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, 
             <path d={thumb.inner} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
           </g>
           {slots
-            ? superkeySlots(lcx, lcy, SILHOUETTE_HALF_W, slots, fgColor, rotation)
+            ? superkeySlots(scx, scy, SILHOUETTE_HALF_W, slots, fgColor, rotation)
             : keyLabel(lcx, lcy, 0, h, label, fgColor, rotation)}
-          {comboNumber !== undefined && comboBadgeNearLabel(comboNumber, lcx, lcy, rotation, slots ? SLOT_BADGE_LIFT : 0)}
+          {comboNumber !== undefined &&
+            (slots
+              ? comboBadgeNearLabel(comboNumber, scx, scy, rotation, SLOT_BADGE_LIFT)
+              : comboBadgeNearLabel(comboNumber, lcx, lcy, rotation))}
         </g>
       );
     }

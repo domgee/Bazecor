@@ -41,6 +41,24 @@ export const DEFY_THUMB_CENTER: Record<string, [number, number]> = {
   "defy-tR8": [54.0, 54.5],
 };
 
+/* Centre for an expanded Superkey's slots where the label centre puts a corner slot on the bezel. Each value keeps all five slots on
+ * the inset face, checked by silhouette-slots.test.tsx */
+export const DEFY_THUMB_SLOT_CENTER: Record<string, [number, number]> = {
+  "defy-t2": [29.1, 26.9],
+  "defy-t3": [30.0, 31.3],
+  "defy-t4": [36.0, 40.0],
+  "defy-t5": [43.0, 24.0],
+  "defy-t6": [26.1, 25.5],
+  "defy-t7": [35.8, 30.5],
+  "defy-t8": [54.0, 55.0],
+  "defy-tR2": [34.8, 26.9],
+  "defy-tR3": [41.5, 30.8],
+  "defy-tR5": [35.0, 24.0],
+  "defy-tR6": [34.9, 24.5],
+  "defy-tR7": [39.0, 34.5],
+  "defy-tR8": [53.5, 54.5],
+};
+
 export const DEFY_THUMB_ROTATION: Record<string, number> = {
   "defy-t2": 3,
   "defy-t3": 10,

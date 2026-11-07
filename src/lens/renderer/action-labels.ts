@@ -14,6 +14,8 @@ export const MOD_ORDER = ["Ctrl", "Alt", "AltGr", "Shift", "OS"];
 
 // Two-line keys (Super/name, Macro/name, Mouse/UP) use this size for both lines
 export const FACE_SUBTITLE_FS = 11;
+// The smallest size fitFontSize gives a subtitle
+const SMALLEST_SUBTITLE_FS = FACE_SUBTITLE_FS * 0.62;
 
 /** Shrink a line's font so Bazecor's longer labels ("BACKSPACE", "PAGE DOWN")
  * still fit a standard 57px key face instead of overflowing. */
@@ -123,6 +125,7 @@ const isLetter = (text: string) => /\p{L}/u.test(text);
 // Approximate glyph widths in em, so labels are cut before they overflow a slot
 const WIDE_CHARS = new Set([..."MWmw@%⌘⌥⇧⌃⏎⌫←→↑↓…"]);
 const NARROW_CHARS = new Set([..."iljtfrI.,:;'|! "]);
+const NARROWEST_EM = 0.34;
 const DOUBLE_WIDTH_RE = /\p{Extended_Pictographic}/u;
 
 function charWidth(ch: string): number {
@@ -135,7 +138,7 @@ function charWidth(ch: string): number {
   }
 
   if (NARROW_CHARS.has(ch)) {
-    return 0.34;
+    return NARROWEST_EM;
   }
 
   return 0.64;
@@ -149,6 +152,11 @@ export function textWidth(text: string, fontSize: number): number {
   return [...text].reduce((sum, ch) => sum + charWidth(ch), 0) * fontSize;
 }
 
+// Every code point is at least NARROWEST_EM wide, so no prefix longer than this can fit
+function maxPrefixLength(maxWidth: number, smallestFontSize: number): number {
+  return Math.ceil(maxWidth / (NARROWEST_EM * smallestFontSize)) + 1;
+}
+
 /** `text` when it fits, otherwise its longest prefix that fits with "…" added */
 export function fitText(text: string, fontSize: number, maxWidth: number): string {
   if (textWidth(text, fontSize) <= maxWidth) {
@@ -158,7 +166,7 @@ export function fitText(text: string, fontSize: number, maxWidth: number): strin
   const chars = [...text];
   const ellipsisWidth = textWidth(ELLIPSIS, fontSize);
 
-  for (let n = chars.length - 1; n > 0; n -= 1) {
+  for (let n = Math.min(chars.length - 1, maxPrefixLength(maxWidth, fontSize)); n > 0; n -= 1) {
     const prefix = chars.slice(0, n).join("").trimEnd();
 
     if (prefix && textWidth(prefix, fontSize) + ellipsisWidth <= maxWidth) {
@@ -185,7 +193,7 @@ export function fitMacroSubtitle(text: string, maxWidth = MACRO_FACE_MAX_WIDTH):
   // The font depends on the length and does not shrink steadily, so take the longest candidate that fits
   const chars = [...text];
 
-  for (let n = chars.length - 1; n > 0; n -= 1) {
+  for (let n = Math.min(chars.length - 1, maxPrefixLength(maxWidth, SMALLEST_SUBTITLE_FS)); n > 0; n -= 1) {
     const prefix = chars.slice(0, n).join("").trimEnd();
 
     if (prefix && fits(`${prefix}${ELLIPSIS}`)) {

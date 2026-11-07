@@ -68,6 +68,12 @@ const THUMB_TEXT: Record<number, [number, number, string]> = {
   59: [28.8, 25.9, ""], // sonsei-tR1: rect, horizontal (no rotation rule)
 };
 
+// Centre for an expanded Superkey's slots where the label centre puts a corner slot off the face, checked by silhouette-slots.test.tsx
+const THUMB_SLOT_CENTER: Record<number, [number, number]> = {
+  50: [34.0, 33.3],
+  57: [37.0, 35.3],
+};
+
 export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, layerNames, expandSuperkeys, expandMacros }) => {
   // Each product has its own geometry; dispatch to the matching view. The Sonsei
   // rendering below is the default (also covers unknown products).
@@ -119,11 +125,12 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
     const thumbPath = THUMB_PATHS[key.index];
     if (thumbPath) {
       const [tx, ty, rotKeyType] = THUMB_TEXT[key.index] ?? [28, 24, ""];
+      const [sx, sy] = THUMB_SLOT_CENTER[key.index] ?? [tx, ty];
       const tr = rotKeyType ? (DEFY_THUMB_ROTATION[rotKeyType] ?? 0) : 0;
       const rot = tr === 0 ? undefined : `rotate(${tr},${tx},${ty})`;
       let thumbLabel: JSX.Element | null = null;
       if (slots) {
-        thumbLabel = superkeySlots(tx, ty, SILHOUETTE_HALF_W, slots, fgColor, tr);
+        thumbLabel = superkeySlots(sx, sy, SILHOUETTE_HALF_W, slots, fgColor, tr);
       } else if (hasSub) {
         thumbLabel = (
           <g transform={rot}>
@@ -216,7 +223,10 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
           <path d={thumbPath} fill={color.css} />
           <path d={thumbPath} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
           {thumbLabel}
-          {comboNumber !== undefined && comboBadgeNearLabel(comboNumber, tx, ty, tr, slots ? SLOT_BADGE_LIFT : 0)}
+          {comboNumber !== undefined &&
+            (slots
+              ? comboBadgeNearLabel(comboNumber, sx, sy, tr, SLOT_BADGE_LIFT)
+              : comboBadgeNearLabel(comboNumber, tx, ty, tr))}
         </g>
       );
     }

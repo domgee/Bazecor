@@ -55,8 +55,14 @@ const LayerLensSettings = () => {
     if (typeof s.overlayAutoShowDuration === "number") setAutoShowDuration([s.overlayAutoShowDuration / 1000]);
     if (typeof s.resizeMode === "boolean") setResizeModeState(s.resizeMode);
     if (typeof s.opacity === "number") setOverlayOpacity([Math.round(s.opacity * 100)]);
-    if (typeof s.expandSuperkeys === "boolean") setExpandSuperkeys(s.expandSuperkeys);
-    if (typeof s.expandMacros === "boolean") setExpandMacros(s.expandMacros);
+
+    if (typeof s.expandSuperkeys === "boolean") {
+      setExpandSuperkeys(s.expandSuperkeys);
+    }
+
+    if (typeof s.expandMacros === "boolean") {
+      setExpandMacros(s.expandMacros);
+    }
   };
 
   useEffect(() => {

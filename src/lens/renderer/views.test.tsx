@@ -176,12 +176,12 @@ describe("Lens views with the expand settings on", () => {
   });
 
   test("DefyRotatedThumbSuperkey_SlotsTurnWithTheKey", () => {
-    // Key 67 is the defy-t4 thumb, turned 37 degrees about its label centre (37.5, 41)
+    // Key 67 is the defy-t4 thumb, turned 37 degrees about its slot centre (36, 40)
     const container = renderExpanded(createExpandModel("Defy", { 67: SUPERKEY_1 }, []), true, false);
 
     const tap = container.querySelector('g[data-slot="tap"]');
 
-    expect(tap?.parentElement?.getAttribute("transform")).toBe("rotate(37,37.5,41)");
+    expect(tap?.parentElement?.getAttribute("transform")).toBe("rotate(37,36,40)");
   });
 
   test("Raise2AnsiWideSuperkey_HoldSlotAtTheRightEdge", () => {

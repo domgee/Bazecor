@@ -276,3 +276,90 @@ describe("macroDisplayNames", () => {
     expect(macroDisplayNames(["Copy", "Switch", "Wide"], macros, ctx())).toEqual(["Copy", "⌘TAB", "wwww…"]);
   });
 });
+
+// The cut without a bound on the prefix length, to check the bounded one gives the same results
+const unboundedFit = (text: string, fits: (candidate: string) => boolean) => {
+  if (fits(text)) {
+    return text;
+  }
+
+  const chars = [...text];
+
+  for (let n = chars.length - 1; n > 0; n -= 1) {
+    const prefix = chars.slice(0, n).join("").trimEnd();
+
+    if (prefix && fits(`${prefix}…`)) {
+      return `${prefix}…`;
+    }
+  }
+
+  return "…";
+};
+
+// Build repeatable mixed texts with wide, narrow, emoji and CJK characters and runs of spaces
+const sampleTexts = () => {
+  const alphabet = [..."aWi l  .MW😀漢⌘e r"];
+  let seed = 7;
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed;
+  };
+
+  return Array.from({ length: 300 }, (_, i) => Array.from({ length: i % 80 }, () => alphabet[next() % alphabet.length]).join(""));
+};
+
+describe("bounded cut", () => {
+  test("FitText_SameAsUnbounded", () => {
+    const sizes: [number, number][] = [
+      [7.5, 20.5],
+      [9, 43],
+      [7.5, 4],
+    ];
+
+    const mismatches = sampleTexts().flatMap(text =>
+      sizes
+        .filter(([fontSize, maxWidth]) => {
+          const expected = unboundedFit(text, candidate => textWidth(candidate, fontSize) <= maxWidth);
+          return fitText(text, fontSize, maxWidth) !== expected;
+        })
+        .map(size => `${text} ${size}`),
+    );
+
+    expect(mismatches).toEqual([]);
+  });
+
+  test("FitMacroSubtitle_SameAsUnbounded", () => {
+    const mismatches = sampleTexts().flatMap(text =>
+      [MACRO_FACE_MAX_WIDTH, 30, 80]
+        .filter(maxWidth => {
+          const expected = unboundedFit(
+            text,
+            candidate => textWidth(candidate, fitFontSize(candidate, FACE_SUBTITLE_FS)) <= maxWidth,
+          );
+          return fitMacroSubtitle(text, maxWidth) !== expected;
+        })
+        .map(maxWidth => `${text} ${maxWidth}`),
+    );
+
+    expect(mismatches).toEqual([]);
+  });
+
+  test("LongTextMacro_SameLabelQuickly", () => {
+    // 2000 typed keys, "hi " repeated
+    const macro = typed(...Array.from({ length: 2000 }, (_, i) => [11, 12, 44][i % 3]));
+
+    const started = performance.now();
+    const names = macroDisplayNames(["Long"], [macro], ctx());
+    const elapsed = performance.now() - started;
+
+    const label = macroKeysLabel(macro, ctx()) ?? "";
+    const unbounded = unboundedFit(
+      label,
+      candidate => textWidth(candidate, fitFontSize(candidate, FACE_SUBTITLE_FS)) <= MACRO_FACE_MAX_WIDTH,
+    );
+    expect(names).toEqual(["hi hi hi hi…"]);
+    expect(names).toEqual([unbounded]);
+    // Generous limit, the unbounded cut took over 60 ms here
+    expect(elapsed).toBeLessThan(20);
+  });
+});

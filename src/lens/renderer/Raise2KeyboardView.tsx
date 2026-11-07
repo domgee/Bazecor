@@ -25,8 +25,12 @@ interface Props {
   expandMacros?: boolean;
 }
 
-// The upper rect of the L-shaped ISO Enter face (x 4..65, y 0..51), where an expanded Superkey's slots fit
-const ISO_ENTER_SLOTS = { cx: 34.5, cy: 24.5, halfW: 26 };
+/* Where an expanded Superkey's slots go on a silhouette whose label centre puts them off the face, checked by silhouette-slots.test.tsx.
+ * The ISO Enter uses the upper rect of its L-shaped face (x 4..65, y 0..51), the left wing moves right of its slanted edge */
+const SILHOUETTE_SLOTS: Record<string, { cx: number; cy: number; halfW: number }> = {
+  "raise2-iso-enter": { cx: 34.5, cy: 24.5, halfW: 26 },
+  "raise2-t5": { cx: 65.5, cy: 24.5, halfW: SILHOUETTE_HALF_W },
+};
 
 /**
  * Renders the Raise2 layout in the overlay. Shares Lens' key-cell look with the
@@ -91,10 +95,15 @@ export const Raise2KeyboardView: React.FC<Props> = ({
       );
 
       if (slots) {
-        const isIsoEnter = key.thumbType === "raise2-iso-enter";
-        const sx = isIsoEnter ? ISO_ENTER_SLOTS.cx : lcx;
-        const sy = isIsoEnter ? ISO_ENTER_SLOTS.cy : lcy;
-        const halfW = isIsoEnter ? ISO_ENTER_SLOTS.halfW : SILHOUETTE_HALF_W;
+        const {
+          cx: sx,
+          cy: sy,
+          halfW,
+        } = (key.thumbType && SILHOUETTE_SLOTS[key.thumbType]) || {
+          cx: lcx,
+          cy: lcy,
+          halfW: SILHOUETTE_HALF_W,
+        };
         face = (
           <>
             {superkeySlots(sx, sy, halfW, slots, fgColor)}
