@@ -29,6 +29,8 @@ interface LensSettingsShape {
   overlayAutoShow: boolean;
   overlayAutoShowDuration: number;
   resizeMode: boolean;
+  expandSuperkeys: boolean;
+  expandMacros: boolean;
 }
 
 interface LensStateShape {
@@ -42,6 +44,8 @@ const LayerLensSettings = () => {
   const [autoShowDuration, setAutoShowDuration] = useState([3]);
   const [resizeMode, setResizeModeState] = useState(false);
   const [overlayOpacity, setOverlayOpacity] = useState([85]);
+  const [expandSuperkeys, setExpandSuperkeys] = useState(false);
+  const [expandMacros, setExpandMacros] = useState(false);
   const [runInBackground, setRunInBackground] = useState(false);
   const [hidPermissionDenied, setHidPermissionDenied] = useState(false);
 
@@ -51,6 +55,8 @@ const LayerLensSettings = () => {
     if (typeof s.overlayAutoShowDuration === "number") setAutoShowDuration([s.overlayAutoShowDuration / 1000]);
     if (typeof s.resizeMode === "boolean") setResizeModeState(s.resizeMode);
     if (typeof s.opacity === "number") setOverlayOpacity([Math.round(s.opacity * 100)]);
+    if (typeof s.expandSuperkeys === "boolean") setExpandSuperkeys(s.expandSuperkeys);
+    if (typeof s.expandMacros === "boolean") setExpandMacros(s.expandMacros);
   };
 
   useEffect(() => {
@@ -98,6 +104,16 @@ const LayerLensSettings = () => {
   const handleResizeMode = (checked: boolean) => {
     setResizeModeState(checked);
     ipcRenderer.invoke("lens:set-resize-mode", checked).catch(() => {});
+  };
+
+  const handleExpandSuperkeys = (checked: boolean) => {
+    setExpandSuperkeys(checked);
+    ipcRenderer.invoke("lens:set-expand-superkeys", checked).catch(() => {});
+  };
+
+  const handleExpandMacros = (checked: boolean) => {
+    setExpandMacros(checked);
+    ipcRenderer.invoke("lens:set-expand-macros", checked).catch(() => {});
   };
 
   const handleOverlayOpacity = (value: number[]) => {
@@ -287,6 +303,62 @@ const LayerLensSettings = () => {
                 className="w-full"
               />
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-right">{autoShowDuration[0].toFixed(1)} s</div>
+            </div>
+
+            <div className="flex items-center w-full justify-between py-2 border-b-[1px] border-gray-50 dark:border-gray-700">
+              <div className="flex items-center gap-1.5">
+                <label htmlFor="expandSuperkeysSwitch" className="m-0 text-sm font-semibold tracking-tight">
+                  Expand Superkeys
+                </label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex cursor-help text-purple-100 dark:text-purple-200">
+                      <IconInformation size="sm" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs">
+                      Shows every action of a Superkey on its key instead of its name: tap in the centre, hold top right, tap and
+                      hold top left, double tap bottom left and double tap and hold bottom right.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Switch
+                id="expandSuperkeysSwitch"
+                checked={expandSuperkeys}
+                onCheckedChange={handleExpandSuperkeys}
+                variant="default"
+                size="sm"
+              />
+            </div>
+
+            <div className="flex items-center w-full justify-between py-2 border-b-[1px] border-gray-50 dark:border-gray-700">
+              <div className="flex items-center gap-1.5">
+                <label htmlFor="expandMacrosSwitch" className="m-0 text-sm font-semibold tracking-tight">
+                  Expand macros
+                </label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex cursor-help text-purple-100 dark:text-purple-200">
+                      <IconInformation size="sm" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs">
+                      Shows the keys a macro sends, like ⌘TAB or the text it types, instead of its name. Long macros are cut
+                      short, and a macro Layer Lens cannot read keeps its name.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Switch
+                id="expandMacrosSwitch"
+                checked={expandMacros}
+                onCheckedChange={handleExpandMacros}
+                variant="default"
+                size="sm"
+              />
             </div>
 
             <div className="py-3">

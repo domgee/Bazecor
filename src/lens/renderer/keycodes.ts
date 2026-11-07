@@ -287,6 +287,14 @@ export function superkeyIndex(code: number): number | null {
   return null;
 }
 
+export function macroIndex(code: number): number | null {
+  if (code >= MACRO_MIN && code <= MACRO_MAX) {
+    return code - MACRO_MIN;
+  }
+
+  return null;
+}
+
 /** Tap-label for a plain HID code inside a compound key (dual-use, key+modifier). */
 function baseLabelFor(code: number, layout: Record<number, string>): string {
   const twoLine = TWO_LINE[code];

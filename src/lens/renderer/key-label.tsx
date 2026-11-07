@@ -1,6 +1,20 @@
 import React from "react";
 import type { DecodedKey, FunctionIconName, LensCombo } from "../shared/types";
 import { COMBO_LAYER_ANY } from "../shared/types";
+import {
+  FACE_SUBTITLE_FS,
+  MOD_ABBR,
+  MOD_ORDER,
+  SLOT_FS_CORNER,
+  SLOT_FS_TAP,
+  fitFontSize,
+  fitText,
+  slotMaxWidth,
+  textWidth,
+} from "./action-labels";
+import type { SlotLabels } from "./action-labels";
+
+export { fitFontSize } from "./action-labels";
 
 /* Shared key-face text rendering for every Lens keyboard view (Sonsei, Defy,
  * Raise2). Draws the decoded label — primary line, optional second line
@@ -9,7 +23,7 @@ import { COMBO_LAYER_ANY } from "../shared/types";
  * copies so label styling stays identical across boards. */
 
 const FS = 13;
-const FSS = 11; // two-line keys (Super/name, Macro/name, Mouse/UP) — same size both lines
+const FSS = FACE_SUBTITLE_FS; // two-line keys (Super/name, Macro/name, Mouse/UP) — same size both lines
 const FSH = 9;
 const MOD_BOX_H = 9;
 const MOD_BOX_GAP = 2;
@@ -167,8 +181,6 @@ function modBoxWidth(label: string): number {
 // 57px key face is that Bazecor itself collapses these into one word instead.
 // Anything else with 3+ mods falls back to Bazecor's own abbreviation style
 // ("C+A+AGr", from the same file's other `top` labels) as a single chip.
-const MOD_ABBR: Record<string, string> = { Ctrl: "C", Alt: "A", AltGr: "AGr", Shift: "S", OS: "O" };
-const MOD_ORDER = ["Ctrl", "Alt", "AltGr", "Shift", "OS"];
 function combineMods(mods: string[]): string {
   const has = (m: string) => mods.includes(m);
   if (mods.length === 5) return "Hyper+AltGr";
@@ -214,15 +226,6 @@ export function fg(r: number, g: number, b: number): string {
   return contrastRatio(face, DARK_TEXT_LUMINANCE) >= contrastRatio(face, LIGHT_TEXT_LUMINANCE) ? DARK_TEXT : LIGHT_TEXT;
 }
 
-/** Shrink a line's font so Bazecor's longer labels ("BACKSPACE", "PAGE DOWN")
- * still fit a standard 57px key face instead of overflowing. */
-export function fitFontSize(text: string, base: number): number {
-  if (text.length >= 9) return base * 0.62;
-  if (text.length >= 7) return base * 0.72;
-  if (text.length >= 5) return base * 0.85;
-  return base;
-}
-
 /** Ported from Bazecor's own `getDivideKeys` (per-hardware Keymap.jsx): a
  * single word longer than 7 characters — and not a modifier combo like
  * "C+A" — gets cut at 4 chars onto two lines ("BACKSPACE" -> "BACK"/"SPACE")
@@ -233,6 +236,26 @@ export function splitLongWord(text: string): [string, string] | null {
   if (text.length <= 7) return null;
   if (text.startsWith("C+") || text.startsWith("A+") || text.startsWith("AGr+")) return null;
   return [text.slice(0, 4), text.slice(4)];
+}
+
+/** A media/tool key glyph of `size` px with its top-left corner at (x, y) */
+function functionIcon(name: FunctionIconName, x: number, y: number, size: number, fgColor: string): JSX.Element {
+  return (
+    <svg x={x} y={y} width={size} height={size} viewBox={`0 0 ${FUNCTION_ICON_SIZE} ${FUNCTION_ICON_SIZE}`} pointerEvents="none">
+      {FUNCTION_ICON_PATHS[name].map(p => (
+        <path
+          key={p.d}
+          d={p.d}
+          fill={p.stroke ? "none" : fgColor}
+          stroke={p.stroke ? fgColor : undefined}
+          strokeWidth={p.strokeWidth}
+          strokeLinejoin={p.stroke ? "round" : undefined}
+          fillRule={p.evenodd ? "evenodd" : undefined}
+          clipRule={p.evenodd ? "evenodd" : undefined}
+        />
+      ))}
+    </svg>
+  );
 }
 
 /**
@@ -262,31 +285,8 @@ export function keyLabel(
 
   let primaryContent: JSX.Element | null = null;
   if (label.icon) {
-    const paths = FUNCTION_ICON_PATHS[label.icon];
     const size = 15;
-    primaryContent = (
-      <svg
-        x={cx - size / 2}
-        y={primaryY - size / 2}
-        width={size}
-        height={size}
-        viewBox={`0 0 ${FUNCTION_ICON_SIZE} ${FUNCTION_ICON_SIZE}`}
-        pointerEvents="none"
-      >
-        {paths.map(p => (
-          <path
-            key={p.d}
-            d={p.d}
-            fill={p.stroke ? "none" : fgColor}
-            stroke={p.stroke ? fgColor : undefined}
-            strokeWidth={p.strokeWidth}
-            strokeLinejoin={p.stroke ? "round" : undefined}
-            fillRule={p.evenodd ? "evenodd" : undefined}
-            clipRule={p.evenodd ? "evenodd" : undefined}
-          />
-        ))}
-      </svg>
-    );
+    primaryContent = functionIcon(label.icon, cx - size / 2, primaryY - size / 2, size, fgColor);
   } else if (hasSub) {
     primaryContent = (
       <>
@@ -462,6 +462,125 @@ export function keyLabel(
 }
 
 /* ------------------------------------------------------------------------ */
+/* Expanded Superkeys                                                        */
+/* ------------------------------------------------------------------------ */
+
+// Label half width on the thumb and ISO Enter silhouettes
+export const SILHOUETTE_HALF_W = 22;
+// Raise a silhouette's combo badge by this much so it clears the top slots
+export const SLOT_BADGE_LIFT = 6;
+const SLOT_INSET = 3;
+const SLOT_TOP_DY = -10;
+const SLOT_TAP_DY = 3;
+const SLOT_BOTTOM_DY = 16;
+const SLOT_ICON_TAP = 11;
+const SLOT_ICON_CORNER = 9;
+const SLOT_HOLD_ICON_SCALE = 0.5;
+const SLOT_FONT_FAMILY = "system-ui,-apple-system,sans-serif";
+
+type SlotAnchor = "start" | "middle" | "end";
+
+// Where each Superkey action sits on the face, the same arrangement as Bazecor's Superkey editor
+const SLOT_LAYOUT: readonly { id: string; index: number; side: number; dy: number; anchor: SlotAnchor }[] = [
+  { id: "tap", index: 0, side: 0, dy: SLOT_TAP_DY, anchor: "middle" },
+  { id: "hold", index: 1, side: 1, dy: SLOT_TOP_DY, anchor: "end" },
+  { id: "tapHold", index: 2, side: -1, dy: SLOT_TOP_DY, anchor: "start" },
+  { id: "dTap", index: 3, side: -1, dy: SLOT_BOTTOM_DY, anchor: "start" },
+  { id: "dTapHold", index: 4, side: 1, dy: SLOT_BOTTOM_DY, anchor: "end" },
+];
+
+// The left edge of something `width` wide, anchored at x
+function anchoredLeft(x: number, width: number, anchor: SlotAnchor): number {
+  if (anchor === "middle") {
+    return x - width / 2;
+  }
+
+  return anchor === "end" ? x - width : x;
+}
+
+function slotText(text: string, x: number, y: number, fontSize: number, anchor: SlotAnchor, isTap: boolean, fgColor: string) {
+  return (
+    <text
+      x={x}
+      y={y}
+      textAnchor={anchor}
+      dominantBaseline="middle"
+      fontSize={fontSize}
+      fontWeight={isTap ? "700" : "600"}
+      fontFamily={SLOT_FONT_FAMILY}
+      fill={fgColor}
+      opacity={isTap ? undefined : 0.85}
+      pointerEvents="none"
+    >
+      {text}
+    </text>
+  );
+}
+
+/**
+ * The actions of an expanded Superkey around (cx, cy) on a face `halfW` wide each side: tap in the centre, hold top right,
+ * tap-hold top left, double tap bottom left and double tap-hold bottom right. `rotation` turns them with the face like keyLabel.
+ */
+export function superkeySlots(
+  cx: number,
+  cy: number,
+  halfW: number,
+  slots: SlotLabels,
+  fgColor: string,
+  rotation = 0,
+): JSX.Element {
+  const content = SLOT_LAYOUT.map(pos => {
+    const slot = slots[pos.index];
+
+    if (!slot) {
+      return null;
+    }
+
+    const isTap = pos.index === 0;
+    const x = cx + pos.side * (halfW - SLOT_INSET);
+    const y = cy + pos.dy;
+    const fontSize = isTap ? SLOT_FS_TAP : SLOT_FS_CORNER;
+    const maxWidth = slotMaxWidth(halfW, pos.index);
+    let body: JSX.Element;
+
+    if (slot.icon) {
+      const size = isTap ? SLOT_ICON_TAP : SLOT_ICON_CORNER;
+      body = functionIcon(slot.icon, anchoredLeft(x, size, pos.anchor), y - size / 2, size, fgColor);
+    } else if (slot.holdIcon) {
+      const icon = HOLD_ICON_PATHS[slot.holdIcon];
+      const iw = icon.width * SLOT_HOLD_ICON_SCALE;
+      const ih = icon.height * SLOT_HOLD_ICON_SCALE;
+      const text = fitText(slot.text, fontSize, maxWidth - iw - 1);
+      const left = anchoredLeft(x, iw + 1 + textWidth(text, fontSize), pos.anchor);
+      body = (
+        <>
+          <svg x={left} y={y - ih / 2} width={iw} height={ih} viewBox={icon.viewBox} fill={fgColor} pointerEvents="none">
+            {icon.paths.map(d => (
+              <path key={d} d={d} />
+            ))}
+          </svg>
+          {slotText(text, left + iw + 1, y, fontSize, "start", isTap, fgColor)}
+        </>
+      );
+    } else {
+      body = slotText(fitText(slot.text, fontSize, maxWidth), x, y, fontSize, pos.anchor, isTap, fgColor);
+    }
+
+    return (
+      <g key={pos.id} data-slot={pos.id}>
+        {body}
+      </g>
+    );
+  });
+
+  if (!rotation) {
+    return <>{content}</>;
+  }
+
+  return <g transform={`rotate(${rotation},${cx},${cy})`}>{content}</g>;
+}
+
+/* ------------------------------------------------------------------------ */
 /* Combo membership                                                          */
 /* ------------------------------------------------------------------------ */
 
@@ -523,8 +642,9 @@ export function comboBadge(text: string, right: number, top: number, transform?:
  * Badge for a key drawn as a silhouette (thumb wings, ISO Enter), whose
  * bounding-box corner can fall outside the shape. Anchored to the label
  * centre instead and turned with it, so it always sits on the key face.
+ * `lift` raises it clear of the top slots of an expanded Superkey.
  */
-export function comboBadgeNearLabel(text: string, cx: number, cy: number, rotation = 0): JSX.Element {
+export function comboBadgeNearLabel(text: string, cx: number, cy: number, rotation = 0, lift = 0): JSX.Element {
   const transform = rotation ? `rotate(${rotation},${cx},${cy})` : undefined;
-  return comboBadge(text, cx + 22, cy - 22, transform);
+  return comboBadge(text, cx + 22, cy - 22 - lift, transform);
 }

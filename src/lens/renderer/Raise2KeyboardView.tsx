@@ -1,18 +1,32 @@
 import React from "react";
-import type { DecodedKey, KeyboardModel } from "../shared/types";
+import type { KeyboardModel } from "../shared/types";
 import { RAISE2_ANSI_KEYS, RAISE2_ANSI_SVG_W, RAISE2_ANSI_VIEW_Y, RAISE2_ANSI_VIEW_H } from "./geometry-raise2-ansi";
 import { RAISE2_ISO_KEYS, RAISE2_ISO_SVG_W, RAISE2_ISO_VIEW_Y, RAISE2_ISO_VIEW_H } from "./geometry-raise2-iso";
 import { RAISE2_THUMB_PATHS } from "./raise2-thumb-paths";
 import { RAISE2_ISO_ENTER_PATH } from "./raise2-iso-enter-path";
-import { decodeKey, superkeyIndex, layoutOverrides, symbolOverrides } from "./keycodes";
-import { keyLabel, fg, comboBadge, comboBadgeNearLabel, comboNumbersForLayer } from "./key-label";
+import { faceContext, keyFace } from "./key-face";
+import {
+  keyLabel,
+  fg,
+  comboBadge,
+  comboBadgeNearLabel,
+  comboNumbersForLayer,
+  superkeySlots,
+  SILHOUETTE_HALF_W,
+  SLOT_BADGE_LIFT,
+} from "./key-label";
 
 interface Props {
   model: KeyboardModel;
   activeLayer: number;
   layout: string;
   layerNames?: string[];
+  expandSuperkeys?: boolean;
+  expandMacros?: boolean;
 }
+
+// The upper rect of the L-shaped ISO Enter face (x 4..65, y 0..51), where an expanded Superkey's slots fit
+const ISO_ENTER_SLOTS = { cx: 34.5, cy: 24.5, halfW: 26 };
 
 /**
  * Renders the Raise2 layout in the overlay. Shares Lens' key-cell look with the
@@ -23,7 +37,14 @@ interface Props {
  * row is plain rects, since Raise2's thumb cluster (unlike Defy's) is mostly
  * regular keys with only those two special shapes.
  */
-export const Raise2KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, layerNames }) => {
+export const Raise2KeyboardView: React.FC<Props> = ({
+  model,
+  activeLayer,
+  layout,
+  layerNames,
+  expandSuperkeys,
+  expandMacros,
+}) => {
   // Raise2 ships as ANSI or ISO; the two layouts only diverge near Enter and the
   // left-Shift row (see geometry-raise2-iso.ts), but that's enough to need a
   // distinct key set/silhouette table. ANSI is the fallback for boards where
@@ -35,14 +56,11 @@ export const Raise2KeyboardView: React.FC<Props> = ({ model, activeLayer, layout
   const viewH = isIso ? RAISE2_ISO_VIEW_H : RAISE2_ANSI_VIEW_H;
   const thumbPaths = isIso ? { ...RAISE2_THUMB_PATHS, ...RAISE2_ISO_ENTER_PATH } : RAISE2_THUMB_PATHS;
 
-  const overrides = layoutOverrides(layout);
-  const symbols = symbolOverrides(layout);
+  const ctx = faceContext(model, layout, layerNames, { expandSuperkeys, expandMacros });
   const layer = Math.min(activeLayer, model.keymap.length - 1);
   const keymapLayer = model.keymap[layer] ?? [];
   const colormapLayer = model.colormap[layer] ?? [];
   const { palette } = model;
-  const names = model.layerNames?.length ? model.layerNames : (layerNames ?? []);
-  const macroNames = model.macroNames ?? [];
   const comboNumbers = comboNumbersForLayer(model.combos, layer);
 
   function getColor(ledIndex: number) {
@@ -51,19 +69,9 @@ export const Raise2KeyboardView: React.FC<Props> = ({ model, activeLayer, layout
     return { r: c.r, g: c.g, b: c.b, css: c.rgb };
   }
 
-  function getLabel(keyIndex: number): DecodedKey {
-    const code = keymapLayer[keyIndex] ?? 0;
-    const sk = superkeyIndex(code);
-    if (sk !== null) {
-      const name = model.superkeyNames?.[sk] || `SK${sk + 1}`;
-      return { primary: "SUPER", subtitle: name, hold: "" };
-    }
-    return decodeKey(code, overrides, names, macroNames, symbols);
-  }
-
   function renderKey(key: (typeof RAISE2_ANSI_KEYS)[0]) {
     const color = getColor(key.ledIndex);
-    const label = getLabel(key.index);
+    const { label, slots } = keyFace(keymapLayer[key.index] ?? 0, ctx);
     const fgColor = fg(color.r, color.g, color.b);
     const comboNumber = comboNumbers.get(key.index);
     const { x, y, w, h } = key;
@@ -75,6 +83,26 @@ export const Raise2KeyboardView: React.FC<Props> = ({ model, activeLayer, layout
     if (thumb) {
       const lcx = 4 + (w - 8) / 2;
       const lcy = (h - 8) / 2;
+      let face = (
+        <>
+          {keyLabel(lcx, lcy, 0, h, label, fgColor)}
+          {comboNumber !== undefined && comboBadgeNearLabel(comboNumber, lcx, lcy)}
+        </>
+      );
+
+      if (slots) {
+        const isIsoEnter = key.thumbType === "raise2-iso-enter";
+        const sx = isIsoEnter ? ISO_ENTER_SLOTS.cx : lcx;
+        const sy = isIsoEnter ? ISO_ENTER_SLOTS.cy : lcy;
+        const halfW = isIsoEnter ? ISO_ENTER_SLOTS.halfW : SILHOUETTE_HALF_W;
+        face = (
+          <>
+            {superkeySlots(sx, sy, halfW, slots, fgColor)}
+            {comboNumber !== undefined && comboBadgeNearLabel(comboNumber, sx, sy, 0, SLOT_BADGE_LIFT)}
+          </>
+        );
+      }
+
       return (
         <g key={`k-${key.index}`} transform={`translate(${x},${y})`}>
           <g className="key-shadow-hover" transform="translate(0,4)">
@@ -89,8 +117,7 @@ export const Raise2KeyboardView: React.FC<Props> = ({ model, activeLayer, layout
             <path d={thumb.inner} fill={color.css} />
             <path d={thumb.inner} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
           </g>
-          {keyLabel(lcx, lcy, 0, h, label, fgColor)}
-          {comboNumber !== undefined && comboBadgeNearLabel(comboNumber, lcx, lcy)}
+          {face}
         </g>
       );
     }
@@ -105,13 +132,13 @@ export const Raise2KeyboardView: React.FC<Props> = ({ model, activeLayer, layout
         <rect className="key-shadow-middle" x={x + 4} y={y + 12} width={w - 8} height={h - 8} rx={4} fill={color.css} />
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill={color.css} />
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
-        {keyLabel(cx, cy, y, h, label, fgColor)}
+        {slots ? superkeySlots(cx, cy, (w - 8) / 2, slots, fgColor) : keyLabel(cx, cy, y, h, label, fgColor)}
         {comboNumber !== undefined && comboBadge(comboNumber, x + w - 1, y - 3)}
       </g>
     );
   }
 
-  const layerName = names[layer] ?? `Layer ${layer}`;
+  const layerName = ctx.layerNames[layer] ?? `Layer ${layer}`;
 
   return (
     <div className="keyboard-view">

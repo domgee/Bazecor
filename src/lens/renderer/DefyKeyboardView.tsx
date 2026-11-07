@@ -1,15 +1,26 @@
 import React from "react";
-import type { DecodedKey, KeyboardModel } from "../shared/types";
+import type { KeyboardModel } from "../shared/types";
 import { DEFY_KEYS, DEFY_SVG_W, DEFY_VIEW_Y, DEFY_VIEW_H } from "./geometry-defy";
 import { DEFY_THUMB_PATHS, DEFY_THUMB_ROTATION, DEFY_THUMB_CENTER } from "./defy-thumb-paths";
-import { decodeKey, superkeyIndex, layoutOverrides, symbolOverrides } from "./keycodes";
-import { keyLabel, fg, comboBadge, comboBadgeNearLabel, comboNumbersForLayer } from "./key-label";
+import { faceContext, keyFace } from "./key-face";
+import {
+  keyLabel,
+  fg,
+  comboBadge,
+  comboBadgeNearLabel,
+  comboNumbersForLayer,
+  superkeySlots,
+  SILHOUETTE_HALF_W,
+  SLOT_BADGE_LIFT,
+} from "./key-label";
 
 interface Props {
   model: KeyboardModel;
   activeLayer: number;
   layout: string;
   layerNames?: string[];
+  expandSuperkeys?: boolean;
+  expandMacros?: boolean;
 }
 
 /**
@@ -20,15 +31,12 @@ interface Props {
  * face). Unlike the Sonsei view the two halves are not rotated — the Defy
  * coordinates already bake the split-ergo stagger into their y values.
  */
-export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, layerNames }) => {
-  const overrides = layoutOverrides(layout);
-  const symbols = symbolOverrides(layout);
+export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, layerNames, expandSuperkeys, expandMacros }) => {
+  const ctx = faceContext(model, layout, layerNames, { expandSuperkeys, expandMacros });
   const layer = Math.min(activeLayer, model.keymap.length - 1);
   const keymapLayer = model.keymap[layer] ?? [];
   const colormapLayer = model.colormap[layer] ?? [];
   const { palette } = model;
-  const names = model.layerNames?.length ? model.layerNames : (layerNames ?? []);
-  const macroNames = model.macroNames ?? [];
   const comboNumbers = comboNumbersForLayer(model.combos, layer);
 
   function getColor(ledIndex: number) {
@@ -37,19 +45,9 @@ export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, 
     return { r: c.r, g: c.g, b: c.b, css: c.rgb };
   }
 
-  function getLabel(keyIndex: number): DecodedKey {
-    const code = keymapLayer[keyIndex] ?? 0;
-    const sk = superkeyIndex(code);
-    if (sk !== null) {
-      const name = model.superkeyNames?.[sk] || `SK${sk + 1}`;
-      return { primary: "SUPER", subtitle: name, hold: "" };
-    }
-    return decodeKey(code, overrides, names, macroNames, symbols);
-  }
-
   function renderKey(key: (typeof DEFY_KEYS)[0]) {
     const color = getColor(key.ledIndex);
-    const label = getLabel(key.index);
+    const { label, slots } = keyFace(keymapLayer[key.index] ?? 0, ctx);
     const fgColor = fg(color.r, color.g, color.b);
     const comboNumber = comboNumbers.get(key.index);
     const { x, y, w, h } = key;
@@ -75,8 +73,10 @@ export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, 
             <path d={thumb.inner} fill={color.css} />
             <path d={thumb.inner} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
           </g>
-          {keyLabel(lcx, lcy, 0, h, label, fgColor, rotation)}
-          {comboNumber !== undefined && comboBadgeNearLabel(comboNumber, lcx, lcy, rotation)}
+          {slots
+            ? superkeySlots(lcx, lcy, SILHOUETTE_HALF_W, slots, fgColor, rotation)
+            : keyLabel(lcx, lcy, 0, h, label, fgColor, rotation)}
+          {comboNumber !== undefined && comboBadgeNearLabel(comboNumber, lcx, lcy, rotation, slots ? SLOT_BADGE_LIFT : 0)}
         </g>
       );
     }
@@ -91,13 +91,13 @@ export const DefyKeyboardView: React.FC<Props> = ({ model, activeLayer, layout, 
         <rect className="key-shadow-middle" x={x + 4} y={y + 12} width={w - 8} height={h - 8} rx={4} fill={color.css} />
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill={color.css} />
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
-        {keyLabel(cx, cy, y, h, label, fgColor)}
+        {slots ? superkeySlots(cx, cy, (w - 8) / 2, slots, fgColor) : keyLabel(cx, cy, y, h, label, fgColor)}
         {comboNumber !== undefined && comboBadge(comboNumber, x + w - 1, y - 3)}
       </g>
     );
   }
 
-  const layerName = names[layer] ?? `Layer ${layer}`;
+  const layerName = ctx.layerNames[layer] ?? `Layer ${layer}`;
 
   return (
     <div className="keyboard-view">

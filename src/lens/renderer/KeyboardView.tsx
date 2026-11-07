@@ -3,8 +3,19 @@ import type { KeyboardModel } from "../shared/types";
 import { SONSEI_KEYS } from "./geometry-sonsei";
 import { DefyKeyboardView } from "./DefyKeyboardView";
 import { Raise2KeyboardView } from "./Raise2KeyboardView";
-import { decodeKey, superkeyIndex, layoutOverrides, symbolOverrides } from "./keycodes";
-import { keyLabel, fg, fitFontSize, splitLongWord, comboBadge, comboBadgeNearLabel, comboNumbersForLayer } from "./key-label";
+import { faceContext, keyFace } from "./key-face";
+import {
+  keyLabel,
+  fg,
+  fitFontSize,
+  splitLongWord,
+  comboBadge,
+  comboBadgeNearLabel,
+  comboNumbersForLayer,
+  superkeySlots,
+  SILHOUETTE_HALF_W,
+  SLOT_BADGE_LIFT,
+} from "./key-label";
 import { DEFY_THUMB_ROTATION } from "./defy-thumb-paths";
 
 interface Props {
@@ -12,6 +23,8 @@ interface Props {
   activeLayer: number;
   layout: string;
   layerNames?: string[];
+  expandSuperkeys?: boolean;
+  expandMacros?: boolean;
 }
 
 const SVG_W = 1270;
@@ -55,24 +68,39 @@ const THUMB_TEXT: Record<number, [number, number, string]> = {
   59: [28.8, 25.9, ""], // sonsei-tR1: rect, horizontal (no rotation rule)
 };
 
-export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, layerNames }) => {
+export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, layerNames, expandSuperkeys, expandMacros }) => {
   // Each product has its own geometry; dispatch to the matching view. The Sonsei
   // rendering below is the default (also covers unknown products).
   if (model.product?.toLowerCase() === "defy") {
-    return <DefyKeyboardView model={model} activeLayer={activeLayer} layout={layout} layerNames={layerNames} />;
+    return (
+      <DefyKeyboardView
+        model={model}
+        activeLayer={activeLayer}
+        layout={layout}
+        layerNames={layerNames}
+        expandSuperkeys={expandSuperkeys}
+        expandMacros={expandMacros}
+      />
+    );
   }
   if (model.product?.toLowerCase() === "raise2") {
-    return <Raise2KeyboardView model={model} activeLayer={activeLayer} layout={layout} layerNames={layerNames} />;
+    return (
+      <Raise2KeyboardView
+        model={model}
+        activeLayer={activeLayer}
+        layout={layout}
+        layerNames={layerNames}
+        expandSuperkeys={expandSuperkeys}
+        expandMacros={expandMacros}
+      />
+    );
   }
 
-  const overrides = layoutOverrides(layout);
-  const symbols = symbolOverrides(layout);
+  const ctx = faceContext(model, layout, layerNames, { expandSuperkeys, expandMacros });
   const layer = Math.min(activeLayer, model.keymap.length - 1);
   const keymapLayer = model.keymap[layer] ?? [];
   const colormapLayer = model.colormap[layer] ?? [];
   const { palette } = model;
-  const names = model.layerNames?.length ? model.layerNames : (layerNames ?? []);
-  const macroNames = model.macroNames ?? [];
   const comboNumbers = comboNumbersForLayer(model.combos, layer);
 
   function getColor(ledIndex: number) {
@@ -81,19 +109,9 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
     return { r: c.r, g: c.g, b: c.b, css: c.rgb };
   }
 
-  function getLabel(keyIndex: number) {
-    const code = keymapLayer[keyIndex] ?? 0;
-    const sk = superkeyIndex(code);
-    if (sk !== null) {
-      const name = model.superkeyNames?.[sk] || `SK${sk + 1}`;
-      return { primary: "SUPER", subtitle: name, hold: "" };
-    }
-    return decodeKey(code, overrides, names, macroNames, symbols);
-  }
-
   function renderKey(key: (typeof SONSEI_KEYS)[0]) {
     const color = getColor(key.ledIndex);
-    const label = getLabel(key.index);
+    const { label, slots } = keyFace(keymapLayer[key.index] ?? 0, ctx);
     const fgColor = fg(color.r, color.g, color.b);
     const hasSub = Boolean(label.subtitle);
     const comboNumber = comboNumbers.get(key.index);
@@ -104,7 +122,9 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
       const tr = rotKeyType ? (DEFY_THUMB_ROTATION[rotKeyType] ?? 0) : 0;
       const rot = tr === 0 ? undefined : `rotate(${tr},${tx},${ty})`;
       let thumbLabel: JSX.Element | null = null;
-      if (hasSub) {
+      if (slots) {
+        thumbLabel = superkeySlots(tx, ty, SILHOUETTE_HALF_W, slots, fgColor, tr);
+      } else if (hasSub) {
         thumbLabel = (
           <g transform={rot}>
             <text
@@ -196,7 +216,7 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
           <path d={thumbPath} fill={color.css} />
           <path d={thumbPath} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
           {thumbLabel}
-          {comboNumber !== undefined && comboBadgeNearLabel(comboNumber, tx, ty, tr)}
+          {comboNumber !== undefined && comboBadgeNearLabel(comboNumber, tx, ty, tr, slots ? SLOT_BADGE_LIFT : 0)}
         </g>
       );
     }
@@ -213,7 +233,7 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
         <rect className="key-shadow-middle" x={x + 4} y={y + 12} width={w - 8} height={h - 8} rx={4} fill={color.css} />
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill={color.css} />
         <rect x={x + 4} y={y} width={w - 8} height={h - 8} rx={4} fill="url(#lens-key-sheen)" fillOpacity="0.45" />
-        {keyLabel(cx, cy, y, h, label, fgColor)}
+        {slots ? superkeySlots(cx, cy, (w - 8) / 2, slots, fgColor) : keyLabel(cx, cy, y, h, label, fgColor)}
         {comboNumber !== undefined && comboBadge(comboNumber, x + w - 1, y - 3)}
       </g>
     );
@@ -221,7 +241,7 @@ export const KeyboardView: React.FC<Props> = ({ model, activeLayer, layout, laye
 
   const leftKeys = SONSEI_KEYS.filter(k => k.group === "left");
   const rightKeys = SONSEI_KEYS.filter(k => k.group === "right");
-  const layerName = names[layer] ?? `Layer ${layer}`;
+  const layerName = ctx.layerNames[layer] ?? `Layer ${layer}`;
 
   return (
     <div className="keyboard-view">

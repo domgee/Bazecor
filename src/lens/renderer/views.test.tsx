@@ -1,9 +1,11 @@
 import React from "react";
 import { createHash } from "crypto";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, test } from "vitest";
+import { render as renderDom } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { KeyboardModel } from "../shared/types";
 import { KeyboardView } from "./KeyboardView";
+import { SONSEI_KEYS } from "./geometry-sonsei";
 
 // Superkey 1, macro 1, a layer shift key, OS+Tab, a media key, A, Left Shift, Superkey 2, Numpad 7 and a dual function key
 const FILL = [53980, 53852, 17450, 4139, 22733, 4, 225, 53981, 95, 51222];
@@ -91,5 +93,128 @@ describe("Lens views", () => {
     expect(sha(render(createModel("Raise2", "ISO")))).toMatchInlineSnapshot(
       `"a18c32a35556715cbbb70c37a9c3e8b0e0e37a796eb15c42da4138e1b2bd2ed2"`,
     );
+  });
+});
+
+describe("Lens views with the expand settings off", () => {
+  test.each([
+    ["Sonsei", undefined],
+    ["Defy", undefined],
+    ["Raise2", "ANSI"],
+    ["Raise2", "ISO"],
+  ])("ExplicitlyOff_SameAsOmitted %s %s", (product, keyboardType) => {
+    const model = createModel(product, keyboardType);
+
+    const markup = renderToStaticMarkup(
+      <KeyboardView model={model} activeLayer={0} layout="en-US" expandSuperkeys={false} expandMacros={false} />,
+    );
+
+    expect(sha(markup)).toBe(sha(render(model)));
+  });
+});
+
+const SUPERKEY_1_ACTIONS = [5, 6, 7, 9, 10];
+const COMBO_BADGE = 'rect[fill="#6b46f5"]';
+
+// Fill every key with A except `keys`, which maps a key index to its code
+const createExpandModel = (product: string, keys: Record<number, number>, comboKeys: number[], keyboardType?: string) => {
+  const layer = new Array<number>(product === "Sonsei" ? 60 : 80).fill(4);
+
+  Object.entries(keys).forEach(([index, code]) => {
+    layer[Number(index)] = code;
+  });
+
+  const model: KeyboardModel = {
+    ...createModel(product, keyboardType),
+    keymap: [layer],
+    superkeys: [SUPERKEY_1_ACTIONS],
+    combos: comboKeys.length > 0 ? [{ positions: comboKeys, layer: 0 }] : [],
+  };
+  return model;
+};
+
+const renderExpanded = (model: KeyboardModel, expandSuperkeys: boolean, expandMacros: boolean) =>
+  renderDom(
+    <KeyboardView model={model} activeLayer={0} layout="en-US" expandSuperkeys={expandSuperkeys} expandMacros={expandMacros} />,
+  ).container;
+
+const sonseiKey = (index: number) => {
+  const key = SONSEI_KEYS.find(k => k.index === index);
+
+  if (!key) {
+    throw new Error(`No Sonsei key ${index}`);
+  }
+
+  return key;
+};
+
+const numberAttr = (element: Element | null | undefined, name: string) => Number(element?.getAttribute(name));
+
+describe("Lens views with the expand settings on", () => {
+  beforeEach(() => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Macintosh");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("SonseiSuperkeyOnRectAndThumb_SlotsAndLiftedThumbBadge", () => {
+    const key0 = sonseiKey(0);
+    const key49 = sonseiKey(49);
+    const model = createExpandModel("Sonsei", { 0: SUPERKEY_1, 49: SUPERKEY_1 }, [0, 49]);
+
+    const container = renderExpanded(model, true, false);
+
+    const tapTexts = [...container.querySelectorAll('g[data-slot="tap"] text')].map(t => t.textContent);
+    const thumb = container.querySelector(`g[transform="translate(${key49.x},${key49.y})"]`);
+    const rectBadge = [...container.querySelectorAll(COMBO_BADGE)].find(badge => !thumb?.contains(badge));
+    expect(tapTexts).toEqual(["B", "B"]);
+    // The thumb label centre is at y 27.9, and the badge sits 22 above it plus the lift of 6
+    expect(numberAttr(thumb?.querySelector(COMBO_BADGE), "y")).toBeCloseTo(27.9 - 28);
+    expect(numberAttr(rectBadge, "y")).toBeCloseTo(key0.y - 3);
+  });
+
+  test("DefyRotatedThumbSuperkey_SlotsTurnWithTheKey", () => {
+    // Key 67 is the defy-t4 thumb, turned 37 degrees about its label centre (37.5, 41)
+    const container = renderExpanded(createExpandModel("Defy", { 67: SUPERKEY_1 }, []), true, false);
+
+    const tap = container.querySelector('g[data-slot="tap"]');
+
+    expect(tap?.parentElement?.getAttribute("transform")).toBe("rotate(37,37.5,41)");
+  });
+
+  test("Raise2AnsiWideSuperkey_HoldSlotAtTheRightEdge", () => {
+    // Key 63 is the wide right Shift at x 987, 151 wide
+    const container = renderExpanded(createExpandModel("Raise2", { 63: SUPERKEY_1 }, [], "ANSI"), true, false);
+
+    const hold = container.querySelector('g[data-slot="hold"] text');
+
+    expect({ x: hold?.getAttribute("x"), anchor: hold?.getAttribute("text-anchor") }).toEqual({ x: "1131", anchor: "end" });
+  });
+
+  test("Raise2IsoEnterSuperkey_SlotsInTheUpperRect", () => {
+    const container = renderExpanded(createExpandModel("Raise2", { 31: SUPERKEY_1 }, [31], "ISO"), true, false);
+
+    const positions = [...container.querySelectorAll("g[data-slot] text")].map(t => [numberAttr(t, "x"), numberAttr(t, "y")]);
+    const outside = positions.filter(([x, y]) => x < 4 || x > 65 || y < 0 || y > 51);
+    expect(positions).toHaveLength(5);
+    expect(outside).toEqual([]);
+    expect(numberAttr(container.querySelector(COMBO_BADGE), "y")).toBeCloseTo(24.5 - 28);
+  });
+
+  test("OnlyExpandSuperkeys_MacroKeepsItsName", () => {
+    const container = renderExpanded(createExpandModel("Sonsei", { 0: SUPERKEY_1, 1: MACRO_1 }, []), true, false);
+
+    expect(container.textContent).toContain("Copy");
+    expect(container.textContent).not.toContain("⌘TAB");
+  });
+
+  test("OnlyExpandMacros_SuperkeyCollapsedAndMacroKeys", () => {
+    const container = renderExpanded(createExpandModel("Sonsei", { 0: SUPERKEY_1, 1: MACRO_1 }, []), false, true);
+
+    expect(container.querySelector("g[data-slot]")).toBeNull();
+    expect(container.textContent).toContain("SUPER");
+    expect(container.textContent).toContain("⌘TAB");
   });
 });

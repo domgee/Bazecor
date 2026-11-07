@@ -169,7 +169,14 @@ export function App() {
             if (!isDragging.current && !document.body.classList.contains("resizing")) setHovered(false);
           }}
         >
-          <KeyboardView model={model} activeLayer={activeLayer} layout={settings.layout} layerNames={layerNames} />
+          <KeyboardView
+            model={model}
+            activeLayer={activeLayer}
+            layout={settings.layout}
+            layerNames={layerNames}
+            expandSuperkeys={settings.expandSuperkeys}
+            expandMacros={settings.expandMacros}
+          />
           <ResizeFrame />
         </div>
       </div>

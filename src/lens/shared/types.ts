@@ -69,6 +69,10 @@ export interface LensSettings {
   /** When true, the overlay's resize frame and drag surface are active, so the
    * window can be repositioned/resized. Toggled from Preferences or the tray. */
   resizeMode: boolean;
+  /** Show each Superkey's actions in five slots on its key instead of its name. */
+  expandSuperkeys: boolean;
+  /** Show the keys a macro sends instead of its name. */
+  expandMacros: boolean;
 }
 
 /** Last position/size of the overlay window, persisted so the overlay reopens

@@ -171,6 +171,8 @@ const schema: Schema<StorageType> = {
       overlayAutoShow: { type: "boolean" },
       overlayAutoShowDuration: { type: "number" },
       resizeMode: { type: "boolean" },
+      expandSuperkeys: { type: "boolean" },
+      expandMacros: { type: "boolean" },
       keyboard: {
         type: "object",
         properties: {

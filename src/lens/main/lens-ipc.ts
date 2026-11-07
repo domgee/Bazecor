@@ -54,6 +54,18 @@ export function registerLensIpc(onRunInBackgroundChange: (v: boolean) => void): 
     return s;
   });
 
+  ipcMain.handle("lens:set-expand-superkeys", (_, v: boolean): LensSettings => {
+    const s = setLensSettings({ expandSuperkeys: v });
+    broadcastSettings(s);
+    return s;
+  });
+
+  ipcMain.handle("lens:set-expand-macros", (_, v: boolean): LensSettings => {
+    const s = setLensSettings({ expandMacros: v });
+    broadcastSettings(s);
+    return s;
+  });
+
   ipcMain.handle("lens:set-layout", (_, v: string): LensSettings => {
     const s = setLensSettings({ layout: v });
     broadcastSettings(s);
