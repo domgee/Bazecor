@@ -4,6 +4,7 @@ import log from "electron-log/renderer";
 
 // Components
 import { SegmentedKeyType } from "@Renderer/types/layout";
+import { HoldModsPicker } from "@Renderer/types/holdMods";
 import usePrevious from "@Renderer/utils/usePrevious";
 import Heading from "@Renderer/components/atoms/Heading";
 import OSKey from "@Renderer/components/molecules/KeyTags/OSKey";
@@ -12,7 +13,24 @@ import CustomRadioCheckBox from "@Renderer/components/molecules/Form/CustomRadio
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@Renderer/components/atoms/Tooltip";
 import { i18n } from "@Renderer/i18n";
 import { autoshiftBaseCode, canBeAutoshifted, isAutoshift, toAutoshift } from "../../../hw/autoshift";
-import { canHoldUntilLayerChange, holdShortcut, isLayerHold, keepLayerHold, toLayerHold } from "../../../hw/layerhold";
+import {
+  canHoldUntilLayerChange,
+  holdShortcut,
+  isLayerHold,
+  keepLayerHold,
+  shortcutMods,
+  toLayerHold,
+} from "../../../hw/layerhold";
+
+/* The per-modifier hold row in the order of the modifier buttons, with each modifier's Key flag */
+const HOLD_MODS_ROW: { name: string; renderKey: "shift" | "control" | "os" | "alt" | "altGr"; flag: number }[] = [
+  { name: "Shift", renderKey: "shift", flag: 8 },
+  { name: "Ctrl", renderKey: "control", flag: 1 },
+  { name: "Gui", renderKey: "os", flag: 16 },
+  { name: "Alt", renderKey: "alt", flag: 2 },
+  { name: "AltGr", renderKey: "altGr", flag: 4 },
+];
+const ALTGR_FLAG = 4;
 
 interface ModPickerProps {
   keyCode: SegmentedKeyType;
@@ -25,6 +43,8 @@ interface ModPickerProps {
   allowAutoshift?: boolean;
   /* Offer "Hold until layer change" only on a layer above the default, with firmware that lists the marker */
   allowLayerHold?: boolean;
+  /* Offer one hold checkbox per modifier in place of allowLayerHold, with firmware that has the held modifiers table */
+  holdMods?: HoldModsPicker;
   /* Hide AltGr where the firmware folds it into Alt */
   allowAltGr?: boolean;
   /* Keep the checkbox ids unique when a second ModPicker is mounted, since the labels find their checkbox by id */
@@ -38,6 +58,7 @@ function ModPicker(props: ModPickerProps) {
     isStandardView,
     allowAutoshift = true,
     allowLayerHold = false,
+    holdMods,
     allowAltGr = true,
     idPrefix = "",
   } = props;
@@ -105,7 +126,17 @@ function ModPicker(props: ModPickerProps) {
       mod.push(data);
     }
     setModifs(mod);
-    onKeySelect(keepLayerHold(keyCode.base + applyModif(mod), layerHeld && allowLayerHold));
+    const newShortcut = keyCode.base + applyModif(mod);
+
+    if (holdMods === undefined) {
+      onKeySelect(keepLayerHold(newShortcut, layerHeld && allowLayerHold));
+      return;
+    }
+
+    /* A new modifier starts unticked and a removed one loses its tick. Show the accepted code's modifiers when the change is refused */
+    if (!holdMods.onHoldChange(newShortcut, holdMods.heldMask & shortcutMods(newShortcut))) {
+      setModifs(parseModifs(shortcutCode));
+    }
   }
 
   /* Autoshift replaces the whole keycode rather than adding flags, so it is
@@ -264,7 +295,7 @@ function ModPicker(props: ModPickerProps) {
             />
           </div>
         )}
-        {allowLayerHold && (
+        {holdMods === undefined && allowLayerHold && (
           <div className="layerHoldPicker flex items-center ml-12">
             <CustomRadioCheckBox
               label={<div className="pl-0.5">{i18n.editor.standardView.keys.layerHold}</div>}
@@ -289,6 +320,44 @@ function ModPicker(props: ModPickerProps) {
               }
               className="mt-0"
             />
+          </div>
+        )}
+        {holdMods !== undefined && (
+          <div className="layerHoldModsPicker basis-full flex flex-wrap items-center gap-6">
+            <Heading headingLevel={4} renderAs="paragraph-sm" className="flex items-center gap-2">
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger className="[&_svg]:text-purple-100 [&_svg]:dark:text-purple-200">
+                    <IconInformation />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <Heading headingLevel={4} renderAs="h4" className="text-gray-600 dark:text-gray-25 mb-1 leading-6 text-base">
+                      {i18n.editor.standardView.keys.layerHold}
+                    </Heading>
+                    <p className="description text-ssm font-medium text-gray-400 dark:text-gray-200">
+                      {i18n.editor.standardView.keys.layerHoldModsDescription}
+                    </p>
+                    <p className="description text-ssm font-medium text-gray-400 dark:text-gray-200">
+                      {i18n.editor.standardView.keys.layerHoldModsRequirement}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {i18n.editor.standardView.keys.layerHoldMods}
+            </Heading>
+            {HOLD_MODS_ROW.filter(mod => allowAltGr || mod.flag !== ALTGR_FLAG).map(mod => (
+              <CustomRadioCheckBox
+                key={mod.name}
+                label={<OSKey renderKey={mod.renderKey} size="sm" />}
+                onClick={() => holdMods.onHoldChange(shortcutCode, holdMods.heldMask ^ mod.flag)}
+                checked={(holdMods.heldMask & mod.flag) !== 0}
+                type="checkbox"
+                name={`${idPrefix}holdMod${mod.name}`}
+                id={`${idPrefix}holdMod${mod.name}`}
+                disabled={!layerHoldAvailable || (shortcutMods(shortcutCode) & mod.flag) === 0}
+                className="mt-0"
+              />
+            ))}
           </div>
         )}
       </div>

@@ -26,6 +26,7 @@ import { comboBadgeStyles } from "@Renderer/modules/KeyboardCanvas/comboBadges";
 import { altRepeatBadgeStyles } from "@Renderer/modules/KeyboardCanvas/altRepeatBadges";
 import { ComboType } from "@Renderer/types/combos";
 import { AltRepeatBlock, AltRepeatLayerEntry, AltRepeatRule, AltRepeatState } from "@Renderer/types/altRepeat";
+import { HoldModsEntry, HoldModsState } from "@Renderer/types/holdMods";
 import { motion } from "framer-motion";
 import { toast } from "react-toastify";
 import { ipcRenderer } from "electron";
@@ -49,6 +50,17 @@ import ColorEditor from "@Renderer/modules/ColorEditor";
 import { KeyPickerKeyboard } from "@Renderer/modules/KeyPickerKeyboard";
 import AltRepeatTabs from "@Renderer/modules/AltRepeat/AltRepeatTabs";
 import PreviousKeyDialog from "@Renderer/modules/AltRepeat/PreviousKeyDialog";
+import { holdPickerProps } from "@Renderer/modules/HoldMods/holdPickerProps";
+import { loadHoldModsForEditor } from "@Renderer/modules/HoldMods/layoutLoad";
+import {
+  EMPTY_HOLD_SAVED,
+  HoldSavedState,
+  LayoutSaveInput,
+  LayoutSaveMode,
+  runLayoutSave,
+  usedHoldCodes,
+  withHoldBaseline,
+} from "@Renderer/modules/HoldMods/layoutSave";
 
 // Components
 import LayerSelector from "@Renderer/components/organisms/Select/LayerSelector";
@@ -78,7 +90,6 @@ import {
   parseMacrosRaw,
   parsePaletteRaw,
   parseSuperkeysRaw,
-  serializeKeymap,
 } from "../../api/parsers";
 import { ComboBreakReason, comboBreakReason, combosAtPosition, isLegacyCombosReply } from "../../api/parsers/combos";
 import {
@@ -100,6 +111,16 @@ import {
   withRepeat,
   writeAltRepeatRules,
 } from "../../api/parsers/altRepeat";
+import {
+  HoldModsDevice,
+  HoldRefSkip,
+  encodeHold,
+  fitHoldImport,
+  heldMaskOf,
+  layerHoldModsExport,
+  writeHoldMods,
+  writeUncached,
+} from "../../api/parsers/holdMods";
 
 const store = Store.getStore();
 
@@ -244,8 +265,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   } | null>(null);
   const [altRepeatRules, setAltRepeatRules] = useState<AltRepeatRule[]>([]);
   const [altRepeatState, setAltRepeatState] = useState<AltRepeatState>("unsupported");
-  /* Remember the table the keyboard holds so Save only writes a changed table */
-  const savedAltRepeat = useRef("0");
+  /* Remember the table the keyboard holds so Save only writes a changed table. Null after a failed write */
+  const savedAltRepeat = useRef<string | null>("0");
   /* Count rules loads and edits, so only the newest load applies, and only when no edit came after it started */
   const altRepeatLoads = useRef(0);
   const altRepeatEdits = useRef(0);
@@ -259,6 +280,16 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const [altRepeatBreak, setAltRepeatBreak] = useState<AltRepeatBreakType | null>(null);
   /* Hold the rules warning until the combo warning closes */
   const [pendingAltRepeatBreak, setPendingAltRepeatBreak] = useState<AltRepeatBreakType | null>(null);
+  /* The held modifiers of partial hold codes, as edited and not yet saved */
+  const [holdModsTable, setHoldModsTable] = useState<HoldModsEntry[]>([]);
+  const [holdModsState, setHoldModsState] = useState<HoldModsState>("loading");
+  const [holdModsHelpAltRepeat, setHoldModsHelpAltRepeat] = useState(false);
+  /* Remember what the keyboard may hold, so Save writes only changes and an edit never changes a code the keyboard may use */
+  const holdSaved = useRef<HoldSavedState>(EMPTY_HOLD_SAVED);
+  /* Count table loads and edits, so only the newest load applies, and only when no edit came after it started */
+  const holdModsLoads = useRef(0);
+  const holdModsEdits = useRef(0);
+  const holdModsLoading = useRef(false);
 
   const [modified, setModified] = useState(false);
   const [modeselect, setModeselect] = useState<ModeType>("keyboard");
@@ -511,6 +542,50 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     }
   }, []);
 
+  /* Read the table and the keymap and rules it protects. A load that could not read them stays "loading" and keeps the protections */
+  const loadHoldMods = useCallback(async (currentDevice: HoldModsDevice, product: string | undefined) => {
+    holdModsLoads.current += 1;
+    const load = holdModsLoads.current;
+    const edits = holdModsEdits.current;
+    holdModsLoading.current = true;
+    setHoldModsState("loading");
+
+    const result = await loadHoldModsForEditor(currentDevice, product);
+
+    if (load !== holdModsLoads.current) {
+      return;
+    }
+
+    holdModsLoading.current = false;
+
+    /* Drop a reply that a table edit made stale. The next key pick retries */
+    if (edits !== holdModsEdits.current) {
+      return;
+    }
+
+    setHoldModsState(result.state);
+    setHoldModsHelpAltRepeat(result.helpListsAltRepeat);
+
+    if (result.state === "ready") {
+      setHoldModsTable(result.table);
+      holdSaved.current = withHoldBaseline(result.table, result.baseline);
+    } else if (result.state === "unsupported") {
+      setHoldModsTable([]);
+      holdSaved.current = EMPTY_HOLD_SAVED;
+    }
+  }, []);
+
+  /* Allocate and import only once the rules are known too, since their outputs use codes of the table */
+  const holdModsSettled = holdModsState === "ready" && (altRepeatState === "ready" || !holdModsHelpAltRepeat);
+
+  const holdSaveMode = (): LayoutSaveMode => {
+    if (holdModsState === "unsupported") {
+      return "unsupported";
+    }
+
+    return holdModsSettled ? "settled" : "pending";
+  };
+
   const scanKeyboard = useCallback(
     async (lang: string) => {
       log.info("Scanning KEYBOARD");
@@ -625,6 +700,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         }
 
         await loadAltRepeatRules(currentDevice);
+        await loadHoldMods(currentDevice, device);
         setAltRepeatTab(-1);
 
         setScanningStep(9);
@@ -665,7 +741,18 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         onDisconnect();
       }
     },
-    [state, setLoading, AnalizeChipID, restoredOk, getColormap, handleSetRestoredOk, keymapDB, onDisconnect, loadAltRepeatRules],
+    [
+      state,
+      setLoading,
+      AnalizeChipID,
+      restoredOk,
+      getColormap,
+      handleSetRestoredOk,
+      keymapDB,
+      onDisconnect,
+      loadAltRepeatRules,
+      loadHoldMods,
+    ],
   );
 
   const assignKey = (layer: number, keyIndex: number, keyCode: number) => {
@@ -786,6 +873,41 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     });
   };
 
+  /* Change the held modifiers table from an edit the user saves or discards */
+  const editHoldMods = (next: HoldModsEntry[]) => {
+    if (next === holdModsTable) {
+      return;
+    }
+
+    holdModsEdits.current += 1;
+    setHoldModsTable(next);
+    setModified(true);
+    startContext();
+  };
+
+  const showHoldModsToast = (content: string) => {
+    toast.warn(<ToastMessage title={i18n.editor.holdMods.title} content={content} icon={<IconArrowDownWithLine />} />, {
+      autoClose: 4000,
+      icon: "",
+    });
+  };
+
+  const draftCodes = (layers: KeyType[][]): number[][] => layers.map(layer => layer.map(key => key.keyCode));
+
+  /* The code for a shortcut with the modifiers in `held` held, or null when the table has no room. Never touch a code still in use */
+  const allocateHold = (shortcut: number, held: number, skip: HoldRefSkip): number | null => {
+    const used = usedHoldCodes(draftCodes(keymap.custom), altRepeatRules, holdSaved.current, skip);
+    const encoded = encodeHold(shortcut, held, holdModsTable, used);
+
+    if ("error" in encoded) {
+      showHoldModsToast(encoded.error === "slots" ? i18n.editor.holdMods.slotsFull : i18n.editor.holdMods.capacityRefused);
+      return null;
+    }
+
+    editHoldMods(encoded.table);
+    return encoded.code;
+  };
+
   /**
    * Verify that colors in keyboard button and in color palette is equal
    * @param {number} colorIdx Number of palette index
@@ -868,36 +990,70 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const onApply = async () => {
     const { currentDevice } = state;
 
-    if (altRepeatState === "failed") {
-      toast.error(
-        <ToastMessage title="Error when saving" content={i18n.editor.altRepeat.loadFailed} icon={<IconArrowDownWithLine />} />,
-        {
-          autoClose: 4000,
-          icon: "",
-        },
-      );
+    if (altRepeatState === "failed" || holdModsState === "failed") {
+      const content = altRepeatState === "failed" ? i18n.editor.altRepeat.loadFailed : i18n.editor.holdMods.loadFailed;
+      toast.error(<ToastMessage title="Error when saving" content={content} icon={<IconArrowDownWithLine />} />, {
+        autoClose: 4000,
+        icon: "",
+      });
       return;
     }
 
     try {
       setLoading(true);
       setIsSaving(true);
-      const serializedKeymap = serializeKeymap(keymap.custom);
-      log.info(`[KeyAssign] sending keymap.custom (${serializedKeymap.split(" ").length} codes)`);
-      await currentDevice?.command("keymap.custom", serializedKeymap);
-      await currentDevice?.command("keymap.onlyCustom", keymap.onlyCustom ? "1" : "0");
+      const saveInput: LayoutSaveInput = {
+        mode: holdSaveMode(),
+        layers: draftCodes(keymap.custom),
+        rules: altRepeatRules,
+        rulesReady: altRepeatState === "ready",
+        onlyCustom: keymap.onlyCustom,
+        table: holdModsTable,
+        saved: holdSaved.current,
+        savedRules: savedAltRepeat.current,
+      };
+      const saved = await runLayoutSave(
+        {
+          writeHoldMods: list => writeHoldMods(currentDevice, list),
+          writeKeymap: async (serialized, onlyCustom) => {
+            log.info(`[KeyAssign] sending keymap.custom (${serialized.split(" ").length} codes)`);
+            await writeUncached(currentDevice, "keymap.custom", serialized);
+            await writeUncached(currentDevice, "keymap.onlyCustom", onlyCustom ? "1" : "0");
+          },
+          writeRules: rules => writeAltRepeatRules(currentDevice, rules, firmwareLayerCount(keymap), keysPerLayer()),
+        },
+        saveInput,
+      );
+      holdSaved.current = saved.saved;
+      savedAltRepeat.current = saved.savedRules;
 
-      const serializedRules = serializeAltRepeat(altRepeatRules);
+      if (saved.failed !== undefined) {
+        log.error(`[LayoutEditor] save stopped at the ${saved.failed} step`, saved.error);
 
-      if (altRepeatState === "ready" && serializedRules !== savedAltRepeat.current) {
-        try {
-          await writeAltRepeatRules(currentDevice, altRepeatRules, firmwareLayerCount(keymap), keysPerLayer());
-        } catch (error) {
-          log.error("[LayoutEditor] altrepeat.map write failed", error);
-          throw new Error(i18n.editor.altRepeat.saveFailed);
+        if (saved.failed === "keymap") {
+          throw saved.error instanceof Error ? saved.error : new Error(String(saved.error));
         }
 
-        savedAltRepeat.current = serializedRules;
+        throw new Error(saved.failed === "rules" ? i18n.editor.altRepeat.saveFailed : i18n.editor.holdMods.saveFailed);
+      }
+
+      /* Show the draft as saved, with orphan or unsupported partial codes made plain and unused entries dropped */
+      if (saved.layers !== saveInput.layers) {
+        setKeymap({
+          default: keymap.default,
+          onlyCustom: keymap.onlyCustom,
+          custom: keymap.custom.map((layer, l) =>
+            layer.map((key, i) => (saved.layers[l][i] === key.keyCode ? key : keymapDB.parse(saved.layers[l][i]))),
+          ),
+        });
+      }
+
+      if (saved.rules !== saveInput.rules) {
+        replaceRules(saved.rules);
+      }
+
+      if (saved.table !== holdModsTable) {
+        setHoldModsTable(saved.table);
       }
 
       await updateColormap(currentDevice, colorMap);
@@ -1217,6 +1373,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     colormap: number[];
     palette: PaletteType[];
     altRepeat?: AltRepeatLayerEntry[];
+    holdMods?: unknown;
   }): boolean => {
     const { currentDevice } = state;
     const replacesLayer =
@@ -1224,6 +1381,12 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       data.colormap.length > 0 &&
       (keymap.onlyCustom ? currentLayer >= 0 : currentLayer >= keymap.default.length);
     let nextRules: AltRepeatRule[] | null = null;
+
+    /* Refuse before any change while the table is unknown, since an imported partial code may mean another choice here */
+    if (replacesLayer && holdModsState !== "unsupported" && !holdModsSettled) {
+      showHoldModsToast(holdModsState === "failed" ? i18n.editor.holdMods.loadFailed : i18n.editor.holdMods.notLoaded);
+      return false;
+    }
 
     /* Settle the rules first, so a refused import changes nothing */
     if (replacesLayer && altRepeatState === "ready") {
@@ -1256,13 +1419,6 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
     log.info("not loading the palette: ", palette);
     // if (data.palette.length > 0) state.palette = data.palette;
-    const lNames = layerNames.slice();
-    if (data.layerNames !== null) {
-      if (data.layerName && currentLayer) {
-        lNames[currentLayer] = { name: data.layerName, id: currentLayer };
-      }
-      setLayerNames(lNames);
-    }
     let cleanKeymap: KeyType[];
     let cleanColormap: number[];
     if (currentDevice?.device.info.product === "Raise2" && (data.device?.product === "Raise" || data.colormap.length === 132)) {
@@ -1279,6 +1435,57 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         return localKey;
       });
       cleanColormap = data.colormap;
+    }
+
+    let nextHoldMods: HoldModsEntry[] | null = null;
+
+    /* Fit the imported partial codes into the table, and keep every code the other layers, their rules or the keyboard use */
+    if (replacesLayer) {
+      const customIdx = keymap.onlyCustom ? currentLayer : currentLayer - keymap.default.length;
+      const rules = nextRules ?? altRepeatRules;
+      const importedRules = rules.filter(rule => rule.layer === currentLayer);
+      const used = usedHoldCodes(
+        draftCodes(keymap.custom.filter((_, idx) => idx !== customIdx)),
+        rules.filter(rule => rule.layer !== currentLayer),
+        holdSaved.current,
+      );
+      const fitted = fitHoldImport(
+        holdModsState !== "unsupported",
+        holdModsTable,
+        used,
+        cleanKeymap.map(key => key.keyCode).concat(importedRules.map(rule => rule.output)),
+        data.holdMods,
+      );
+
+      if ("error" in fitted) {
+        showHoldModsToast(i18n.editor.holdMods.importRefused);
+        return false;
+      }
+
+      if (fitted.remap.size > 0) {
+        cleanKeymap = cleanKeymap.map(key =>
+          fitted.remap.has(key.keyCode) ? keymapDB.parse(fitted.remap.get(key.keyCode)) : key,
+        );
+        nextRules = rules.map(rule =>
+          rule.layer === currentLayer && fitted.remap.has(rule.output)
+            ? { ...rule, output: fitted.remap.get(rule.output) }
+            : rule,
+        );
+      }
+
+      if (fitted.normalized) {
+        showHoldModsToast(i18n.editor.holdMods.importNormalized);
+      }
+
+      nextHoldMods = fitted.table;
+    }
+
+    const lNames = layerNames.slice();
+    if (data.layerNames !== null) {
+      if (data.layerName && currentLayer) {
+        lNames[currentLayer] = { name: data.layerName, id: currentLayer };
+      }
+      setLayerNames(lNames);
     }
     if (data.keymap.length > 0 && data.colormap.length > 0) {
       if (keymap.onlyCustom) {
@@ -1312,6 +1519,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
     if (nextRules !== null) {
       replaceRules(nextRules);
+    }
+
+    if (nextHoldMods !== null) {
+      editHoldMods(nextHoldMods);
     }
 
     setModified(true);
@@ -1383,6 +1594,11 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           // log.info(layers.keymap.custom[0]);
           let nextRules: AltRepeatRule[] | null = null;
 
+          if (holdModsState !== "unsupported" && !holdModsSettled) {
+            showHoldModsToast(holdModsState === "failed" ? i18n.editor.holdMods.loadFailed : i18n.editor.holdMods.notLoaded);
+            return;
+          }
+
           if (altRepeatState === "ready") {
             const replaced = replaceAllRules(
               Array.isArray(layers.altRepeat) ? layers.altRepeat : [],
@@ -1405,8 +1621,43 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             nextRules = replaced.rules;
           }
 
+          /* Replace every layer, so only the rules kept from before and the codes the keyboard may hold stay in use */
+          const importedKeymap = layers.keymap as KeymapType;
+          const used = usedHoldCodes([], nextRules === null ? altRepeatRules : [], holdSaved.current);
+          const fitted = fitHoldImport(
+            holdModsState !== "unsupported",
+            holdModsTable,
+            used,
+            draftCodes(importedKeymap.custom)
+              .flat()
+              .concat((nextRules ?? []).map(rule => rule.output)),
+            layers.holdMods,
+          );
+
+          if ("error" in fitted) {
+            showHoldModsToast(i18n.editor.holdMods.importRefused);
+            return;
+          }
+
+          if (fitted.remap.size > 0) {
+            importedKeymap.custom = importedKeymap.custom.map(layer =>
+              layer.map(key => (fitted.remap.has(key.keyCode) ? keymapDB.parse(fitted.remap.get(key.keyCode)) : key)),
+            );
+          }
+
+          /* Remap only imported rules. Kept rules keep their codes and meanings */
+          if (fitted.remap.size > 0 && nextRules !== null) {
+            nextRules = nextRules.map(rule =>
+              fitted.remap.has(rule.output) ? { ...rule, output: fitted.remap.get(rule.output) } : rule,
+            );
+          }
+
+          if (fitted.normalized) {
+            showHoldModsToast(i18n.editor.holdMods.importNormalized);
+          }
+
           setLayerNames(layers.layerNames);
-          setKeymap(layers.keymap);
+          setKeymap(importedKeymap);
           setColorMap(layers.colormap);
           setPalette(layers.palette);
           setSuperkeys(layers.superkeys ? layers.superkeys : []);
@@ -1415,6 +1666,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             replaceRules(nextRules);
           }
 
+          editHoldMods(fitted.table);
           setModified(true);
           startContext();
           toast.success(i18n.editor.importSuccessAllLayers, {
@@ -1447,6 +1699,12 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       return;
     }
 
+    /* Refuse the export, since a file without the held modifiers would import its partial codes as plain shortcuts */
+    if (holdModsState !== "unsupported" && !holdModsSettled) {
+      showHoldModsToast(holdModsState === "failed" ? i18n.editor.holdMods.loadFailed : i18n.editor.holdMods.notLoaded);
+      return;
+    }
+
     let localLayerData;
     let localIsReadOnly;
     if (keymap.onlyCustom) {
@@ -1471,6 +1729,16 @@ const LayoutEditor = (props: LayoutEditorProps) => {
               altRepeat: altRepeatRules
                 .filter(rule => rule.layer === currentLayer)
                 .map(({ position, previous, output }) => ({ position, previous, output })),
+            }
+          : {}),
+        ...(holdModsSettled
+          ? {
+              holdMods: layerHoldModsExport(
+                holdModsTable,
+                (localLayerData ?? [])
+                  .map((key: KeyType) => key.keyCode)
+                  .concat(altRepeatRules.filter(rule => rule.layer === currentLayer).map(rule => rule.output)),
+              ),
             }
           : {}),
       },
@@ -1738,6 +2006,44 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     loadAltRepeatRules(currentDevice);
   }, [capabilitiesRefresh, altRepeatState, state, loadAltRepeatRules]);
 
+  /* Reload the table when App reads the capabilities again and they disagree with it, or while its last load could not read the keyboard */
+  const seenHoldModsRefresh = useRef(capabilitiesRefresh);
+
+  useEffect(() => {
+    if (capabilitiesRefresh === seenHoldModsRefresh.current) {
+      return;
+    }
+
+    seenHoldModsRefresh.current = capabilitiesRefresh;
+    const { currentDevice } = state;
+    const listed = Boolean(store.get("capabilities.holdMods"));
+    const agrees = holdModsState !== "loading" && listed === (holdModsState !== "unsupported");
+
+    if (agrees || !currentDevice || currentDevice.isClosed || holdModsLoading.current) {
+      return;
+    }
+
+    loadHoldMods(currentDevice, currentDevice.device.info.product);
+  }, [capabilitiesRefresh, holdModsState, state, loadHoldMods]);
+
+  /* Retry a load that could not read the keyboard once each time a key is picked, so the row shows without a rescan */
+  useEffect(() => {
+    const { currentDevice } = state;
+
+    if (
+      currentKeyIndex === -1 ||
+      holdModsState !== "loading" ||
+      holdModsLoading.current ||
+      !currentDevice ||
+      currentDevice.isClosed
+    ) {
+      return;
+    }
+
+    loadHoldMods(currentDevice, currentDevice.device.info.product);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentKeyIndex, currentLayer]);
+
   const onReloadAltRepeat = async () => {
     cancelContext();
     setModified(false);
@@ -1855,6 +2161,49 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     editRules(altRepeatRules.map((rule, index) => (index === selectedRuleIdx ? { ...rule, output: keyCode } : rule)));
   };
 
+  const customLayerIdx = keymap.onlyCustom ? currentLayer : currentLayer - keymap.default.length;
+
+  const onCellHoldChange = (shortcut: number, held: number): boolean => {
+    const keyCode = allocateHold(shortcut, held, { layer: customLayerIdx, position: currentKeyIndex });
+
+    if (keyCode === null) {
+      return false;
+    }
+
+    onKeyChange(keyCode);
+    return true;
+  };
+
+  const onRuleHoldChange = (shortcut: number, held: number): boolean => {
+    const keyCode = selectedRuleIdx === -1 ? null : allocateHold(shortcut, held, { rule: selectedRuleIdx });
+
+    if (keyCode === null) {
+      return false;
+    }
+
+    onRuleOutputChange(keyCode);
+    return true;
+  };
+
+  const holdPicker = {
+    layer: currentLayer,
+    altRepeatLayerHold: Boolean(store.get("capabilities.altRepeatLayerHold")),
+    state: holdModsState,
+    settled: holdModsSettled,
+  };
+  const cellHoldProps = holdPickerProps({
+    ...holdPicker,
+    context: "cell",
+    heldMask: heldMaskOf(holdModsTable, defaultKeyCode),
+    onHoldChange: onCellHoldChange,
+  });
+  const ruleHoldProps = holdPickerProps({
+    ...holdPicker,
+    context: "rule",
+    heldMask: selectedRule === null ? 0 : heldMaskOf(holdModsTable, selectedRule.output),
+    onHoldChange: onRuleHoldChange,
+  });
+
   const takenPreviousCodes = keyRules
     .filter(index => index !== previousDialog.ruleIndex)
     .map(index => basePrevious(altRepeatRules[index].previous));
@@ -1947,7 +2296,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             cancelContext();
           }}
           inContext={modified}
-          saveDisabled={altRepeatState === "failed"}
+          saveDisabled={altRepeatState === "failed" || holdModsState === "failed"}
           saveButtonRef={saveButtonRef}
           discardChangesButtonRef={discardChangesButtonRef}
         />
@@ -1988,7 +2337,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     actTab="editor"
                     selectedlanguage={currentLanguageLayout}
                     isWireless={isWireless}
-                    allowLayerHold={currentLayer !== 0}
+                    allowLayerHold={cellHoldProps.allowLayerHold}
+                    holdMods={cellHoldProps.holdMods}
                   />
                 )}
                 {/* Offer the combo picker without Autoshift, since a rule output runs like a combo action. Layer hold needs v1.2.3 */}
@@ -2007,7 +2357,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     selectedlanguage={currentLanguageLayout}
                     isWireless={isWireless}
                     allowAutoshift={false}
-                    allowLayerHold={currentLayer !== 0 && Boolean(store.get("capabilities.altRepeatLayerHold"))}
+                    allowLayerHold={ruleHoldProps.allowLayerHold}
+                    holdMods={ruleHoldProps.holdMods}
                     fullMouse
                   />
                 )}

@@ -4,12 +4,20 @@ import {
   HOLD_MODS_NORMALIZED,
   HOLD_MODS_NOT_RESTORED,
   MAX_HOLD_MODS,
+  canonicalHoldSave,
+  encodeHold,
+  fitHoldImport,
+  gcHoldMods,
   hasHoldModsCommand,
   heldMaskOf,
+  holdCodeRefs,
   holdModsTargetOf,
+  importHoldMods,
+  layerHoldModsExport,
   parseHoldModsRaw,
   plainHoldOutputs,
   plainPartialHold,
+  plainPartialHoldLayers,
   plainPartialHoldsRaw,
   readHoldMods,
   readHoldModsTarget,
@@ -370,5 +378,323 @@ describe("restoreHoldKeymap", () => {
     expect(warning).toBeUndefined();
     expect(sendPlain).toHaveBeenCalledTimes(1);
     expect(noCacheCommand).not.toHaveBeenCalled();
+  });
+});
+
+// Ctrl+Alt+Shift+T in slot 0 and slot 1, a shortcut with three modifiers and so six choices of held modifiers
+const CAS_T = 0x0b17;
+const CAS_T_0 = 0x8b17;
+const CAS_T_1 = 0xab17;
+const CTRL = 1;
+const ALT = 2;
+
+/* A full table of Ctrl+Shift shortcuts, a to 4, each holding Ctrl */
+const fullTable = () => Array.from({ length: MAX_HOLD_MODS }, (_, i) => ({ code: 0x8904 + i, held: CTRL }));
+
+describe("plainPartialHoldLayers", () => {
+  test("makes partial holds plain and keeps layers without them", () => {
+    const layers = [[PARTIAL, LEGACY], [PARTIAL_SLOT_1]];
+    const unchanged = [[LEGACY, PLAIN]];
+
+    expect(plainPartialHoldLayers(layers)).toEqual([[PLAIN, LEGACY], [PLAIN]]);
+    expect(plainPartialHoldLayers(unchanged)).toBe(unchanged);
+  });
+});
+
+describe("holdCodeRefs", () => {
+  const layers = [
+    [PARTIAL, PLAIN, LEGACY],
+    [PARTIAL_SLOT_1, PARTIAL],
+  ];
+  const rules = [
+    { layer: 1, position: 4, previous: 6, output: CAS_T_0 },
+    { layer: 1, position: 5, previous: 6, output: CAS_T_1 },
+  ];
+
+  test("collects the partial codes of cells and rule outputs", () => {
+    expect(holdCodeRefs(layers, rules)).toEqual(new Set([PARTIAL, PARTIAL_SLOT_1, CAS_T_0, CAS_T_1]));
+  });
+
+  test("leaves out a skipped cell, but not the same code elsewhere", () => {
+    expect(holdCodeRefs(layers, rules, { layer: 1, position: 0 })).toEqual(new Set([PARTIAL, CAS_T_0, CAS_T_1]));
+    expect(holdCodeRefs(layers, rules, { layer: 1, position: 1 })).toEqual(new Set([PARTIAL, PARTIAL_SLOT_1, CAS_T_0, CAS_T_1]));
+  });
+
+  test("leaves out a skipped rule", () => {
+    expect(holdCodeRefs(layers, rules, { rule: 1 })).toEqual(new Set([PARTIAL, PARTIAL_SLOT_1, CAS_T_0]));
+  });
+});
+
+describe("encodeHold", () => {
+  test.each([
+    [PLAIN, 0, PLAIN], // None ticked
+    [PLAIN, GUI | SHIFT, LEGACY], // All ticked
+    [0x102b, GUI, 0x302b], // The only modifier ticked
+    [0x102b, 0, 0x102b], // The only modifier unticked
+    [0x2b, GUI, 0x2b], // No modifier to hold
+    [LEGACY, 0, PLAIN], // A hold code is read as its shortcut
+    [0x18e0, GUI, 0x18e0], // A modifier key cannot hold
+  ])("encodeHold(%i, %i) gives %i and keeps the table", (shortcut, held, code) => {
+    const table = [{ code: PARTIAL, held: SHIFT }];
+
+    const encoded = encodeHold(shortcut, held, table, new Set());
+
+    expect(encoded).toEqual({ code, table });
+    expect("table" in encoded && encoded.table).toBe(table);
+  });
+
+  test("a partial choice takes slot 0 of an empty table", () => {
+    expect(encodeHold(PLAIN, GUI, [], new Set())).toEqual({ code: PARTIAL, table: [{ code: PARTIAL, held: GUI }] });
+  });
+
+  test("held modifiers outside the shortcut are dropped", () => {
+    expect(encodeHold(PLAIN, GUI | CTRL, [], new Set())).toEqual({ code: PARTIAL, table: [{ code: PARTIAL, held: GUI }] });
+  });
+
+  test("an entry with the same held modifiers is reused, also when in use and in slot 1", () => {
+    const table = [
+      { code: PARTIAL, held: SHIFT },
+      { code: PARTIAL_SLOT_1, held: GUI },
+    ];
+
+    const encoded = encodeHold(PLAIN, GUI, table, new Set([PARTIAL, PARTIAL_SLOT_1]));
+
+    expect(encoded).toEqual({ code: PARTIAL_SLOT_1, table });
+    expect("table" in encoded && encoded.table).toBe(table);
+  });
+
+  test("a second choice takes slot 1 while slot 0 is in use", () => {
+    const table = [{ code: PARTIAL, held: SHIFT }];
+
+    expect(encodeHold(PLAIN, GUI, table, new Set([PARTIAL]))).toEqual({
+      code: PARTIAL_SLOT_1,
+      table: [
+        { code: PARTIAL, held: SHIFT },
+        { code: PARTIAL_SLOT_1, held: GUI },
+      ],
+    });
+  });
+
+  test("an entry no other key uses is rewritten in place", () => {
+    const table = [{ code: PARTIAL, held: SHIFT }];
+
+    expect(encodeHold(PLAIN, GUI, table, new Set())).toEqual({ code: PARTIAL, table: [{ code: PARTIAL, held: GUI }] });
+    expect(table).toEqual([{ code: PARTIAL, held: SHIFT }]);
+  });
+
+  test("a third choice is refused while both slots are in use", () => {
+    const table = [
+      { code: CAS_T_0, held: CTRL },
+      { code: CAS_T_1, held: ALT },
+    ];
+
+    expect(encodeHold(CAS_T, SHIFT, table, new Set([CAS_T_0, CAS_T_1]))).toEqual({ error: "slots" });
+  });
+
+  test("a protected or uncertain code in a slot is never rewritten", () => {
+    const table = [
+      { code: CAS_T_0, held: CTRL },
+      { code: CAS_T_1, held: ALT },
+    ];
+
+    // Only the saved keymap or a failed write still uses slot 1, the draft uses slot 0
+    expect(encodeHold(CAS_T, SHIFT, table, new Set([CAS_T_0, CAS_T_1]))).toEqual({ error: "slots" });
+    expect(encodeHold(CAS_T, SHIFT, table, new Set([CAS_T_0]))).toEqual({
+      code: CAS_T_1,
+      table: [
+        { code: CAS_T_0, held: CTRL },
+        { code: CAS_T_1, held: SHIFT },
+      ],
+    });
+  });
+
+  test("an orphan cell or rule keeps its slot without an entry", () => {
+    // An orphan in slot 0 plays as the plain shortcut, and an entry there would change it
+    expect(encodeHold(PLAIN, GUI, [], new Set([PARTIAL]))).toEqual({
+      code: PARTIAL_SLOT_1,
+      table: [{ code: PARTIAL_SLOT_1, held: GUI }],
+    });
+    expect(encodeHold(PLAIN, GUI, [], new Set([PARTIAL, PARTIAL_SLOT_1]))).toEqual({ error: "slots" });
+  });
+
+  test("a full table drops unused entries before it adds one", () => {
+    const table = fullTable();
+    const used = new Set(table.slice(1).map(entry => entry.code));
+
+    const encoded = encodeHold(PLAIN, GUI, table, used);
+
+    expect(encoded).toEqual({ code: PARTIAL, table: table.slice(1).concat([{ code: PARTIAL, held: GUI }]) });
+  });
+
+  test("a full table of used entries is refused", () => {
+    const table = fullTable();
+
+    expect(encodeHold(PLAIN, GUI, table, new Set(table.map(entry => entry.code)))).toEqual({ error: "capacity" });
+  });
+});
+
+describe("canonicalHoldSave and gcHoldMods", () => {
+  const table = [{ code: PARTIAL, held: GUI }];
+
+  test("orphan partial codes in cells and rule outputs become plain", () => {
+    const layers = [[PARTIAL, PARTIAL_SLOT_1, LEGACY]];
+    const rules = [
+      { layer: 1, position: 0, previous: 6, output: PARTIAL_SLOT_1 },
+      { layer: 1, position: 1, previous: 6, output: PARTIAL },
+    ];
+
+    expect(canonicalHoldSave(layers, rules, table)).toEqual({
+      layers: [[PARTIAL, PLAIN, LEGACY]],
+      rules: [
+        { layer: 1, position: 0, previous: 6, output: PLAIN },
+        { layer: 1, position: 1, previous: 6, output: PARTIAL },
+      ],
+    });
+  });
+
+  test("a draft without orphans is returned as it is", () => {
+    const layers = [[PARTIAL, LEGACY]];
+    const rules = [{ layer: 1, position: 0, previous: 6, output: PARTIAL }];
+
+    const canonical = canonicalHoldSave(layers, rules, table);
+
+    expect(canonical.layers).toBe(layers);
+    expect(canonical.rules).toBe(rules);
+  });
+
+  test("gcHoldMods drops entries no code uses and keeps a table in full use", () => {
+    const both = [
+      { code: PARTIAL, held: GUI },
+      { code: CAS_T_0, held: CTRL },
+    ];
+
+    expect(gcHoldMods(both, new Set([PARTIAL]))).toEqual([{ code: PARTIAL, held: GUI }]);
+    expect(gcHoldMods(both, new Set([PARTIAL, CAS_T_0]))).toBe(both);
+  });
+});
+
+describe("layerHoldModsExport", () => {
+  test("exports the entries the layer uses, sorted by code", () => {
+    const table = [
+      { code: PARTIAL_SLOT_1, held: GUI },
+      { code: CAS_T_0, held: CTRL },
+      { code: PARTIAL, held: SHIFT },
+    ];
+
+    expect(layerHoldModsExport(table, [PARTIAL_SLOT_1, PLAIN, PARTIAL, PARTIAL])).toEqual([
+      { code: PARTIAL, held: SHIFT },
+      { code: PARTIAL_SLOT_1, held: GUI },
+    ]);
+  });
+});
+
+describe("importHoldMods", () => {
+  test("an identical entry is reused", () => {
+    const table = [{ code: PARTIAL, held: GUI }];
+
+    const imported = importHoldMods(table, new Set([PARTIAL]), [PARTIAL, PLAIN], [{ code: PARTIAL, held: GUI }]);
+
+    expect(imported).toEqual({ table, remap: new Map([[PARTIAL, PARTIAL]]), normalized: false });
+  });
+
+  test("a code that means another choice here moves to the free slot", () => {
+    const table = [{ code: PARTIAL, held: SHIFT }];
+
+    const imported = importHoldMods(table, new Set([PARTIAL]), [PARTIAL], [{ code: PARTIAL, held: GUI }]);
+
+    expect(imported).toEqual({
+      table: [
+        { code: PARTIAL, held: SHIFT },
+        { code: PARTIAL_SLOT_1, held: GUI },
+      ],
+      remap: new Map([[PARTIAL, PARTIAL_SLOT_1]]),
+      normalized: false,
+    });
+  });
+
+  test("two imported choices of one shortcut keep apart", () => {
+    const entries = [
+      { code: PARTIAL, held: GUI },
+      { code: PARTIAL_SLOT_1, held: SHIFT },
+    ];
+
+    expect(importHoldMods([], new Set(), [PARTIAL_SLOT_1, PARTIAL], entries)).toEqual({
+      table: entries,
+      remap: new Map([
+        [PARTIAL, PARTIAL],
+        [PARTIAL_SLOT_1, PARTIAL_SLOT_1],
+      ]),
+      normalized: false,
+    });
+  });
+
+  test("an entry only the replaced layer used is rewritten", () => {
+    // Leave slot 0 out of used, since only the replaced layer used it
+    const imported = importHoldMods([{ code: PARTIAL, held: SHIFT }], new Set(), [PARTIAL], [{ code: PARTIAL, held: GUI }]);
+
+    expect(imported).toEqual({ table: [{ code: PARTIAL, held: GUI }], remap: new Map([[PARTIAL, PARTIAL]]), normalized: false });
+  });
+
+  test("an import with no free slot is refused", () => {
+    const table = [
+      { code: CAS_T_0, held: CTRL },
+      { code: CAS_T_1, held: ALT },
+    ];
+
+    expect(importHoldMods(table, new Set([CAS_T_0, CAS_T_1]), [CAS_T_0], [{ code: CAS_T_0, held: SHIFT }])).toEqual({
+      error: "slots",
+    });
+  });
+
+  test("an import into a full table is refused", () => {
+    const table = fullTable();
+
+    expect(
+      importHoldMods(table, new Set(table.map(entry => entry.code)), [PARTIAL], [{ code: PARTIAL, held: GUI }]),
+    ).toEqual({ error: "capacity" });
+  });
+
+  test("an orphan in use keeps its slot", () => {
+    expect(importHoldMods([], new Set([PARTIAL]), [PARTIAL], [{ code: PARTIAL, held: GUI }])).toEqual({
+      table: [{ code: PARTIAL_SLOT_1, held: GUI }],
+      remap: new Map([[PARTIAL, PARTIAL_SLOT_1]]),
+      normalized: false,
+    });
+  });
+
+  test.each([
+    [undefined], // A file from older Bazecor
+    [[]], // No entry for the code
+    [[{ code: PARTIAL, held: GUI | SHIFT }]], // Holds every modifier
+    [[{ code: PARTIAL, held: CTRL }]], // Holds a modifier the shortcut lacks
+    [[{ code: String(PARTIAL), held: GUI }]], // Not a number
+    ["not a list"],
+  ])("codes without a valid file entry become plain, %j", fileEntries => {
+    const table = [{ code: PARTIAL, held: SHIFT }];
+
+    expect(importHoldMods(table, new Set(), [PARTIAL, LEGACY], fileEntries)).toEqual({
+      table,
+      remap: new Map([[PARTIAL, PLAIN]]),
+      normalized: true,
+    });
+  });
+
+  test("fitHoldImport makes every partial code plain on firmware without the table", () => {
+    const table = [{ code: PARTIAL, held: GUI }];
+
+    expect(fitHoldImport(false, table, new Set(), [PARTIAL, LEGACY], [{ code: PARTIAL, held: GUI }])).toEqual({
+      table,
+      remap: new Map([[PARTIAL, PLAIN]]),
+      normalized: true,
+    });
+    expect(fitHoldImport(false, table, new Set(), [LEGACY], [])).toEqual({ table, remap: new Map(), normalized: false });
+  });
+
+  test("fitHoldImport fits the codes on firmware with the table", () => {
+    expect(fitHoldImport(true, [], new Set(), [PARTIAL], [{ code: PARTIAL, held: GUI }])).toEqual({
+      table: [{ code: PARTIAL, held: GUI }],
+      remap: new Map([[PARTIAL, PARTIAL]]),
+      normalized: false,
+    });
   });
 });

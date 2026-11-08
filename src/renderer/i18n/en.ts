@@ -335,6 +335,11 @@ const English = {
         layerHoldDescription:
           "The modifiers stay pressed after you release the key, until the layer this key is on turns off. Hold a layer key, tap Cmd+Tab to pick an app, and release the layer key to switch to it.",
         layerHoldRequirement: "Needs at least one modifier. Not available on the default layer.",
+        layerHoldMods: "Hold until layer change:",
+        layerHoldModsDescription:
+          "Ticked modifiers stay pressed after you release the key, until the layer this key is on turns off. Unticked modifiers are pressed with each tap. Tick only Cmd on Cmd+Shift+Tab to step back through the app switcher while Cmd stays down.",
+        layerHoldModsRequirement:
+          "Only modifiers of the shortcut can be ticked. Not available on the default layer. A shortcut can hold two different choices of modifiers on this keyboard.",
       },
       layers: {
         title: "Layers",
@@ -555,6 +560,20 @@ const English = {
         undo: "Undo change",
         keep: "Keep it anyway",
       },
+    },
+    holdMods: {
+      title: "Hold until layer change",
+      slotsFull:
+        "Two other choices of held modifiers already use this shortcut on this keyboard. Change or save the keys that use one of them first. Nothing was changed.",
+      capacityRefused: "This would need more than 32 shortcuts that hold only some of their modifiers. Nothing was changed.",
+      loadFailed:
+        "The hold until layer change settings could not be read. Saving, importing and exporting are off until they load.",
+      notLoaded: "The hold until layer change settings are still loading. Try again in a moment.",
+      saveFailed: "The keyboard did not store the hold until layer change settings.",
+      importNormalized:
+        "Some keys in the file hold only some modifiers without saying which. They were imported as plain shortcuts.",
+      importRefused:
+        "The file needs more choices of held modifiers than this keyboard has room for. Change or save the keys that use them first. Nothing was changed.",
     },
     altRepeat: {
       title: "Previous-key tabs",

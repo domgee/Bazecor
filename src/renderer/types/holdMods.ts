@@ -25,3 +25,9 @@ export type HoldModsState = "loading" | "unsupported" | "ready" | "failed";
 
 /** What a restore knows about the target's `help`, read once per restore. Only "listed" has the table. */
 export type HoldModsTarget = "listed" | "unlisted" | "unreadable";
+
+/** The per-modifier row in ModPicker. `onHoldChange` returns false when the change was refused and nothing changed. */
+export interface HoldModsPicker {
+  heldMask: number;
+  onHoldChange: (shortcut: number, held: number) => boolean;
+}

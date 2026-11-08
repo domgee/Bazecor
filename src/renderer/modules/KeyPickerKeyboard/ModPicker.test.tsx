@@ -10,6 +10,8 @@ vi.mock("electron-log/renderer", () => ({
 const HOLD_CHECKBOX = "#input-holdUntilLayerChange-checkbox";
 const SHIFT = "#input-addModShift-radio";
 const GUI = "#input-addModOS-radio";
+const GUI_FLAG = 16;
+const SHIFT_FLAG = 8;
 
 const renderModPicker = (base: number, modified: number, allowLayerHold: boolean) => {
   const onKeySelect = vi.fn();
@@ -137,5 +139,124 @@ describe("ModPicker idPrefix", () => {
     const { container } = render(<ModPicker keyCode={{ base: 6, modified: 0 }} onKeySelect={vi.fn()} isStandardView={false} />);
 
     expect(container.querySelector("#input-addModControl-radio")).not.toBeNull();
+  });
+});
+
+describe("ModPicker per-modifier hold row", () => {
+  const ROW = ".layerHoldModsPicker";
+  const holdBox = (name: string) => `#input-holdMod${name}-checkbox`;
+  const CTRL_RADIO = "#input-addModControl-radio";
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  // Cmd+Shift+Tab is 0x182b, with Cmd held 16 and Shift 8
+  const renderRow = (modified: number, heldMask: number, accept = true, allowAltGr = true) => {
+    const onKeySelect = vi.fn();
+    const onHoldChange = vi.fn(() => accept);
+    const { container } = render(
+      <ModPicker
+        keyCode={{ base: 0x2b, modified }}
+        onKeySelect={onKeySelect}
+        isStandardView={false}
+        allowLayerHold
+        holdMods={{ heldMask, onHoldChange }}
+        allowAltGr={allowAltGr}
+      />,
+    );
+    const state = (selector: string) => container.querySelector(selector).getAttribute("data-state");
+    const disabled = (selector: string) => container.querySelector(selector).hasAttribute("disabled");
+    const click = (selector: string) => fireEvent.click(container.querySelector(selector));
+    return { container, onKeySelect, onHoldChange, state, disabled, click };
+  };
+
+  test("replaces the single checkbox, even with allowLayerHold", () => {
+    const { container } = renderRow(0x9800, GUI_FLAG);
+
+    expect(container.querySelector(ROW).textContent).toContain("Hold until layer change:");
+    expect(container.querySelector(HOLD_CHECKBOX)).toBeNull();
+  });
+
+  test("ticks the held modifiers and disables those the shortcut lacks", () => {
+    const { state, disabled } = renderRow(0x9800, GUI_FLAG);
+
+    expect(["Shift", "Ctrl", "Gui", "Alt", "AltGr"].map(name => [name, state(holdBox(name)), disabled(holdBox(name))])).toEqual([
+      ["Shift", "unchecked", false],
+      ["Ctrl", "unchecked", true],
+      ["Gui", "checked", false],
+      ["Alt", "unchecked", true],
+      ["AltGr", "unchecked", true],
+    ]);
+  });
+
+  test("a legacy hold shows every modifier ticked when the editor passes its mask", () => {
+    const { state } = renderRow(0x3800, GUI_FLAG | SHIFT_FLAG);
+
+    expect([state(holdBox("Shift")), state(holdBox("Gui"))]).toEqual(["checked", "checked"]);
+  });
+
+  test("ticking a modifier asks for the shortcut with it held", () => {
+    const { click, onHoldChange, onKeySelect } = renderRow(0x9800, GUI_FLAG);
+
+    click(holdBox("Shift"));
+
+    expect(onHoldChange).toHaveBeenCalledWith(0x182b, GUI_FLAG | SHIFT_FLAG);
+    expect(onKeySelect).not.toHaveBeenCalled();
+  });
+
+  test("unticking the last held modifier asks for none held", () => {
+    const { click, onHoldChange } = renderRow(0x9800, GUI_FLAG);
+
+    click(holdBox("Gui"));
+
+    expect(onHoldChange).toHaveBeenCalledWith(0x182b, 0);
+  });
+
+  test("a newly added modifier starts unticked", () => {
+    const { click, onHoldChange, onKeySelect } = renderRow(0x9800, GUI_FLAG);
+
+    click(CTRL_RADIO);
+
+    expect(onHoldChange).toHaveBeenCalledWith(0x192b, GUI_FLAG);
+    expect(onKeySelect).not.toHaveBeenCalled();
+  });
+
+  test("a removed modifier loses its tick", () => {
+    const { click, onHoldChange } = renderRow(0x3800, GUI_FLAG | SHIFT_FLAG);
+
+    click(SHIFT);
+
+    expect(onHoldChange).toHaveBeenCalledWith(0x102b, GUI_FLAG);
+  });
+
+  test("a refused modifier change puts the modifier buttons back", () => {
+    const { click, state } = renderRow(0x9800, GUI_FLAG, false);
+
+    click(CTRL_RADIO);
+
+    expect(state(CTRL_RADIO)).toBe("unchecked");
+    expect([state(SHIFT), state(GUI)]).toEqual(["checked", "checked"]);
+  });
+
+  test("an accepted modifier change keeps the buttons until the new code arrives", () => {
+    const { click, state } = renderRow(0x9800, GUI_FLAG, true);
+
+    click(CTRL_RADIO);
+
+    expect(state(CTRL_RADIO)).toBe("checked");
+  });
+
+  test("allowAltGr={false} hides the AltGr box", () => {
+    const { container } = renderRow(0x9800, GUI_FLAG, true, false);
+
+    expect(container.querySelector(holdBox("AltGr"))).toBeNull();
+    expect(container.querySelector(holdBox("Alt"))).not.toBeNull();
+  });
+
+  test("a key without modifiers has every box disabled", () => {
+    const { disabled } = renderRow(0, 0);
+
+    expect(["Shift", "Ctrl", "Gui", "Alt", "AltGr"].map(name => disabled(holdBox(name)))).toEqual([true, true, true, true, true]);
   });
 });

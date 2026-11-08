@@ -17,7 +17,15 @@
 
 import { AltRepeatRule } from "@Renderer/types/altRepeat";
 import { HoldModsEntry, HoldModsTarget } from "@Renderer/types/holdMods";
-import { isLayerHold, isPartialHold, holdShortcut, shortcutMods } from "../../hw/layerhold";
+import {
+  canHoldUntilLayerChange,
+  holdShortcut,
+  isLayerHold,
+  isPartialHold,
+  shortcutMods,
+  toLayerHold,
+  toPartialHold,
+} from "../../hw/layerhold";
 
 /* Held modifiers of partial hold codes, LayerHoldModsDygma in the Sonsei firmware.
  *
@@ -171,6 +179,198 @@ export const plainHoldOutputs = (rules: AltRepeatRule[]): AltRepeatRule[] => {
   }
 
   return rules.map(rule => ({ ...rule, output: plainPartialHold(rule.output) }));
+};
+
+/** The layers with their partial hold codes made plain. Return `layers` itself when none has one. */
+export const plainPartialHoldLayers = (layers: number[][]): number[][] => {
+  if (!layers.some(layer => layer.some(isPartialHold))) {
+    return layers;
+  }
+
+  return layers.map(layer => layer.map(plainPartialHold));
+};
+
+/* ------------------------------------------------------------------------ */
+/* Editor allocation. Each returns a new table and leaves its input alone    */
+/* ------------------------------------------------------------------------ */
+
+/** A draft cell, as custom layer index and position, or a rule index that holdCodeRefs leaves out. */
+export type HoldRefSkip = { layer: number; position: number } | { rule: number };
+
+/** "slots" means both slots of the shortcut hold other modifiers in use, "capacity" that the table is full. */
+export type HoldAllocError = { error: "slots" | "capacity" };
+
+/** The partial hold codes the layers and the rule outputs use, without `skip`. */
+export const holdCodeRefs = (layers: number[][], rules: AltRepeatRule[], skip?: HoldRefSkip): Set<number> => {
+  const refs = new Set<number>();
+
+  layers.forEach((layer, layerIndex) => {
+    layer.forEach((code, position) => {
+      const skipped = skip !== undefined && "position" in skip && skip.layer === layerIndex && skip.position === position;
+
+      if (!skipped && isPartialHold(code)) {
+        refs.add(code);
+      }
+    });
+  });
+
+  rules.forEach((rule, index) => {
+    const skipped = skip !== undefined && "rule" in skip && skip.rule === index;
+
+    if (!skipped && isPartialHold(rule.output)) {
+      refs.add(rule.output);
+    }
+  });
+
+  return refs;
+};
+
+/** The code for `shortcut` with the modifiers in `held` held, and the table it needs. Never change the meaning of a code in `used`. */
+export const encodeHold = (
+  shortcut: number,
+  held: number,
+  table: HoldModsEntry[],
+  used: Set<number>,
+): { code: number; table: HoldModsEntry[] } | HoldAllocError => {
+  const plain = holdShortcut(shortcut);
+  const mods = shortcutMods(plain);
+  const kept = held & mods;
+
+  if (!canHoldUntilLayerChange(plain) || kept === 0) {
+    return { code: plain, table };
+  }
+
+  if (kept === mods) {
+    return { code: toLayerHold(plain), table };
+  }
+
+  const slots = [toPartialHold(plain, 0), toPartialHold(plain, 1)];
+  const reused = slots.find(code => table.some(entry => entry.code === code && entry.held === kept));
+
+  if (reused !== undefined) {
+    return { code: reused, table };
+  }
+
+  const rewritten = slots.find(code => !used.has(code) && table.some(entry => entry.code === code));
+
+  if (rewritten !== undefined) {
+    return { code: rewritten, table: table.map(entry => (entry.code === rewritten ? { code: rewritten, held: kept } : entry)) };
+  }
+
+  /* A slot without an entry that a key or rule still uses is an orphan playing the plain shortcut, so it stays occupied */
+  const free = slots.find(code => !used.has(code));
+
+  if (free === undefined) {
+    return { error: "slots" };
+  }
+
+  const pruned = table.length < MAX_HOLD_MODS ? table : table.filter(entry => used.has(entry.code));
+
+  if (pruned.length >= MAX_HOLD_MODS) {
+    return { error: "capacity" };
+  }
+
+  return { code: free, table: pruned.concat([{ code: free, held: kept }]) };
+};
+
+/** The layers and rules with their orphan partial codes, those without an entry, made plain. Return the inputs themselves when unchanged. */
+export const canonicalHoldSave = (
+  layers: number[][],
+  rules: AltRepeatRule[],
+  table: HoldModsEntry[],
+): { layers: number[][]; rules: AltRepeatRule[] } => {
+  const orphan = (code: number): boolean => isPartialHold(code) && !table.some(entry => entry.code === code);
+  const fix = (code: number): number => (orphan(code) ? holdShortcut(code) : code);
+
+  return {
+    layers: layers.some(layer => layer.some(orphan))
+      ? layers.map(layer => (layer.some(orphan) ? layer.map(fix) : layer))
+      : layers,
+    rules: rules.some(rule => orphan(rule.output))
+      ? rules.map(rule => (orphan(rule.output) ? { ...rule, output: fix(rule.output) } : rule))
+      : rules,
+  };
+};
+
+/** The entries a code in `refs` uses. Return `table` itself when it keeps them all. */
+export const gcHoldMods = (table: HoldModsEntry[], refs: Set<number>): HoldModsEntry[] => {
+  const kept = table.filter(entry => refs.has(entry.code));
+  return kept.length === table.length ? table : kept;
+};
+
+/** The entries the codes of an exported layer use, sorted by code. */
+export const layerHoldModsExport = (table: HoldModsEntry[], codes: number[]): HoldModsEntry[] => {
+  const used = new Set(codes);
+
+  return table
+    .filter(entry => used.has(entry.code))
+    .sort((a, b) => a.code - b.code)
+    .map(({ code, held }) => ({ code, held }));
+};
+
+const fileEntryFor = (fileEntries: unknown, code: number): HoldModsEntry | undefined => {
+  if (!Array.isArray(fileEntries)) {
+    return undefined;
+  }
+
+  return fileEntries
+    .map(raw => (raw ?? {}) as Partial<HoldModsEntry>)
+    .filter(entry => typeof entry.code === "number" && typeof entry.held === "number")
+    .map(entry => ({ code: entry.code, held: entry.held }))
+    .find(entry => entry.code === code && validateHoldModsEntry(entry) === null);
+};
+
+/** Fit the partial codes of an import into `table`. Map each code to one with the file's held modifiers, or to plain without a valid file entry. */
+export const importHoldMods = (
+  table: HoldModsEntry[],
+  used: Set<number>,
+  importedCodes: number[],
+  fileEntries: unknown,
+): { table: HoldModsEntry[]; remap: Map<number, number>; normalized: boolean } | HoldAllocError => {
+  const partials = Array.from(new Set(importedCodes.filter(isPartialHold))).sort((a, b) => a - b);
+  /* Codes this import already gave a meaning count as used for the next one */
+  const taken = new Set(used);
+  const remap = new Map<number, number>();
+  let next = table;
+  let normalized = false;
+
+  for (let i = 0; i < partials.length; i += 1) {
+    const code = partials[i];
+    const entry = fileEntryFor(fileEntries, code);
+
+    if (entry === undefined) {
+      remap.set(code, holdShortcut(code));
+      normalized = true;
+    } else {
+      const encoded = encodeHold(holdShortcut(code), entry.held, next, taken);
+
+      if ("error" in encoded) {
+        return encoded;
+      }
+
+      next = encoded.table;
+      taken.add(encoded.code);
+      remap.set(code, encoded.code);
+    }
+  }
+
+  return { table: next, remap, normalized };
+};
+
+/** Fit an import into the editor. Firmware without the table gets every partial code plain, other firmware goes through importHoldMods. */
+export const fitHoldImport = (
+  supported: boolean,
+  table: HoldModsEntry[],
+  used: Set<number>,
+  importedCodes: number[],
+  fileEntries: unknown,
+): { table: HoldModsEntry[]; remap: Map<number, number>; normalized: boolean } | HoldAllocError => {
+  if (supported) {
+    return importHoldMods(table, used, importedCodes, fileEntries);
+  }
+
+  const remap = new Map<number, number>(importedCodes.filter(isPartialHold).map(code => [code, holdShortcut(code)]));
+  return { table, remap, normalized: remap.size > 0 };
 };
 
 /** Classify a target from its `help` commands, null when `help` could not be read. */

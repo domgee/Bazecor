@@ -33,6 +33,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@Rende
 import { SegmentedKeyType } from "@Renderer/types/layout";
 import { MacrosType } from "@Renderer/types/macros";
 import { SuperkeysType } from "@Renderer/types/superkeys";
+import { HoldModsPicker } from "@Renderer/types/holdMods";
 import Store from "@Renderer/utils/Store";
 import { KeymapDB } from "../../../api/keymap";
 import { Picker } from ".";
@@ -259,6 +260,8 @@ interface Props {
   allowAutoshift?: boolean;
   /* Passed to ModPicker when the firmware supports it */
   allowLayerHold?: boolean;
+  /* Passed to ModPicker when the firmware supports layer hold, independent of allowLayerHold */
+  holdMods?: HoldModsPicker;
   /* Show mouse movement and wheel keys, which the Mouse tab otherwise keeps to
    * the Layout Editor. */
   fullMouse?: boolean;
@@ -286,6 +289,7 @@ function KeyPickerKeyboard(props: Props) {
     resetScroll,
     allowAutoshift = true,
     allowLayerHold = false,
+    holdMods,
     fullMouse = false,
   } = props;
   const prevProps = useRef(props);
@@ -476,6 +480,7 @@ function KeyPickerKeyboard(props: Props) {
                             isStandardView={false}
                             allowAutoshift={allowAutoshift && autoshiftAvailable}
                             allowLayerHold={allowLayerHold && layerHoldAvailable}
+                            holdMods={layerHoldAvailable ? holdMods : undefined}
                           />
                         </div>
                       ) : (
