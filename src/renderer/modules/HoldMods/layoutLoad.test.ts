@@ -80,7 +80,13 @@ describe("loadHoldModsForEditor", () => {
         ruleRefs: [{ layer: 1, position: 0, previous: 6, output: PARTIAL }],
       },
     });
-    expect(noCacheCommand.mock.calls).toEqual([["help"], ["holdmods.map"], ["keymap.custom"], ["keymap.onlyCustom"], ["altrepeat.map"]]);
+    expect(noCacheCommand.mock.calls).toEqual([
+      ["help"],
+      ["holdmods.map"],
+      ["keymap.custom"],
+      ["keymap.onlyCustom"],
+      ["altrepeat.map"],
+    ]);
     // Device caches the arguments of a failed write, so a cached read may return a keymap the keyboard never stored
     expect(command).not.toHaveBeenCalled();
   });

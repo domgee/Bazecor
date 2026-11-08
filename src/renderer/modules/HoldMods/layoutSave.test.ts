@@ -229,7 +229,10 @@ describe("runLayoutSave after a failed rules write", () => {
 
     expect(encodeHold(CAS_T, SHIFT, table, used)).toEqual({ error: "slots" });
 
-    const second = await runLayoutSave(failing.io, input({ layers, rules, table, saved: first.saved, savedRules: first.savedRules }));
+    const second = await runLayoutSave(
+      failing.io,
+      input({ layers, rules, table, saved: first.saved, savedRules: first.savedRules }),
+    );
 
     expect(second.done).toEqual([]);
     expect(second.failed).toBe("rules");
@@ -239,7 +242,10 @@ describe("runLayoutSave after a failed rules write", () => {
     });
 
     const working = mockIO();
-    const third = await runLayoutSave(working.io, input({ layers, rules, table, saved: second.saved, savedRules: second.savedRules }));
+    const third = await runLayoutSave(
+      working.io,
+      input({ layers, rules, table, saved: second.saved, savedRules: second.savedRules }),
+    );
 
     expect(working.writes).toEqual([`rules 0`, `holdmods 1 ${CAS_T_0} ${CTRL}`]);
     expect(third.done).toEqual(["rules", "gc"]);
@@ -300,7 +306,12 @@ describe("runLayoutSave modes", () => {
 
     const outcome = await runLayoutSave(
       io,
-      input({ mode: "pending", layers: [[PARTIAL, PARTIAL_SLOT_1]], rules: [rule(PARTIAL)], table: [{ code: PARTIAL, held: GUI }] }),
+      input({
+        mode: "pending",
+        layers: [[PARTIAL, PARTIAL_SLOT_1]],
+        rules: [rule(PARTIAL)],
+        table: [{ code: PARTIAL, held: GUI }],
+      }),
     );
 
     expect(writes).toEqual([`keymap ${PARTIAL} ${PARTIAL_SLOT_1}|1`, `rules 1 1 0 6 ${PARTIAL}`]);

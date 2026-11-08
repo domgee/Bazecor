@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { ThemeProvider } from "styled-components";
 import Light from "@Renderer/theme/LightTheme";
 import KeyPickerKeyboard from "./KeyPickerKeyboard";
@@ -23,15 +23,21 @@ vi.mock("@Renderer/modules/KeysTabs/MouseTab", () => ({ default: () => <div /> }
 const HOLD_CHECKBOX = "#input-holdUntilLayerChange-checkbox";
 const HOLD_ROW = ".layerHoldModsPicker";
 
-// Cmd+Shift+Tab with Cmd held, in slot 0
-const renderPicker = (props: { allowLayerHold?: boolean; holdMods?: { heldMask: number; onHoldChange: () => boolean } }) =>
+// Cmd+Shift+Tab with Cmd held, in slot 0, unless the test passes another code
+const renderPicker = (props: {
+  allowLayerHold?: boolean;
+  keepHold?: boolean;
+  holdMods?: { heldMask: number; onHoldChange: () => boolean };
+  modified?: number;
+  onKeySelect?: (keyCode: number) => void;
+}) =>
   render(
     <ThemeProvider theme={Light}>
       <KeyPickerKeyboard
         mouseWheel={0}
         resetScroll={vi.fn()}
-        onKeySelect={vi.fn()}
-        code={{ base: 0x2b, modified: 0x9800 }}
+        onKeySelect={props.onKeySelect ?? vi.fn()}
+        code={{ base: 0x2b, modified: props.modified ?? 0x9800 }}
         macros={[]}
         superkeys={[]}
         keyIndex={0}
@@ -39,6 +45,7 @@ const renderPicker = (props: { allowLayerHold?: boolean; holdMods?: { heldMask: 
         selectedlanguage="en-US"
         isWireless={false}
         allowLayerHold={props.allowLayerHold}
+        keepHold={props.keepHold}
         holdMods={props.holdMods}
       />
     </ThemeProvider>,
@@ -66,6 +73,16 @@ describe("KeyPickerKeyboard hold controls", () => {
 
     expect(container.querySelector(HOLD_CHECKBOX)).not.toBeNull();
     expect(container.querySelector(HOLD_ROW)).toBeNull();
+  });
+
+  test("keepHold keeps a legacy hold on a modifier edit without any hold control", () => {
+    const onKeySelect = vi.fn();
+    // Cmd+Tab holding Cmd
+    const { container } = renderPicker({ keepHold: true, modified: 0x3000, onKeySelect });
+
+    fireEvent.click(container.querySelector("#input-addModShift-radio"));
+
+    expect(onKeySelect).toHaveBeenCalledWith(0x382b);
   });
 
   test("firmware without layer hold shows neither", () => {

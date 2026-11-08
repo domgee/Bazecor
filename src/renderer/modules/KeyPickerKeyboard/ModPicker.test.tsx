@@ -1,3 +1,4 @@
+/* eslint-disable no-bitwise */
 import React from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
@@ -74,6 +75,18 @@ describe("ModPicker Hold until layer change", () => {
     click(SHIFT);
 
     expect(onKeySelect).toHaveBeenCalledWith(0x182b);
+  });
+
+  test("adding a modifier to a hold key keeps the hold with keepHold while no hold control shows", () => {
+    const onKeySelect = vi.fn();
+    const { container } = render(
+      <ModPicker keyCode={{ base: 0x2b, modified: 0x3000 }} onKeySelect={onKeySelect} isStandardView={false} keepHold />,
+    );
+
+    expect(container.querySelector(HOLD_CHECKBOX)).toBeNull();
+    fireEvent.click(container.querySelector(SHIFT));
+
+    expect(onKeySelect).toHaveBeenCalledWith(0x382b);
   });
 
   test("checking it on a partial hold selects the legacy hold of its shortcut", () => {

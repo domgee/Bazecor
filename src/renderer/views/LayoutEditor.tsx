@@ -52,6 +52,7 @@ import AltRepeatTabs from "@Renderer/modules/AltRepeat/AltRepeatTabs";
 import PreviousKeyDialog from "@Renderer/modules/AltRepeat/PreviousKeyDialog";
 import { holdPickerProps } from "@Renderer/modules/HoldMods/holdPickerProps";
 import { loadHoldModsForEditor } from "@Renderer/modules/HoldMods/layoutLoad";
+import { altRepeatMissed, createHoldModsSync, holdModsRetryWanted } from "@Renderer/modules/HoldMods/holdModsSync";
 import {
   EMPTY_HOLD_SAVED,
   HoldSavedState,
@@ -286,10 +287,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const [holdModsHelpAltRepeat, setHoldModsHelpAltRepeat] = useState(false);
   /* Remember what the keyboard may hold, so Save writes only changes and an edit never changes a code the keyboard may use */
   const holdSaved = useRef<HoldSavedState>(EMPTY_HOLD_SAVED);
-  /* Count table loads and edits, so only the newest load applies, and only when no edit came after it started */
-  const holdModsLoads = useRef(0);
-  const holdModsEdits = useRef(0);
-  const holdModsLoading = useRef(false);
+  /* Apply only the newest load, only when no edit came after it started, and never while a save runs */
+  const holdSync = useRef(createHoldModsSync()).current;
 
   const [modified, setModified] = useState(false);
   const [modeselect, setModeselect] = useState<ModeType>("keyboard");
@@ -543,37 +542,43 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   }, []);
 
   /* Read the table and the keymap and rules it protects. A load that could not read them stays "loading" and keeps the protections */
-  const loadHoldMods = useCallback(async (currentDevice: HoldModsDevice, product: string | undefined) => {
-    holdModsLoads.current += 1;
-    const load = holdModsLoads.current;
-    const edits = holdModsEdits.current;
-    holdModsLoading.current = true;
-    setHoldModsState("loading");
+  const loadHoldMods = useCallback(
+    async (currentDevice: HoldModsDevice, product: string | undefined) => {
+      const token = holdSync.beginLoad();
 
-    const result = await loadHoldModsForEditor(currentDevice, product);
+      /* A save runs, and loads once it ends */
+      if (token === null) {
+        return;
+      }
 
-    if (load !== holdModsLoads.current) {
-      return;
-    }
+      setHoldModsState("loading");
 
-    holdModsLoading.current = false;
+      const result = await loadHoldModsForEditor(currentDevice, product);
 
-    /* Drop a reply that a table edit made stale. The next key pick retries */
-    if (edits !== holdModsEdits.current) {
-      return;
-    }
+      /* Drop a reply that a newer load, a save or a table edit made stale. The next key pick retries */
+      if (!holdSync.finishLoad(token)) {
+        return;
+      }
 
-    setHoldModsState(result.state);
-    setHoldModsHelpAltRepeat(result.helpListsAltRepeat);
+      setHoldModsState(result.state);
+      setHoldModsHelpAltRepeat(result.helpListsAltRepeat);
 
-    if (result.state === "ready") {
-      setHoldModsTable(result.table);
-      holdSaved.current = withHoldBaseline(result.table, result.baseline);
-    } else if (result.state === "unsupported") {
-      setHoldModsTable([]);
-      holdSaved.current = EMPTY_HOLD_SAVED;
-    }
-  }, []);
+      if (result.state === "ready") {
+        setHoldModsTable(result.table);
+        holdSaved.current = withHoldBaseline(result.table, result.baseline);
+      } else if (result.state === "unsupported") {
+        setHoldModsTable([]);
+        holdSaved.current = EMPTY_HOLD_SAVED;
+      }
+
+      /* App's help read at connect failed, so load the rules the table waits for */
+      if (altRepeatMissed(result.helpListsAltRepeat, store.get("capabilities.altRepeat"))) {
+        store.set("capabilities.altRepeat", true);
+        await loadAltRepeatRules(currentDevice);
+      }
+    },
+    [holdSync, loadAltRepeatRules],
+  );
 
   /* Allocate and import only once the rules are known too, since their outputs use codes of the table */
   const holdModsSettled = holdModsState === "ready" && (altRepeatState === "ready" || !holdModsHelpAltRepeat);
@@ -879,7 +884,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       return;
     }
 
-    holdModsEdits.current += 1;
+    holdSync.edited();
     setHoldModsTable(next);
     setModified(true);
     startContext();
@@ -999,6 +1004,9 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       return;
     }
 
+    const saveStart = holdSync.beginSave();
+    let reloadHoldMods = false;
+
     try {
       setLoading(true);
       setIsSaving(true);
@@ -1024,7 +1032,14 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         },
         saveInput,
       );
-      holdSaved.current = saved.saved;
+      /* Keep a baseline a load read during the save, and read the keyboard again before allocating */
+      if (holdSync.loadAppliedSince(saveStart)) {
+        reloadHoldMods = true;
+        setHoldModsState("loading");
+      } else {
+        holdSaved.current = saved.saved;
+      }
+
       savedAltRepeat.current = saved.savedRules;
 
       if (saved.failed !== undefined) {
@@ -1094,6 +1109,11 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       );
       setLoading(false);
       setIsSaving(false);
+    } finally {
+      /* Run the load the save dropped or deferred, so the editor sees the keyboard as the save left it */
+      if (holdSync.endSave() || reloadHoldMods) {
+        loadHoldMods(currentDevice, currentDevice?.device.info.product);
+      }
     }
   };
 
@@ -2019,24 +2039,18 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     const listed = Boolean(store.get("capabilities.holdMods"));
     const agrees = holdModsState !== "loading" && listed === (holdModsState !== "unsupported");
 
-    if (agrees || !currentDevice || currentDevice.isClosed || holdModsLoading.current) {
+    if (agrees || !currentDevice || currentDevice.isClosed || holdSync.loading()) {
       return;
     }
 
     loadHoldMods(currentDevice, currentDevice.device.info.product);
-  }, [capabilitiesRefresh, holdModsState, state, loadHoldMods]);
+  }, [capabilitiesRefresh, holdModsState, state, loadHoldMods, holdSync]);
 
-  /* Retry a load that could not read the keyboard once each time a key is picked, so the row shows without a rescan */
+  /* Retry a load that could not read the keyboard or the table once each time a key is picked, so the row shows without a rescan */
   useEffect(() => {
     const { currentDevice } = state;
 
-    if (
-      currentKeyIndex === -1 ||
-      holdModsState !== "loading" ||
-      holdModsLoading.current ||
-      !currentDevice ||
-      currentDevice.isClosed
-    ) {
+    if (!holdModsRetryWanted(holdModsState, currentKeyIndex, holdSync.loading()) || !currentDevice || currentDevice.isClosed) {
       return;
     }
 
@@ -2338,6 +2352,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     selectedlanguage={currentLanguageLayout}
                     isWireless={isWireless}
                     allowLayerHold={cellHoldProps.allowLayerHold}
+                    keepHold={cellHoldProps.keepHold}
                     holdMods={cellHoldProps.holdMods}
                   />
                 )}
@@ -2358,6 +2373,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     isWireless={isWireless}
                     allowAutoshift={false}
                     allowLayerHold={ruleHoldProps.allowLayerHold}
+                    keepHold={ruleHoldProps.keepHold}
                     holdMods={ruleHoldProps.holdMods}
                     fullMouse
                   />

@@ -260,7 +260,8 @@ interface Props {
   allowAutoshift?: boolean;
   /* Passed to ModPicker when the firmware supports it */
   allowLayerHold?: boolean;
-  /* Passed to ModPicker when the firmware supports layer hold, independent of allowLayerHold */
+  /* Both passed to ModPicker when the firmware supports layer hold, independent of allowLayerHold */
+  keepHold?: boolean;
   holdMods?: HoldModsPicker;
   /* Show mouse movement and wheel keys, which the Mouse tab otherwise keeps to
    * the Layout Editor. */
@@ -289,6 +290,7 @@ function KeyPickerKeyboard(props: Props) {
     resetScroll,
     allowAutoshift = true,
     allowLayerHold = false,
+    keepHold = false,
     holdMods,
     fullMouse = false,
   } = props;
@@ -480,6 +482,7 @@ function KeyPickerKeyboard(props: Props) {
                             isStandardView={false}
                             allowAutoshift={allowAutoshift && autoshiftAvailable}
                             allowLayerHold={allowLayerHold && layerHoldAvailable}
+                            keepHold={keepHold && layerHoldAvailable}
                             holdMods={layerHoldAvailable ? holdMods : undefined}
                           />
                         </div>

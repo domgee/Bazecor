@@ -43,6 +43,8 @@ interface ModPickerProps {
   allowAutoshift?: boolean;
   /* Offer "Hold until layer change" only on a layer above the default, with firmware that lists the marker */
   allowLayerHold?: boolean;
+  /* Keep a legacy hold on a modifier edit where no hold control shows, as while the held modifiers table loads */
+  keepHold?: boolean;
   /* Offer one hold checkbox per modifier in place of allowLayerHold, with firmware that has the held modifiers table */
   holdMods?: HoldModsPicker;
   /* Hide AltGr where the firmware folds it into Alt */
@@ -58,6 +60,7 @@ function ModPicker(props: ModPickerProps) {
     isStandardView,
     allowAutoshift = true,
     allowLayerHold = false,
+    keepHold = false,
     holdMods,
     allowAltGr = true,
     idPrefix = "",
@@ -129,7 +132,7 @@ function ModPicker(props: ModPickerProps) {
     const newShortcut = keyCode.base + applyModif(mod);
 
     if (holdMods === undefined) {
-      onKeySelect(keepLayerHold(newShortcut, layerHeld && allowLayerHold));
+      onKeySelect(keepLayerHold(newShortcut, layerHeld && (allowLayerHold || keepHold)));
       return;
     }
 

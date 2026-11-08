@@ -31,6 +31,8 @@ export interface HoldPickerInput {
 
 export interface HoldPickerProps {
   allowLayerHold: boolean;
+  /* Keep a legacy hold on a modifier edit while no hold control shows */
+  keepHold: boolean;
   holdMods?: HoldModsPicker;
 }
 
@@ -39,12 +41,12 @@ export const holdPickerProps = (input: HoldPickerInput): HoldPickerProps => {
   const permitted = input.layer !== 0 && (input.context === "cell" || input.altRepeatLayerHold);
 
   if (!permitted) {
-    return { allowLayerHold: false };
+    return { allowLayerHold: false, keepHold: false };
   }
 
   if (input.settled) {
-    return { allowLayerHold: false, holdMods: { heldMask: input.heldMask, onHoldChange: input.onHoldChange } };
+    return { allowLayerHold: false, keepHold: true, holdMods: { heldMask: input.heldMask, onHoldChange: input.onHoldChange } };
   }
 
-  return { allowLayerHold: input.state === "unsupported" };
+  return { allowLayerHold: input.state === "unsupported", keepHold: true };
 };

@@ -1,3 +1,4 @@
+/* eslint-disable no-bitwise */
 import { describe, expect, test, vi } from "vitest";
 import {
   HOLD_MODS_COMMAND,
@@ -649,9 +650,9 @@ describe("importHoldMods", () => {
   test("an import into a full table is refused", () => {
     const table = fullTable();
 
-    expect(
-      importHoldMods(table, new Set(table.map(entry => entry.code)), [PARTIAL], [{ code: PARTIAL, held: GUI }]),
-    ).toEqual({ error: "capacity" });
+    expect(importHoldMods(table, new Set(table.map(entry => entry.code)), [PARTIAL], [{ code: PARTIAL, held: GUI }])).toEqual({
+      error: "capacity",
+    });
   });
 
   test("an orphan in use keeps its slot", () => {

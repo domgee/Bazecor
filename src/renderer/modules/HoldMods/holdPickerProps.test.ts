@@ -18,27 +18,30 @@ const props = (overrides: Partial<HoldPickerInput>) =>
 
 describe("holdPickerProps", () => {
   test.each([["cell"], ["rule"]] as ["cell" | "rule"][])("a settled %s gets the row and no checkbox", context => {
-    expect(props({ context })).toEqual({ allowLayerHold: false, holdMods: { heldMask: 16, onHoldChange } });
+    expect(props({ context })).toEqual({ allowLayerHold: false, keepHold: true, holdMods: { heldMask: 16, onHoldChange } });
   });
 
   test.each([["cell"], ["rule"]] as ["cell" | "rule"][])("a %s on firmware without the table gets the checkbox", context => {
-    expect(props({ context, state: "unsupported", settled: false })).toEqual({ allowLayerHold: true });
+    expect(props({ context, state: "unsupported", settled: false })).toEqual({ allowLayerHold: true, keepHold: true });
   });
 
   test.each([
     ["loading", false], // Loading, also an unreadable help
     ["failed", false], // The table could not be read
     ["ready", false], // The rules are not loaded yet
-  ] as [HoldModsState, boolean][])("%s with settled %s gets no hold controls", (state, settled) => {
-    expect(props({ state, settled })).toEqual({ allowLayerHold: false });
-  });
+  ] as [HoldModsState, boolean][])(
+    "%s with settled %s gets no hold controls, but keeps a legacy hold on edits",
+    (state, settled) => {
+      expect(props({ state, settled })).toEqual({ allowLayerHold: false, keepHold: true });
+    },
+  );
 
   test.each([
     [{ layer: 0 }], // The default layer
     [{ layer: 0, state: "unsupported" as HoldModsState, settled: false }], // The default layer without the table
     [{ context: "rule" as const, altRepeatLayerHold: false }], // Rules on firmware that plays no hold as output
     [{ context: "rule" as const, altRepeatLayerHold: false, state: "unsupported" as HoldModsState, settled: false }],
-  ])("%j gets no hold controls", overrides => {
-    expect(props(overrides)).toEqual({ allowLayerHold: false });
+  ])("%j gets no hold controls and drops a hold on edits", overrides => {
+    expect(props(overrides)).toEqual({ allowLayerHold: false, keepHold: false });
   });
 });
