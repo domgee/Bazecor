@@ -12,7 +12,7 @@ import CustomRadioCheckBox from "@Renderer/components/molecules/Form/CustomRadio
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@Renderer/components/atoms/Tooltip";
 import { i18n } from "@Renderer/i18n";
 import { autoshiftBaseCode, canBeAutoshifted, isAutoshift, toAutoshift } from "../../../hw/autoshift";
-import { canHoldUntilLayerChange, fromLayerHold, isLayerHold, keepLayerHold, toLayerHold } from "../../../hw/layerhold";
+import { canHoldUntilLayerChange, holdShortcut, isLayerHold, keepLayerHold, toLayerHold } from "../../../hw/layerhold";
 
 interface ModPickerProps {
   keyCode: SegmentedKeyType;
@@ -91,10 +91,11 @@ function ModPicker(props: ModPickerProps) {
   }
 
   const currentCode = keyCode === undefined ? 0 : keyCode.base + keyCode.modified;
-  /* The hold flag rides on top of the shortcut, so the modifier buttons work on the plain shortcut */
+  /* The hold flags ride on top of the shortcut, so the modifier buttons work on the plain shortcut. The checkbox shows only the all-held
+   * form, so it reads a partial hold as unchecked */
   const layerHeld = isLayerHold(currentCode);
-  const shortcutCode = layerHeld ? fromLayerHold(currentCode) : currentCode;
-  const layerHoldAvailable = layerHeld || canHoldUntilLayerChange(currentCode);
+  const shortcutCode = holdShortcut(currentCode);
+  const layerHoldAvailable = layerHeld || canHoldUntilLayerChange(shortcutCode);
 
   function SelectModif(data: number) {
     let mod = [...modifs];
@@ -267,7 +268,7 @@ function ModPicker(props: ModPickerProps) {
           <div className="layerHoldPicker flex items-center ml-12">
             <CustomRadioCheckBox
               label={<div className="pl-0.5">{i18n.editor.standardView.keys.layerHold}</div>}
-              onClick={() => onKeySelect(layerHeld ? shortcutCode : toLayerHold(currentCode))}
+              onClick={() => onKeySelect(layerHeld ? shortcutCode : toLayerHold(shortcutCode))}
               checked={layerHeld}
               type="checkbox"
               name={`${idPrefix}holdUntilLayerChange`}

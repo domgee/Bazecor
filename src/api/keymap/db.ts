@@ -57,7 +57,7 @@ import Store from "../../renderer/utils/Store";
 import getLanguage from "../../renderer/utils/language";
 import { BaseKeycodeTableType, KeymapCodeTableType, LanguageType } from "./types";
 import { AUTOSHIFT_MAX_BASE, AUTOSHIFT_MIN_BASE, toAutoshift } from "../../hw/autoshift";
-import { canHoldUntilLayerChange, fromLayerHold, isLayerHold } from "../../hw/layerhold";
+import { canHoldUntilLayerChange, holdShortcut, isHoldCode } from "../../hw/layerhold";
 import { SWAP_TAP_MAX_BASE, SWAP_TAP_MIN_BASE, SwapHandsCodes, isSwapTap, toSwapTap } from "../../hw/swaphands";
 
 const store = Store.getStore();
@@ -216,9 +216,10 @@ class KeymapDB {
     }
   }
 
-  /* Derive a hold key's entry from its plain shortcut on first use, so it keeps the shortcut's label and layout metadata */
+  /* Derive a hold key's entry from its plain shortcut on first use, so it keeps the shortcut's label and layout metadata.
+   * A partial hold gets the same HOLD marker, since only the picker shows which modifiers it holds */
   layerHoldEntry(code: number): KeymapCodeTableType | undefined {
-    const shortcutCode = fromLayerHold(code);
+    const shortcutCode = holdShortcut(code);
     if (!canHoldUntilLayerChange(shortcutCode)) {
       return undefined;
     }
@@ -258,7 +259,7 @@ class KeymapDB {
       case keyCode < 8192:
         // Regular key with Modifier KeyCode
         return { base: keyCode - modified, modified };
-      case isLayerHold(keyCode):
+      case isHoldCode(keyCode):
         // Shortcut that holds its modifiers until the layer changes
         return { base: keyCode & 0xff, modified: keyCode & 0xff00 };
       case keyCode < 17152:
@@ -314,7 +315,7 @@ class KeymapDB {
       key = this.keymapCodeTable[localKeyCode];
     }
 
-    if (!key && isLayerHold(localKeyCode)) {
+    if (!key && isHoldCode(localKeyCode)) {
       key = this.layerHoldEntry(localKeyCode);
     }
 

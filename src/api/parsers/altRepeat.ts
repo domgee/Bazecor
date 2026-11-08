@@ -18,6 +18,7 @@
 import { AltRepeatBlock, AltRepeatLayerEntry, AltRepeatRule } from "@Renderer/types/altRepeat";
 import { SuperkeysType } from "@Renderer/types/superkeys";
 import { isSwapHandsCode } from "../../hw/swaphands";
+import { PARTIAL_HOLD_FLAG, isPartialHold } from "../../hw/layerhold";
 
 /* Previous-key rules, AltRepeatDygma in the Sonsei firmware.
  *
@@ -60,6 +61,7 @@ const LAST_TYPING_KEY = 0xdd;
 const LAYER_HOLD_MASK = 0xe000;
 const LAYER_HOLD_BITS = 0x2000;
 const LAYER_HOLD_MODS = 0x1f;
+const PARTIAL_HOLD_MASK = 0xc000;
 
 const isSuperkeyCode = (code: number) => code >= SUPERKEY_FIRST && code < SUPERKEY_FIRST + SUPERKEY_COUNT;
 
@@ -117,6 +119,11 @@ export const isAllowedOutput = (code: number): boolean => {
 
   if (isSwapHandsCode(code)) {
     return false;
+  }
+
+  /* Take a partial hold only in the shape the firmware accepts. Its table entry is not needed, since a code without one plays plain */
+  if ((code & PARTIAL_HOLD_MASK) === PARTIAL_HOLD_FLAG) {
+    return isPartialHold(code);
   }
 
   if ((code & LAYER_HOLD_MASK) !== LAYER_HOLD_BITS) {

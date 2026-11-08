@@ -16,6 +16,7 @@ import { FlashRaise } from "../../../api/flash";
 import { delay } from "../../../main/utils/delay";
 import Backup from "../../../api/backup";
 import restoreCommand from "../../../api/backup/restoreCommand";
+import { readHoldModsTarget } from "../../../api/parsers/holdMods";
 import * as Context from "./context";
 
 const stateUpdate = (stage: string, percentage: number, context: Context.ContextType) => {
@@ -88,6 +89,8 @@ const restoreSettings = async (
     let commands = backup.backup;
     if (device) commands = await Backup.keepSupportedCommands(commands, device);
     commands = await Backup.adaptCombosToDevice(commands, device);
+    /* Classify help once, so the keymap, the rules and the held modifiers table agree on it */
+    const holdModsTarget = device ? await readHoldModsTarget(device) : "unreadable";
     for (let i = 0; i < commands.length; i += 1) {
       const val = commands[i].data;
       log.info(`Going to send ${commands[i].command} to keyboard`);
@@ -99,8 +102,13 @@ const restoreSettings = async (
       if (target) {
         const { command } = commands[i];
         const keysPerLayer = () => target.device.keyboard.rows * target.device.keyboard.columns;
-        const warning = await restoreCommand(target, command, String(val).trim(), keysPerLayer, () =>
-          target.command(`${command} ${val}`.trim()),
+        const warning = await restoreCommand(
+          target,
+          command,
+          String(val).trim(),
+          keysPerLayer,
+          () => target.command(`${command} ${val}`.trim()),
+          holdModsTarget,
         );
 
         // Log what was skipped, because this flow has no toast

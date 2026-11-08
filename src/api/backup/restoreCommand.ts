@@ -14,7 +14,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { ALT_REPEAT_COMMAND, AltRepeatDevice, restoreAltRepeat } from "../parsers/altRepeat";
+import { HoldModsTarget } from "@Renderer/types/holdMods";
+import {
+  ALT_REPEAT_COMMAND,
+  AltRepeatDevice,
+  parseAltRepeatRaw,
+  restoreAltRepeat,
+  serializeAltRepeat,
+} from "../parsers/altRepeat";
 import { KEY_OVERRIDES_COMMAND, restoreKeyOverrides } from "../parsers/keyOverrides";
 import { QUICK_TAP_COMMAND, restoreQuickTap } from "../parsers/quickTap";
 import { CONDITIONAL_LAYERS_COMMAND, restoreConditionalLayers } from "../parsers/conditionalLayers";
@@ -25,25 +32,60 @@ import {
   restorePerKeyOverrides,
 } from "../parsers/dualFunction";
 import { MACROS_COMMAND, restoreMacrosMap } from "../parsers/macros";
+import {
+  HOLD_MODS_COMMAND,
+  HOLD_MODS_NORMALIZED,
+  plainHoldOutputs,
+  restoreHoldKeymap,
+  restoreHoldMods,
+} from "../parsers/holdMods";
+
+/** Restore the previous-key rules, with partial hold outputs made plain when the target does not list the held modifiers table. */
+const restoreAltRepeatHolds = async (
+  device: AltRepeatDevice,
+  data: string,
+  keysPerLayer: number,
+  holdModsTarget: HoldModsTarget,
+): Promise<string | undefined> => {
+  const rules = holdModsTarget === "listed" ? null : parseAltRepeatRaw(data);
+  const plain = rules === null ? null : plainHoldOutputs(rules);
+
+  if (plain === null || plain === rules) {
+    await restoreAltRepeat(device, data, keysPerLayer);
+    return undefined;
+  }
+
+  await restoreAltRepeat(device, serializeAltRepeat(plain), keysPerLayer);
+  return HOLD_MODS_NORMALIZED;
+};
 
 /** Restore one backup command. Validate and read back the previous-key rules, the key overrides, the conditional layers, the quick tap
- * term and the dual-function options, whose rejection must fail the restore. Skip macros that use steps the keyboard lacks. Send the rest
- * plain. `keysPerLayer` runs only for the previous-key rules, so a plain command never needs the keyboard's layout. Return a warning for
- * the user when a command was skipped. */
+ * term, the dual-function options and the held modifiers, whose rejection must fail the restore. Skip macros that use steps the keyboard
+ * lacks. Check the keymap write on a target with the held modifiers table, and make partial holds plain on any other target. Send the rest
+ * plain. `keysPerLayer` runs only for the previous-key rules, so a plain command never needs the keyboard's layout. `holdModsTarget` is the
+ * target's `help` classified once per restore. Return a warning for the user when a command was skipped or changed. */
 export const restoreCommand = async (
   device: AltRepeatDevice,
   command: string,
   data: string,
   keysPerLayer: () => number,
   sendPlain: () => Promise<unknown>,
+  holdModsTarget: HoldModsTarget,
 ): Promise<string | undefined> => {
   if (command === MACROS_COMMAND) {
     return restoreMacrosMap(device, data, sendPlain);
   }
 
+  if (command === "keymap.custom") {
+    return restoreHoldKeymap(device, data, holdModsTarget, sendPlain);
+  }
+
+  if (command === HOLD_MODS_COMMAND) {
+    return restoreHoldMods(device, data, holdModsTarget);
+  }
+
   if (command === ALT_REPEAT_COMMAND) {
-    await restoreAltRepeat(device, data, keysPerLayer());
-    return undefined;
+    return restoreAltRepeatHolds(device, data, keysPerLayer(), holdModsTarget);
   }
 
   if (command === KEY_OVERRIDES_COMMAND) {

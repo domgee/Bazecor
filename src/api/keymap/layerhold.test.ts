@@ -43,4 +43,33 @@ describe("KeymapDB hold until layer change keys", () => {
     expect(db.keySegmentor(0x302b)).toEqual({ base: 0x2b, modified: 0x3000 });
     expect(db.keySegmentor(0x102b)).toEqual({ base: 0x2b, modified: 0x1000 });
   });
+
+  test.each([
+    [0x982b], // Slot 0
+    [0xb82b], // Slot 1
+  ])("a partial hold %i reads as its key with a HOLD marker", keyCode => {
+    const db = new KeymapDB();
+
+    const parsed = db.parse(keyCode);
+
+    expect({ keyCode: parsed.keyCode, label: parsed.label, extraLabel: parsed.extraLabel }).toEqual({
+      keyCode,
+      label: "TAB",
+      extraLabel: "HOLD",
+    });
+  });
+
+  test("keySegmentor splits a partial hold into its key and the high byte", () => {
+    const db = new KeymapDB();
+
+    expect(db.keySegmentor(0x982b)).toEqual({ base: 0x2b, modified: 0x9800 });
+    expect(db.keySegmentor(0xb82b)).toEqual({ base: 0x2b, modified: 0xb800 });
+  });
+
+  test("a partial code the firmware rejects stays a raw code", () => {
+    const db = new KeymapDB();
+
+    // Cmd+Tab has a single modifier
+    expect(db.parse(0x902b).label).toBe(`#${0x902b}`);
+  });
 });

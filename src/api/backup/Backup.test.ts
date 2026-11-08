@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import Backup from "./Backup";
 import Device from "../comms/Device";
 import { MACROS_NOT_RESTORED } from "../parsers/macros";
+import { HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED } from "../parsers/holdMods";
 
 vi.mock("electron", () => ({ ipcRenderer: { invoke: vi.fn(), send: vi.fn(), on: vi.fn() } }));
 
@@ -18,7 +19,9 @@ vi.mock("../comms/Device", () => ({ default: class {} }));
 
 describe("Backup.Commands", () => {
   test("leaves out the read-only state markers and keeps the configuration", async () => {
-    const device = { command: async () => "keymap.custom\r\nswaphands.state\r\nlayerhold.state\r\nqukeys.holdTimeout" } as unknown as Device;
+    const device = {
+      command: async () => "keymap.custom\r\nswaphands.state\r\nlayerhold.state\r\nqukeys.holdTimeout",
+    } as unknown as Device;
 
     const commands = await Backup.Commands(device);
 
@@ -35,6 +38,14 @@ describe("Backup.Commands", () => {
 
     expect(commands).toContain("macros.map");
     expect(commands).not.toContain("macros.state");
+  });
+
+  test("keeps the held modifiers of partial layer holds", async () => {
+    const device = { command: async () => "keymap.custom\r\nlayerhold.state\r\nholdmods.map" } as unknown as Device;
+
+    const commands = await Backup.Commands(device);
+
+    expect(commands).toContain("holdmods.map");
   });
 
   test("leaves out the macro step limit", async () => {
@@ -208,5 +219,192 @@ describe("Backup restore of macros with new steps", () => {
 
     expect(keyboard["macros.map"]).toBe(LAYER_OFF);
     expect(Backup.takeRestoreWarnings()).toEqual([]);
+  });
+});
+
+describe("Backup restore of partial layer holds", () => {
+  // Cmd+Shift+Tab with Cmd held, and its plain shortcut
+  const PARTIAL = 0x982b;
+  const PLAIN = 0x182b;
+  const HELP = "keymap.custom\r\naltrepeat.map\r\nholdmods.map";
+  const OLD_TABLE = `1 ${PARTIAL} 8`;
+  const TABLE = `1 ${PARTIAL} 16`;
+  const KEYMAP = `41 ${PARTIAL}`;
+  const RULES = `1 2 23 ${PLAIN} ${PARTIAL}`;
+
+  /* A Sonsei that logs every write. `help` replies in turn and repeats the last one. `failWrite` makes that command's write return an Error */
+  const holdSonsei = ({ help = [HELP], failWrite }: { help?: unknown[]; failWrite?: string } = {}) => {
+    const keyboard: Record<string, string> = { "keymap.custom": "0", "altrepeat.map": "0", "holdmods.map": OLD_TABLE };
+    const helpReplies = [...help];
+    const writes: string[][] = [];
+    const reply = async (cmd: string, ...args: string[]): Promise<unknown> => {
+      if (cmd === "help") {
+        return helpReplies.length > 1 ? helpReplies.shift() : helpReplies[0];
+      }
+
+      if (args.length === 0) {
+        return keyboard[cmd] ?? "";
+      }
+
+      writes.push([cmd, args.join(" ")]);
+
+      if (cmd === failWrite) {
+        return new Error("timeout");
+      }
+
+      keyboard[cmd] = args.join(" ");
+      return "";
+    };
+    const device = {
+      device: { info: { product: "Sonsei" }, keyboard: { rows: 5, columns: 12 } },
+      noCacheCommand: vi.fn(reply),
+      command: vi.fn(reply),
+    } as unknown as Device;
+    return { device, keyboard, writes };
+  };
+
+  const restoreBoth = [
+    [
+      "restoreBackup",
+      (device: Device, entries: { command: string; data: string }[]) =>
+        Backup.restoreBackup([], "neuron", entries as never, device),
+    ],
+    [
+      "restoreVirtual",
+      (device: Device, entries: { command: string; data: string }[]) =>
+        Backup.restoreVirtual(
+          {
+            device: { info: { product: "Sonsei" } },
+            virtual: Object.fromEntries(entries.map(e => [e.command, { data: e.data, eraseable: true }])),
+          } as never,
+          device,
+        ),
+    ],
+  ] as const;
+
+  test.each(restoreBoth)(
+    "%s empties the table first and installs the backup's table after the loop and the rule clear",
+    async (_, restore) => {
+      const { device, keyboard, writes } = holdSonsei();
+
+      // The table comes before the keymap in the backup, and the backup has no rules
+      const restored = await restore(device, [
+        { command: "holdmods.map", data: TABLE },
+        { command: "keymap.custom", data: KEYMAP },
+      ]);
+
+      expect(restored).toBe(true);
+      expect(writes).toEqual([
+        ["holdmods.map", "0"],
+        ["keymap.custom", KEYMAP],
+        ["altrepeat.map", "0"],
+        ["holdmods.map", TABLE],
+      ]);
+      expect(keyboard["holdmods.map"]).toBe(TABLE);
+      expect(Backup.takeRestoreWarnings()).toEqual([]);
+    },
+  );
+
+  test.each(restoreBoth)("%s leaves the table empty when it fails before the rules are replaced", async (_, restore) => {
+    const { device, keyboard, writes } = holdSonsei({ failWrite: "altrepeat.map" });
+
+    const restored = await restore(device, [
+      { command: "holdmods.map", data: TABLE },
+      { command: "keymap.custom", data: KEYMAP },
+      { command: "altrepeat.map", data: RULES },
+    ]);
+
+    expect(restored).toBe(false);
+    expect(writes).toEqual([
+      ["holdmods.map", "0"],
+      ["keymap.custom", KEYMAP],
+      ["altrepeat.map", RULES],
+    ]);
+    expect(keyboard["holdmods.map"]).toBe("0");
+  });
+
+  test.each(restoreBoth)("%s stops before the table when the keymap write returns an Error", async (_, restore) => {
+    const { device, keyboard, writes } = holdSonsei({ failWrite: "keymap.custom" });
+
+    const restored = await restore(device, [
+      { command: "keymap.custom", data: KEYMAP },
+      { command: "holdmods.map", data: TABLE },
+    ]);
+
+    expect(restored).toBe(false);
+    expect(writes).toEqual([
+      ["holdmods.map", "0"],
+      ["keymap.custom", KEYMAP],
+    ]);
+    expect(keyboard["holdmods.map"]).toBe("0");
+  });
+
+  test.each(restoreBoth)("%s leaves the table empty for a backup without one", async (_, restore) => {
+    const { device, keyboard } = holdSonsei();
+
+    const restored = await restore(device, [
+      { command: "keymap.custom", data: KEYMAP },
+      { command: "altrepeat.map", data: RULES },
+    ]);
+
+    expect(restored).toBe(true);
+    expect(keyboard["holdmods.map"]).toBe("0");
+    expect(keyboard["altrepeat.map"]).toBe(RULES);
+  });
+
+  test.each(restoreBoth)("%s makes partial holds plain on a target without the table and writes no table", async (_, restore) => {
+    const { device, keyboard, writes } = holdSonsei({ help: ["keymap.custom\r\naltrepeat.map"] });
+
+    const restored = await restore(device, [
+      { command: "holdmods.map", data: TABLE },
+      { command: "keymap.custom", data: KEYMAP },
+      { command: "altrepeat.map", data: RULES },
+    ]);
+
+    expect(restored).toBe(true);
+    expect(writes.filter(([cmd]) => cmd === "holdmods.map")).toEqual([]);
+    expect(keyboard["keymap.custom"]).toBe(`41 ${PLAIN}`);
+    expect(keyboard["altrepeat.map"]).toBe(`1 2 23 ${PLAIN} ${PLAIN}`);
+    expect(Backup.takeRestoreWarnings()).toEqual([HOLD_MODS_NORMALIZED]);
+  });
+
+  test("restoreBackup counts help as unreadable for the whole restore when it fails at the start", async () => {
+    // keepSupportedCommands and supportedCommands read help first, and every later read would list the table
+    const { device, keyboard, writes } = holdSonsei({ help: [new Error("timeout"), new Error("timeout"), HELP] });
+
+    const restored = await Backup.restoreBackup(
+      [],
+      "neuron",
+      [
+        { command: "keymap.custom", data: KEYMAP },
+        { command: "holdmods.map", data: TABLE },
+      ] as never,
+      device,
+    );
+
+    expect(restored).toBe(true);
+    expect(writes.filter(([cmd]) => cmd === "holdmods.map")).toEqual([]);
+    expect(keyboard["holdmods.map"]).toBe(OLD_TABLE);
+    expect(keyboard["keymap.custom"]).toBe(`41 ${PLAIN}`);
+    expect(Backup.takeRestoreWarnings()).toEqual([HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED]);
+  });
+
+  test("restoreVirtual counts help as unreadable for the whole restore when it fails at the start", async () => {
+    const { device, keyboard, writes } = holdSonsei({ help: [new Error("timeout"), HELP] });
+    const virtual = {
+      device: { info: { product: "Sonsei" } },
+      virtual: {
+        "keymap.custom": { data: KEYMAP, eraseable: true },
+        "holdmods.map": { data: TABLE, eraseable: true },
+      },
+    };
+
+    const restored = await Backup.restoreVirtual(virtual as never, device);
+
+    expect(restored).toBe(true);
+    expect(writes.filter(([cmd]) => cmd === "holdmods.map")).toEqual([]);
+    expect(keyboard["holdmods.map"]).toBe(OLD_TABLE);
+    expect(keyboard["keymap.custom"]).toBe(`41 ${PLAIN}`);
+    expect(Backup.takeRestoreWarnings()).toEqual([HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED]);
   });
 });

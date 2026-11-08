@@ -16,6 +16,8 @@ describe("modifier chips of hold until layer change keys", () => {
   test.each([
     [0x302b, 1], // Cmd+Tab hold
     [0x382b, 2], // Cmd+Shift+Tab hold
+    [0x982b, 2], // Cmd+Shift+Tab partial hold
+    [0xb82b, 2], // Cmd+Shift+Tab partial hold, slot 1
     [0x2b, 0], // Tab
   ])("ListModifiersKey draws %i with %i chips", (keyCode, expected) => {
     const { container } = render(<ListModifiersKey keyCode={keyCode} selectedKey={undefined} />);
@@ -27,5 +29,11 @@ describe("modifier chips of hold until layer change keys", () => {
     const { container } = render(<ListModifier keyCode={0x302b} />);
 
     expect(container.querySelector(".listModifiersTags")?.childElementCount).toBe(1);
+  });
+
+  test("ListModifiers draws a partial hold's modifiers", () => {
+    const { container } = render(<ListModifier keyCode={0x982b} />);
+
+    expect(container.querySelector(".listModifiersTags")?.childElementCount).toBe(2);
   });
 });

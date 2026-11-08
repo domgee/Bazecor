@@ -194,6 +194,24 @@ describe("isAllowedOutput", () => {
   ])("layer hold code %i is not allowed", code => {
     expect(isAllowedOutput(code)).toBe(false);
   });
+
+  /* Mirror LayerHoldModsDygma::partialShape. A code without a table entry still plays, as the plain shortcut */
+  test.each([
+    [0x982b], // Cmd+Shift+Tab, slot 0
+    [0xb82b], // Cmd+Shift+Tab, slot 1
+    [0x9fdd], // all modifiers with the last HID key
+  ])("partial hold code %i is allowed", code => {
+    expect(isAllowedOutput(code)).toBe(true);
+  });
+
+  test.each([
+    [0x902b], // a single modifier
+    [0x802b], // no modifier
+    [0x9803], // keycode below a
+    [0x98de], // keycode above the last HID key
+  ])("partial hold code %i is not allowed", code => {
+    expect(isAllowedOutput(code)).toBe(false);
+  });
 });
 
 describe("validateAltRepeatRules", () => {

@@ -55,6 +55,7 @@ import { Neuron } from "@Types/neurons";
 import { hasLayerHoldMarker } from "../hw/layerhold";
 import { hasSwapHandsMarker } from "../hw/swaphands";
 import { hasAltRepeatCommand } from "../api/parsers/altRepeat";
+import { hasHoldModsCommand } from "../api/parsers/holdMods";
 import { hasKeyOverridesCommand } from "../api/parsers/keyOverrides";
 import { hasConditionalLayersCommand } from "../api/parsers/conditionalLayers";
 import { hasQuickTapCommand } from "../api/parsers/quickTap";
@@ -75,7 +76,7 @@ const store = Store.getStore();
 // (SK 2.0, Layer Lens, Combos, Autoshift, CapsWord, layer hold and key repeat on previous-key rules, swap hands Hold on Superkeys).
 // Runs on connect and again after a firmware update, since the keyboard stays connected through it.
 // The minimum FW per product for each capability lives in src/versionRules.json.
-// Also reads help for capabilities.layerHold, capabilities.altRepeat, capabilities.keyOverrides, capabilities.quickTap,
+// Also reads help for capabilities.layerHold, capabilities.holdMods, capabilities.altRepeat, capabilities.keyOverrides, capabilities.quickTap,
 // capabilities.dualFunction, capabilities.conditionalLayers, capabilities.swapHands, capabilities.macroUpgrade and capabilities.macroSteps,
 // which official firmware of the same version lacks.
 const detectFirmwareCapabilities = async (currentDevice: Device) => {
@@ -94,13 +95,17 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     log.info("[Capabilities] all disabled due to firmware version read/parse error");
   }
 
-  /* Detect Hold until layer change, previous-key rules, key overrides, quick tap, dual-function options, conditional layers, swap hands,
-   * the macro options and the highest macro step type through help, because official firmware of the same version lacks them */
+  /* Detect Hold until layer change and its held modifiers table, previous-key rules, key overrides, quick tap, dual-function options,
+   * conditional layers, swap hands, the macro options and the highest macro step type through help, because official firmware of the same
+   * version lacks them. capabilities.holdMods is informational, since the Layout editor confirms the table with its own help read */
   try {
     const help = await currentDevice.noCacheCommand("help");
     const available = hasLayerHoldMarker(help);
     store.set("capabilities.layerHold", available);
     log.info(`[Capabilities] layerHold -> available: ${available}`);
+    const holdMods = available && hasHoldModsCommand(help);
+    store.set("capabilities.holdMods", holdMods);
+    log.info(`[Capabilities] holdMods -> available: ${holdMods}`);
     const altRepeat = hasAltRepeatCommand(help);
     store.set("capabilities.altRepeat", altRepeat);
     log.info(`[Capabilities] altRepeat -> available: ${altRepeat}`);
@@ -126,11 +131,9 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     store.set("capabilities.macroSteps", macroSteps);
     log.info(`[Capabilities] macroSteps -> highest step: ${macroSteps}`);
   } catch (e) {
-    log.warn(
-      "Error reading help for layerHold, altRepeat, keyOverrides, quickTap, dualFunction, conditionalLayers, swapHands, macroUpgrade and macroSteps",
-      e,
-    );
+    log.warn("Error reading help for layerHold, holdMods, altRepeat and the other capabilities it lists", e);
     store.set("capabilities.layerHold", false);
+    store.set("capabilities.holdMods", false);
     store.set("capabilities.altRepeat", false);
     store.set("capabilities.keyOverrides", false);
     store.set("capabilities.quickTap", false);

@@ -867,6 +867,10 @@ const English = {
       restoreWarningTitle: "Not everything was restored",
       macrosNotRestored:
         "Macros were not restored because they use macro features this firmware lacks. Update the firmware and restore again.",
+      holdModsNormalized:
+        "Keys that hold only some modifiers until the layer changes were restored as plain shortcuts, because this firmware lacks that option. Update the firmware and restore again.",
+      holdModsNotRestored:
+        "The held modifiers of hold until layer change keys were not restored, because the keyboard did not list that option. Those keys send their plain shortcut. Update the firmware and restore again.",
       storeTime: "Backup storage period",
       storeTimeTip: "Determines how long a backup is stored before being deleted",
     },

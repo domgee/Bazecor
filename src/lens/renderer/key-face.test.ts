@@ -113,3 +113,15 @@ describe("keyFace", () => {
     expect(keyFace(SUPERKEY_1, ctx).slots).toEqual([{ text: "⌘TAB" }, { text: "M2" }, null, null, null]);
   });
 });
+
+describe("decodeKey", () => {
+  test.each([
+    [0x982b], // Cmd+Shift+Tab partial hold, slot 0
+    [0xb82b], // Cmd+Shift+Tab partial hold, slot 1
+  ])("PartialHold_SameFaceAsPlainAndLegacyShortcut %i", code => {
+    const plain = decodeKey(0x182b);
+
+    expect([decodeKey(code), decodeKey(0x382b)]).toEqual([plain, plain]);
+    expect(plain).toEqual({ primary: expect.any(String), hold: "", modifiers: ["Shift", "OS"] });
+  });
+});

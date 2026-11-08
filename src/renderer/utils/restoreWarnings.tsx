@@ -5,9 +5,17 @@ import ToastMessage from "@Renderer/components/atoms/ToastMessage";
 import { IconArrowDownWithLine } from "@Renderer/components/atoms/icons";
 import Backup from "../../api/backup";
 import { MACROS_NOT_RESTORED } from "../../api/parsers/macros";
+import { HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED } from "../../api/parsers/holdMods";
 
-const warningText = (warning: string) =>
-  warning === MACROS_NOT_RESTORED ? i18n.keyboardSettings.backupFolder.macrosNotRestored : warning;
+const warningText = (warning: string) => {
+  const { backupFolder } = i18n.keyboardSettings;
+  const texts: Record<string, string> = {
+    [MACROS_NOT_RESTORED]: backupFolder.macrosNotRestored,
+    [HOLD_MODS_NORMALIZED]: backupFolder.holdModsNormalized,
+    [HOLD_MODS_NOT_RESTORED]: backupFolder.holdModsNotRestored,
+  };
+  return texts[warning] ?? warning;
+};
 
 /** Show a toast for each command the last restore skipped */
 const showRestoreWarnings = () => {

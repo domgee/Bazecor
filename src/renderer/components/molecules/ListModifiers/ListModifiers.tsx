@@ -19,7 +19,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import LabelModifier from "../../atoms/LabelModifier";
-import { fromLayerHold, isLayerHold } from "../../../../hw/layerhold";
+import { holdShortcut } from "../../../../hw/layerhold";
 
 interface ListModifiersProps {
   keyCode: number;
@@ -29,7 +29,7 @@ type Modifier = number;
 
 const ListModifier = ({ keyCode: rawKeyCode, size = "md" }: ListModifiersProps) => {
   /* Show a hold key's modifiers like its plain shortcut's */
-  const keyCode = isLayerHold(rawKeyCode) ? fromLayerHold(rawKeyCode) : rawKeyCode;
+  const keyCode = holdShortcut(rawKeyCode);
   const [modifiersState, setModifiersState] = useState({ isMeh: false, isHyper: false });
 
   // Define a type for modifiers

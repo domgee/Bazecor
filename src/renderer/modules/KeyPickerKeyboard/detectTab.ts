@@ -1,13 +1,13 @@
 import log from "electron-log/renderer";
 import { AutoshiftCodes } from "../../../hw/autoshift";
 import { CapsWordCodes } from "../../../hw/capsword";
-import { isLayerHold } from "../../../hw/layerhold";
+import { isHoldCode } from "../../../hw/layerhold";
 import { isSwapHandsCode } from "../../../hw/swaphands";
 
 /** The picker tab that edits this keycode, given the tab that is open now. */
 export const detectTab = (keyCode: number, currentTab: string | undefined): string => {
   /* A hold key is a shortcut, so open the Keys tab even right after a layer key */
-  if (isLayerHold(keyCode)) {
+  if (isHoldCode(keyCode)) {
     log.info("detectedTab", keyCode, "tabKeys");
     return "tabKeys";
   }

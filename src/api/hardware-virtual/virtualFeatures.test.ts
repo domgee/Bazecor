@@ -334,3 +334,33 @@ describe("macro upgrade marker", () => {
     expect(vk.virtual.help.data.split("\r\n")).toContain("macros.state");
   });
 });
+
+describe("held modifiers of partial layer holds", () => {
+  test("the Sonsei lists holdmods.map in help, erasable and empty", () => {
+    expect(SonseiWireless.virtual.help.data.split("\r\n")).toContain("holdmods.map");
+    expect(SonseiWireless.virtual["holdmods.map"]).toEqual({ data: "0", eraseable: true });
+  });
+
+  test.each([
+    ["Defy wireless", DefyWireless],
+    ["Raise 2 ANSI", Raise2ANSI],
+  ])("the %s does not", (_, template) => {
+    expect(template.virtual.help.data.split("\r\n")).not.toContain("holdmods.map");
+    expect(template.virtual["holdmods.map"]).toBeUndefined();
+  });
+
+  test("addMissingVirtualCommands adds it to a Sonsei file saved before it", () => {
+    const vk: VirtualType = JSON.parse(JSON.stringify(SonseiWireless));
+    delete vk.virtual["holdmods.map"];
+    vk.virtual.help.data = vk.virtual.help.data
+      .split("\r\n")
+      .filter(c => c !== "holdmods.map")
+      .join("\r\n");
+
+    const added = addMissingVirtualCommands(vk);
+
+    expect(added).toEqual(["holdmods.map"]);
+    expect(vk.virtual["holdmods.map"]).toEqual({ data: "0", eraseable: true });
+    expect(vk.virtual.help.data.split("\r\n")).toContain("holdmods.map");
+  });
+});

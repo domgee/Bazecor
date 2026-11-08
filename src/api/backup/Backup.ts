@@ -44,6 +44,7 @@ import {
   writeDualFunctionGlobals,
   writePerKeyOverrides,
 } from "../parsers/dualFunction";
+import { HOLD_MODS_COMMAND, holdModsTargetOf, restoreHoldMods, writeHoldMods } from "../parsers/holdMods";
 import restoreCommand from "./restoreCommand";
 import { fitPaletteToFormat } from "../parsers/palette";
 import { rgb2w } from "../color";
@@ -180,6 +181,13 @@ export default class Backup {
 
   // Warnings for commands the last restore skipped, shown by the caller
   static restoreWarnings: string[] = [];
+
+  /** Collect a restore warning once, since the keymap and the rules can both report the same one. */
+  static addRestoreWarning = (warning: string | undefined) => {
+    if (warning && !Backup.restoreWarnings.includes(warning)) {
+      Backup.restoreWarnings.push(warning);
+    }
+  };
 
   /** The warnings of the last restore, emptying the list. */
   static takeRestoreWarnings = (): string[] => {
@@ -420,6 +428,7 @@ export default class Backup {
     /* Clear the rules, the key overrides, the conditional layers and the per-key dual-function overrides, and turn quick tap and the
      * dual-function options off, when the backup predates them */
     const supported = await Backup.supportedCommands(device);
+    const holdModsTarget = holdModsTargetOf(supported);
     const clearAltRepeat = needsAltRepeatClear(
       data.map(c => c.command),
       supported,
@@ -475,8 +484,16 @@ export default class Backup {
       log.warn("Reordering backup commands failed: ", reorderErr);
     }
     data = await Backup.adaptCombosToDevice(data, device);
+    /* Install the backup's held modifiers last, so the keyboard never reads its old keymap or rules against them */
+    const holdModsData = data.find(c => c.command === HOLD_MODS_COMMAND)?.data;
+    data = data.filter(c => c.command !== HOLD_MODS_COMMAND);
     if (device) {
       try {
+        /* Empty the table first. Until the backup's table is installed, partial holds play as their plain shortcut */
+        if (holdModsTarget === "listed") {
+          await writeHoldMods(device, []);
+        }
+
         for (let i = 0; i < data.length; i += 1) {
           let val: unknown = data[i].data;
           // Boolean values needs to be sent as int
@@ -495,11 +512,15 @@ export default class Backup {
           const value = String(val).trim();
           const keysPerLayer = () => device.device.keyboard.rows * device.device.keyboard.columns;
           // eslint-disable-next-line no-await-in-loop
-          const warning = await restoreCommand(device, command, value, keysPerLayer, () => device.command(command, value));
-
-          if (warning) {
-            Backup.restoreWarnings.push(warning);
-          }
+          const warning = await restoreCommand(
+            device,
+            command,
+            value,
+            keysPerLayer,
+            () => device.command(command, value),
+            holdModsTarget,
+          );
+          Backup.addRestoreWarning(warning);
         }
 
         if (clearAltRepeat) {
@@ -524,6 +545,10 @@ export default class Backup {
 
         if (clearPerKey) {
           await writePerKeyOverrides(device, []);
+        }
+
+        if (holdModsData !== undefined) {
+          Backup.addRestoreWarning(await restoreHoldMods(device, String(holdModsData).trim(), holdModsTarget));
         }
 
         await device.noCacheCommand("led.mode 0");
@@ -555,12 +580,23 @@ export default class Backup {
         // Same reason as in restoreBackup: never send commands the target does
         // not know, whether they come from another board or a newer firmware.
         const supported = await Backup.supportedCommands(device);
+        const holdModsTarget = holdModsTargetOf(supported);
         const conversionTarget = defySonseiConversion
           ? await Backup.conversionTarget(device, defySonseiConversion, data.palette?.data)
           : undefined;
+        /* Empty the table first and install the file's table last, as in restoreBackup */
+        const holdModsEntry = data[HOLD_MODS_COMMAND];
+        const holdModsData =
+          holdModsEntry?.eraseable === true && (!supported || supported.has(HOLD_MODS_COMMAND)) ? holdModsEntry.data : undefined;
+
+        if (holdModsTarget === "listed") {
+          await writeHoldMods(device, []);
+        }
 
         for (const command in data) {
-          if (supported && !supported.has(command)) {
+          if (command === HOLD_MODS_COMMAND) {
+            log.info(`Holding back ${command} until the end of the restore`);
+          } else if (supported && !supported.has(command)) {
             log.info(`Skipping ${command}: not supported by the connected keyboard`);
           } else if (data[command].eraseable === true) {
             // eslint-disable-next-line no-await-in-loop
@@ -647,13 +683,15 @@ export default class Backup {
               const keysPerLayer = () => device.device.keyboard.rows * device.device.keyboard.columns;
               const sendData = commandData;
               // eslint-disable-next-line no-await-in-loop
-              const warning = await restoreCommand(device, command, sendData, keysPerLayer, () =>
-                device.command(command, sendData),
+              const warning = await restoreCommand(
+                device,
+                command,
+                sendData,
+                keysPerLayer,
+                () => device.command(command, sendData),
+                holdModsTarget,
               );
-
-              if (warning) {
-                Backup.restoreWarnings.push(warning);
-              }
+              Backup.addRestoreWarning(warning);
             }
           }
         }
@@ -682,6 +720,10 @@ export default class Backup {
 
         if (needsPerKeyClear(Object.keys(data), supported)) {
           await writePerKeyOverrides(device, []);
+        }
+
+        if (holdModsData !== undefined) {
+          Backup.addRestoreWarning(await restoreHoldMods(device, String(holdModsData).trim(), holdModsTarget));
         }
 
         log.info("Settings restored OK");

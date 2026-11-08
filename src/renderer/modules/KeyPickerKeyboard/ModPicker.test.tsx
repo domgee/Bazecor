@@ -74,6 +74,16 @@ describe("ModPicker Hold until layer change", () => {
     expect(onKeySelect).toHaveBeenCalledWith(0x182b);
   });
 
+  test("checking it on a partial hold selects the legacy hold of its shortcut", () => {
+    // 0xb82b is Cmd+Shift+Tab in slot 1, whose slot bit is the legacy hold bit
+    const { container, onKeySelect, click } = renderModPicker(0x2b, 0xb800, true);
+
+    expect(container.querySelector(HOLD_CHECKBOX).getAttribute("data-state")).toBe("unchecked");
+    click(HOLD_CHECKBOX);
+
+    expect(onKeySelect).toHaveBeenCalledWith(0x382b);
+  });
+
   test("the checkbox is disabled on a key without modifiers", () => {
     const { container } = renderModPicker(0x2b, 0, true);
 
