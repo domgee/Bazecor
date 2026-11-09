@@ -81,3 +81,74 @@ describe("HID.sendData", () => {
     expect(received).toBe(body.trimEnd());
   });
 });
+
+// Answer each command after a delay, the way the keyboard replies over BLE, so overlapping requests are still waiting
+const createKeyboard = (replies: Record<string, string>) => {
+  const listeners: ReportListener[] = [];
+
+  return {
+    opened: true,
+    addEventListener: (_type: string, listener: ReportListener) => listeners.push(listener),
+    removeEventListener: (_type: string, listener: ReportListener) => listeners.splice(listeners.indexOf(listener), 1),
+    sendReport: async (_reportId: number, data: Uint8Array) => {
+      const command = new TextDecoder().decode(data).replace(/\0/g, "").trim();
+      setTimeout(() => {
+        toReports(`${replies[command]}\r\n.\r\n`).forEach(report => {
+          [...listeners].forEach(listener =>
+            listener({ data: new DataView(report.buffer), device: { productId: SONSEI_PRODUCT_ID }, reportId: 5 }),
+          );
+        });
+      }, 10);
+    },
+  } as unknown as HIDDevice;
+};
+
+const createHID = (keyboard: HIDDevice) => {
+  const hid = new HID();
+  hid.connectedDevice = keyboard;
+  return hid;
+};
+
+const requestAsync = (hid: HID, command: string, received: Record<string, string>, errors: Error[]) =>
+  hid.sendData(
+    `${command}\n`,
+    data => {
+      received[command] = data;
+    },
+    err => errors.push(err),
+  );
+
+describe("HID.sendData with overlapping requests", () => {
+  test("OverlappingRequestsOnOneInstance_EachGetsOwnReply", async () => {
+    const hid = createHID(
+      createKeyboard({ "keyoverrides.map": "2 4 8 0 0 0 5 0 1 7 8 0 0 0 9 0 1", "wireless.battery.left.level": "87" }),
+    );
+    const received: Record<string, string> = {};
+    const errors: Error[] = [];
+
+    await Promise.all([
+      requestAsync(hid, "keyoverrides.map", received, errors),
+      requestAsync(hid, "wireless.battery.left.level", received, errors),
+    ]);
+
+    expect(errors).toEqual([]);
+    expect(received).toEqual({ "keyoverrides.map": "2 4 8 0 0 0 5 0 1 7 8 0 0 0 9 0 1", "wireless.battery.left.level": "87" });
+  });
+
+  test("ScanRequestDuringPageRead_EachGetsOwnReply", async () => {
+    // Open the same keyboard in a second instance, as a scan does while a Device is connected
+    const keyboard = createKeyboard({ "qukeys.dualFunction": "0 1 0 0 0 0 0", "hardware.chip_id": "cdb6de468e6fb2d8" });
+    const connected = createHID(keyboard);
+    const scan = createHID(keyboard);
+    const received: Record<string, string> = {};
+    const errors: Error[] = [];
+
+    await Promise.all([
+      requestAsync(connected, "qukeys.dualFunction", received, errors),
+      requestAsync(scan, "hardware.chip_id", received, errors),
+    ]);
+
+    expect(errors).toEqual([]);
+    expect(received).toEqual({ "qukeys.dualFunction": "0 1 0 0 0 0 0", "hardware.chip_id": "cdb6de468e6fb2d8" });
+  });
+});

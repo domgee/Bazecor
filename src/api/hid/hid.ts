@@ -14,6 +14,9 @@ const DygmaUsagePage = 65280;
 type ReceiverHandler = (dataReceived: string) => void;
 type ErrorHandler = (err: Error) => void;
 
+// Run requests one at a time across all HID instances, including the scan's. Replies share one report stream, so overlapping requests mix them
+let requestQueue: Promise<unknown> = Promise.resolve();
+
 class HIDError extends Error {
   constructor(message: string) {
     super(message);
@@ -210,7 +213,13 @@ class HID {
     return rejoined;
   };
 
-  sendData = async (dataToSend: string, receiverHandler: ReceiverHandler, errorHandler: ErrorHandler) => {
+  sendData = (dataToSend: string, receiverHandler: ReceiverHandler, errorHandler: ErrorHandler) => {
+    const request = requestQueue.then(() => this.sendDataNow(dataToSend, receiverHandler, errorHandler));
+    requestQueue = request.catch(() => {});
+    return request;
+  };
+
+  private sendDataNow = async (dataToSend: string, receiverHandler: ReceiverHandler, errorHandler: ErrorHandler) => {
     const maxData = 200;
     this.dataReceived = "";
     const encodedData = HID.encoder.encode(dataToSend);
