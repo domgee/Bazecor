@@ -1,4 +1,8 @@
-import { describe, expect, test, vi } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { ipcRenderer } from "electron";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import Backup from "./Backup";
 import Device from "../comms/Device";
 import { MACROS_NOT_RESTORED } from "../parsers/macros";
@@ -10,8 +14,15 @@ vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
 }));
 
+const settings = vi.hoisted(() => ({ backupFolder: undefined as string | undefined }));
+
 vi.mock("../../renderer/utils/Store", () => ({
-  default: { getStore: () => ({ get: vi.fn(), set: vi.fn() }) },
+  default: {
+    getStore: () => ({
+      get: vi.fn((key: string) => (key === "settings.backupFolder" ? settings.backupFolder : undefined)),
+      set: vi.fn(),
+    }),
+  },
 }));
 
 /* Stand in for the serial device, whose module graph needs the native serial port */
@@ -406,5 +417,62 @@ describe("Backup restore of partial layer holds", () => {
     expect(keyboard["holdmods.map"]).toBe(OLD_TABLE);
     expect(keyboard["keymap.custom"]).toBe(`41 ${PLAIN}`);
     expect(Backup.takeRestoreWarnings()).toEqual([HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED]);
+  });
+});
+
+describe("Backup.SaveFirstBackup", () => {
+  const NEURON_ID = "cdb6de468e6fb2d8";
+
+  const createKeyboard = () =>
+    ({
+      file: false,
+      device: { info: { product: "Sonsei", keyboardType: "wireless" } },
+      command: vi.fn(async (cmd: string) => ({ help: "keymap.custom", "keymap.custom": "41 30", version: "v1.2.15" })[cmd] ?? ""),
+    }) as unknown as Device;
+
+  const useBackupFolder = () => {
+    settings.backupFolder = fs.mkdtempSync(path.join(os.tmpdir(), "bazecor-backups-"));
+    return path.join(settings.backupFolder, "Sonsei", NEURON_ID);
+  };
+
+  afterEach(() => {
+    fs.rmSync(settings.backupFolder, { recursive: true, force: true });
+    settings.backupFolder = undefined;
+    vi.mocked(ipcRenderer.send).mockClear();
+  });
+
+  test("KeyboardWithoutBackup_BackupSavedAndLensNotified", async () => {
+    const keyboardFolder = useBackupFolder();
+
+    const saved = await Backup.SaveFirstBackup(NEURON_ID, createKeyboard());
+
+    const files = fs.readdirSync(keyboardFolder);
+    const backup = JSON.parse(fs.readFileSync(path.join(keyboardFolder, files[0]), "utf-8"));
+    expect(saved).toBe(true);
+    expect(files).toHaveLength(1);
+    // Expect led.brightnessUG too, since Commands always backs it up
+    expect(backup.backup).toEqual([
+      { command: "keymap.custom", data: "41 30" },
+      { command: "led.brightnessUG", data: "" },
+    ]);
+    expect(ipcRenderer.send).toHaveBeenCalledWith("lens:backup-saved", {
+      backupFolder: settings.backupFolder,
+      neuronID: NEURON_ID,
+      product: "Sonsei",
+      keyboardType: "wireless",
+    });
+  });
+
+  test("KeyboardWithBackup_NothingSaved", async () => {
+    const keyboardFolder = useBackupFolder();
+    fs.mkdirSync(keyboardFolder, { recursive: true });
+    fs.writeFileSync(path.join(keyboardFolder, "20261105120000-NoName.json"), "{}");
+    const keyboard = createKeyboard();
+
+    const saved = await Backup.SaveFirstBackup(NEURON_ID, keyboard);
+
+    expect(saved).toBe(false);
+    expect(fs.readdirSync(keyboardFolder)).toEqual(["20261105120000-NoName.json"]);
+    expect(keyboard.command).not.toHaveBeenCalled();
   });
 });

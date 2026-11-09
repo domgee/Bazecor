@@ -318,6 +318,25 @@ export default class Backup {
   }
 
   /**
+   * Save a backup when the keyboard has none in the backup folder yet, so Layer Lens, which draws from the latest backup, works on a new machine
+   * @returns True when a backup was saved
+   */
+  static async SaveFirstBackup(neuronID: string, device: Device) {
+    if (device.file !== false || !Backup.backupFolderValid()) {
+      return false;
+    }
+
+    const folderPath = path.join(store.get("settings.backupFolder") as string, device.device.info.product, neuronID);
+    if (fs.existsSync(folderPath) && fs.readdirSync(folderPath).some(f => f.endsWith(".json"))) {
+      return false;
+    }
+
+    log.info(`[Backup] no backup for ${neuronID} yet, saving a first one`);
+    const backup = await new Backup().DoBackup(await Backup.Commands(device), neuronID, device);
+    return Backup.SaveBackup(backup, device);
+  }
+
+  /**
    * This function physically stores the backup file passed as a variable, the backup is stored in the settings.backupFolder and it uses the following file format
    *
    * RaiseBackup-YYYYMMDDhhmmss.json

@@ -738,6 +738,9 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         scanned.current = true;
         setLoading(false);
         setScanningStep(0);
+
+        // Save in the background, since Layer Lens has nothing to draw until the keyboard has a backup
+        Backup.SaveFirstBackup(chipID, currentDevice).catch(error => log.warn("[LayoutEditor] first backup failed", error));
       } catch (e) {
         log.error(e);
         toast.error(e);
