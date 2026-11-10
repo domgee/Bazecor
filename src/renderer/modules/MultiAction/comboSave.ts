@@ -24,6 +24,7 @@ import {
   superkeyRefs,
 } from "../../../api/parsers/multiAction";
 import { serializeCombos } from "../../../api/parsers/combos";
+import { parseKeymapRaw } from "../../../api/parsers/keymap";
 import { SuperkeyWriteFormat, serializeSuperkeyTable } from "../../../api/parsers/superkeys";
 import { SuperkeySavedState, superkeyWriteNeeded } from "../HoldMods/layoutSave";
 
@@ -128,6 +129,28 @@ export const readKeymapReplies = (
   }
 
   return { custom, defaults, onlyCustom: flag === "1" };
+};
+
+/** The keymap an editor loads. Valid replies load as validated, so the layers the editor shows and saves hold every reference. Other
+ * replies load as well as they parse, for display only, with `known` false. */
+export const loadKeymapReplies = (
+  replies: { custom: unknown; defaults: unknown; onlyCustom: unknown },
+  layerSize: number,
+): { custom: number[][]; defaults: number[][]; onlyCustom: boolean; known: boolean } => {
+  const read = readKeymapReplies(replies, layerSize);
+
+  if (read !== null) {
+    return { ...read, known: true };
+  }
+
+  const asText = (raw: unknown) => (typeof raw === "string" ? raw : "");
+
+  return {
+    custom: parseKeymapRaw(asText(replies.custom), layerSize),
+    defaults: parseKeymapRaw(asText(replies.defaults), layerSize),
+    onlyCustom: Boolean(parseInt(asText(replies.onlyCustom), 10)),
+    known: false,
+  };
 };
 
 /** Save the combos and the Superkeys their outputs use. Stop at the first failed step and report the progress. */

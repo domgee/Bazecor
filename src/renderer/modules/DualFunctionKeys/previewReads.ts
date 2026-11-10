@@ -101,12 +101,12 @@ export const rereadPreviews = async (device: PreviewDevice, hasQuickTap: boolean
   return firstUnreadable(replies);
 };
 
-/** Read again uncached what a backup would record from a failed reply: the previews when `previews`, and qukeys.perKey when `perKey`, since
- * its load failed. Return the first command that still can not be read, or null when the backup may run. */
 /** The Superkey table read uncached with one retry, or null. A failed reply stays in the cache, so a backup must follow a good read */
 export const rereadSuperkeys = async (device: PreviewDevice): Promise<ParsedSuperkeys | null> =>
   parseSuperkeysTable(await device.noCacheCommand(SUPERKEYS_COMMAND)) ?? parseSuperkeysTable(await device.noCacheCommand(SUPERKEYS_COMMAND));
 
+/** Read again uncached what a backup would record from a failed reply: the previews when `previews`, qukeys.perKey when `perKey`, since
+ * its load failed, and superkeys.map when `superkeys`. Return the first command that still can not be read, or null when the backup may run. */
 export const unreadableBeforeBackup = async (
   device: PreviewDevice,
   checks: { previews: boolean; hasQuickTap: boolean; perKey: boolean; superkeys?: boolean },

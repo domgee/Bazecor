@@ -75,7 +75,7 @@ import {
 } from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 import { RecoveryCoverage, SuperkeyRemoval, gcInputsKnown, recoveryPaths, runPreGc } from "@Renderer/modules/MultiAction/preGcGate";
-import { readKeymapReplies } from "@Renderer/modules/MultiAction/comboSave";
+import { loadKeymapReplies } from "@Renderer/modules/MultiAction/comboSave";
 import {
   BackupSkippedError,
   HOLD_TIMEOUT_COMMAND,
@@ -850,7 +850,6 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         setScanningStep(5);
         const custom = (await currentDevice?.noCacheCommand("keymap.custom")) as string;
         const onlycstm = (await currentDevice?.noCacheCommand("keymap.onlyCustom")) as string;
-        const onlyCustom = Boolean(parseInt(onlycstm, 10));
         const KeyMap: KeymapType = {
           custom: undefined,
           default: undefined,
@@ -859,16 +858,16 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
         const layerSize = currentDevice.device.keyboard.rows * currentDevice.device.keyboard.columns;
         /* Allocate and collect Superkeys only with replies that are exactly what the firmware sends, since a short reply hides references */
-        const nextKeymapKnown = readKeymapReplies({ custom, defaults, onlyCustom: onlycstm }, layerSize) !== null;
+        const loaded = loadKeymapReplies({ custom, defaults, onlyCustom: onlycstm }, layerSize);
 
-        if (!nextKeymapKnown) {
+        if (!loaded.known) {
           log.error("[LayoutEditor] the keymap replies could not be read", custom, defaults, onlycstm);
         }
 
-        setKeymapKnown(nextKeymapKnown);
-        KeyMap.custom = parseKeymapRaw(custom, layerSize).map(l => l.map((k: number) => keymapDB.parse(k)));
-        KeyMap.default = parseKeymapRaw(defaults, layerSize).map(l => l.map((k: number) => keymapDB.parse(k)));
-        KeyMap.onlyCustom = onlyCustom;
+        setKeymapKnown(loaded.known);
+        KeyMap.custom = loaded.custom.map(l => l.map((k: number) => keymapDB.parse(k)));
+        KeyMap.default = loaded.defaults.map(l => l.map((k: number) => keymapDB.parse(k)));
+        KeyMap.onlyCustom = loaded.onlyCustom;
 
         let empty = true;
         for (const layer of KeyMap.custom) {

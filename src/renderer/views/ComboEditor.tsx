@@ -40,7 +40,7 @@ import { ComboBreakDialog } from "@Renderer/components/molecules/CustomModal/Com
 import { AltRepeatBreakDialog } from "@Renderer/components/molecules/CustomModal/AltRepeatBreakDialog";
 import { MultiActionProps, MultiActionStorage } from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
-import { ComboSaveIO, readKeymapReplies, refSlotsOf, runComboSave } from "@Renderer/modules/MultiAction/comboSave";
+import { ComboSaveIO, loadKeymapReplies, refSlotsOf, runComboSave } from "@Renderer/modules/MultiAction/comboSave";
 import { EMPTY_SUPERKEY_SAVED, SuperkeyMode, SuperkeySavedState } from "@Renderer/modules/HoldMods/layoutSave";
 import { unreadableBeforeBackup } from "@Renderer/modules/DualFunctionKeys/previewReads";
 
@@ -301,19 +301,14 @@ function ComboEditor(props: ComboEditorProps) {
        * label. Same shape the Layout Editor builds. */
       const layerSize = currentDevice.device.keyboard.rows * currentDevice.device.keyboard.columns;
       /* A Superkey save may rewrite the keymap, so it needs replies that are exactly what the firmware sends */
-      const replies = readKeymapReplies({ custom: keymapRaw, defaults: keymapDefault, onlyCustom: onlyCustomRaw }, layerSize);
-      const asText = (raw: unknown) => (typeof raw === "string" ? raw : "");
+      const loaded = loadKeymapReplies({ custom: keymapRaw, defaults: keymapDefault, onlyCustom: onlyCustomRaw }, layerSize);
 
-      if (replies === null) {
+      if (!loaded.known) {
         log.error("[Combos] the keymap replies could not be read", keymapRaw, keymapDefault, onlyCustomRaw);
       }
 
-      setKeymapKnown(replies !== null);
-
-      /* Show what the replies hold even when they are unusable for a save */
-      const customCodes: number[][] = replies?.custom ?? parseKeymapRaw(asText(keymapRaw), layerSize);
-      const defaultCodes: number[][] = replies?.defaults ?? parseKeymapRaw(asText(keymapDefault), layerSize);
-      const onlyCustom = replies?.onlyCustom ?? Boolean(parseInt(asText(onlyCustomRaw), 10));
+      setKeymapKnown(loaded.known);
+      const { custom: customCodes, defaults: defaultCodes, onlyCustom } = loaded;
 
       setKeymap({
         custom: customCodes.map(l => l.map((k: number) => keymapDB.parse(k))),

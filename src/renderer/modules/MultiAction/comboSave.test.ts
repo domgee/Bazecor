@@ -4,7 +4,7 @@ import { SuperkeyDraft } from "../../../api/parsers/multiAction";
 import { serializeCombos } from "../../../api/parsers/combos";
 import { SuperkeyWriteFormat, serializeSuperkeyTable } from "../../../api/parsers/superkeys";
 import { EMPTY_SUPERKEY_SAVED, SuperkeySavedState } from "../HoldMods/layoutSave";
-import { ComboSaveInput, ComboSuperkeyInput, readKeymapReplies, refSlotsOf, runComboSave } from "./comboSave";
+import { ComboSaveInput, ComboSuperkeyInput, loadKeymapReplies, readKeymapReplies, refSlotsOf, runComboSave } from "./comboSave";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -458,5 +458,22 @@ describe("runComboSave backup", () => {
 
     expect(outcome).toMatchObject({ kind: "saved", done: ["combos"] });
     expect(outcome.kind !== "blocked" && outcome.backupError).toBeInstanceOf(Error);
+  });
+});
+
+describe("loadKeymapReplies", () => {
+  test("MultilineReply_LoadsEveryCode", () => {
+    // Split a default layer across lines, so a Superkey reference sits after the line break
+    const loaded = loadKeymapReplies({ custom: "4 5", defaults: "4\r\n53980", onlyCustom: "0" }, 2);
+
+    expect(loaded).toEqual({ custom: [[4, 5]], defaults: [[4, 53980]], onlyCustom: false, known: true });
+  });
+
+  test("ShortReply_LoadsForDisplayOnly", () => {
+    const loaded = loadKeymapReplies({ custom: "4 5", defaults: "4 5 53980", onlyCustom: "1" }, 2);
+
+    expect(loaded.known).toBe(false);
+    expect(loaded.custom).toEqual([[4, 5]]);
+    expect(loaded.onlyCustom).toBe(true);
   });
 });
