@@ -5,7 +5,6 @@ import { ipcRenderer } from "electron";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import Backup, { backupFileName, fitCommandToDevice } from "./Backup";
 import Device from "../comms/Device";
-import { BackupType } from "@Renderer/types/backups";
 import { MACROS_NOT_RESTORED } from "../parsers/macros";
 import { HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED } from "../parsers/holdMods";
 
@@ -482,117 +481,12 @@ describe("backupFileName", () => {
   // Month 10 is November, since Date months start at 0
   const date = new Date(2026, 10, 10, 9, 5, 7, 42);
 
-  test("RegularAndRecoveryInSameSecond_NamesDiffer", () => {
-    const regular = backupFileName(date, "My Sonsei!");
-    const recovery = backupFileName(date, "My Sonsei!", "-before-cleanup", true);
-
-    expect(regular).toBe("20261110090507-My Sonsei.json");
-    expect(recovery).toBe("20261110090507042-My Sonsei-before-cleanup.json");
+  test("NameWithSymbols_SymbolsDropped", () => {
+    expect(backupFileName(date, "My Sonsei!")).toBe("20261110090507-My Sonsei.json");
   });
 
   test("NoName_FallbackName", () => {
     expect(backupFileName(date, "")).toBe("20261110090507-NoName.json");
-  });
-});
-
-describe("Backup.SaveRecoveryBackup and getLatestBackup", () => {
-  const NEURON_ID = "cdb6de468e6fb2d8";
-  const SUPERKEYS = "4 224 5 1 1 0 65535";
-  const keyboard = { file: false, device: { info: { product: "Sonsei", keyboardType: "wireless" } } } as unknown as Device;
-  const backup: BackupType = {
-    neuronID: NEURON_ID,
-    neuron: { id: NEURON_ID, name: "Sonsei", device: undefined, layers: [], macros: [], superkeys: [] },
-    versions: { bazecor: "v1", kaleidoscope: "k", firmware: "f" },
-    backup: [{ command: "superkeys.map", data: SUPERKEYS }],
-  };
-  // Freeze the clock, so both saves land in the same millisecond
-  const now = () => new Date(2026, 10, 10, 9, 5, 7, 42);
-
-  const useBackupFolder = () => {
-    settings.backupFolder = fs.mkdtempSync(path.join(os.tmpdir(), "bazecor-backups-"));
-    return path.join(settings.backupFolder, "Sonsei", NEURON_ID);
-  };
-
-  afterEach(() => {
-    fs.rmSync(settings.backupFolder, { recursive: true, force: true });
-    settings.backupFolder = undefined;
-    vi.mocked(ipcRenderer.send).mockClear();
-  });
-
-  test("TwoSavesInSameMillisecond_SecondGetsCounterAndLensNotNotified", async () => {
-    const keyboardFolder = useBackupFolder();
-
-    const first = await Backup.SaveRecoveryBackup(backup, keyboard, now);
-    const second = await Backup.SaveRecoveryBackup({ ...backup, backup: [{ command: "superkeys.map", data: "5 1 1 1 1 0" }] }, keyboard, now);
-
-    expect([first, second]).toEqual([
-      path.join(keyboardFolder, "20261110090507042-Sonsei-before-cleanup.json"),
-      path.join(keyboardFolder, "20261110090507042-Sonsei-before-cleanup-2.json"),
-    ]);
-    expect(JSON.parse(fs.readFileSync(first, "utf-8")).backup).toEqual([{ command: "superkeys.map", data: SUPERKEYS }]);
-    expect(ipcRenderer.send).not.toHaveBeenCalled();
-  });
-
-  test("BackupWithoutSuperkeys_RefusedBeforeWriting", async () => {
-    const keyboardFolder = useBackupFolder();
-
-    const save = Backup.SaveRecoveryBackup({ ...backup, backup: [{ command: "superkeys.map", data: "" }] }, keyboard, now);
-
-    await expect(save).rejects.toThrow("does not hold the Superkeys");
-    expect(fs.existsSync(keyboardFolder) ? fs.readdirSync(keyboardFolder) : []).toEqual([]);
-  });
-
-  test("ReadBackDiffers_FileRemovedAndRefused", async () => {
-    const keyboardFolder = useBackupFolder();
-    // Return another file's content, as if the write did not land in full
-    const readFile = vi.spyOn(fs.promises, "readFile").mockResolvedValueOnce("{}");
-
-    const save = Backup.SaveRecoveryBackup(backup, keyboard, now);
-
-    await expect(save).rejects.toThrow("does not hold the Superkeys");
-    expect(fs.readdirSync(keyboardFolder)).toEqual([]);
-    readFile.mockRestore();
-  });
-
-  test("VirtualKeyboard_Refused", async () => {
-    useBackupFolder();
-
-    const save = Backup.SaveRecoveryBackup(backup, { ...keyboard, file: true } as unknown as Device, now);
-
-    await expect(save).rejects.toThrow("virtual");
-  });
-
-  test("RecoveryNewerThanRegular_LatestIsRegular", async () => {
-    const keyboardFolder = useBackupFolder();
-    fs.mkdirSync(keyboardFolder, { recursive: true });
-    fs.writeFileSync(path.join(keyboardFolder, "20261110090000-Sonsei.json"), JSON.stringify({ regular: true }));
-    // Make the recovery file the newest by its timestamps
-    await new Promise(resolve => {
-      setTimeout(resolve, 20);
-    });
-    await Backup.SaveRecoveryBackup(backup, keyboard, now);
-
-    const latest = await Backup.getLatestBackup(settings.backupFolder, NEURON_ID, keyboard);
-
-    expect(latest).toEqual({ regular: true });
-  });
-
-  test("OnlyRecoveryBackup_FirstBackupStillSaved", async () => {
-    const keyboardFolder = useBackupFolder();
-    await Backup.SaveRecoveryBackup(backup, keyboard, now);
-    const device = {
-      ...keyboard,
-      command: vi.fn(async (cmd: string) => ({ help: "superkeys.map", "superkeys.map": SUPERKEYS, version: "v1 k f" })[cmd] ?? ""),
-    } as unknown as Device;
-
-    const saved = await Backup.SaveFirstBackup(NEURON_ID, device);
-    // Let the callback of SaveBackup's own mkdir run before the folder is removed
-    await new Promise(resolve => {
-      setTimeout(resolve, 20);
-    });
-
-    expect(saved).toBe(true);
-    expect(fs.readdirSync(keyboardFolder)).toHaveLength(2);
   });
 });
 

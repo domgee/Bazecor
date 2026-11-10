@@ -19,7 +19,10 @@ import {
   Conflict,
   LayoutRefs,
   SuperkeyDraft,
+  collectModeFor,
+  collectSuperkeys,
   prepareSuperkeyWrite,
+  protectedSlots,
   reconcileDraft,
   superkeyRefs,
 } from "../../../api/parsers/multiAction";
@@ -28,10 +31,10 @@ import { parseKeymapRaw } from "../../../api/parsers/keymap";
 import { SuperkeyWriteFormat, serializeSuperkeyTable } from "../../../api/parsers/superkeys";
 import { SuperkeySavedState, superkeyWriteNeeded } from "../HoldMods/layoutSave";
 
-/* The Combo Editor save. The order is superkeys.map, the keymap when a Superkey write made it stale, combos.map, names and the backup.
- * The Combo Editor never removes Superkeys, so it needs no clean-up and no recovery backup. */
+/* The Combo Editor save. The order is superkeys.map, the keymap when a Superkey write made it stale, combos.map, the unused Superkeys
+ * and the keymap after them, names and the backup. */
 
-export type ComboSaveStep = "superkeys" | "keymap" | "combos" | "backup";
+export type ComboSaveStep = "superkeys" | "keymap" | "combos" | "skgc" | "keymapAfterGc" | "backup";
 
 export interface ComboSuperkeyInput {
   format: SuperkeyWriteFormat;
@@ -41,6 +44,8 @@ export interface ComboSuperkeyInput {
   /* The layout as the keyboard held it at load or the last save, to tell old clashes from new ones */
   baseline: SuperkeyDraft | null;
   onlyCustom: boolean;
+  /* Drop the Superkeys nothing references once combos.map is saved */
+  collect: boolean;
 }
 
 export interface ComboSaveInput {
@@ -199,16 +204,42 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
     ...extra,
   });
 
-  /* Superkeys go first, so every Superkey a combo or key sends is defined */
-  if (sk && skSaved && table && superkeyWriteNeeded(sk.format, skSaved, table)) {
-    const state = skSaved;
-
+  /* Write the Superkey table and mark the keymap for a rewrite. On failure the keyboard may hold any part of it */
+  const writeTable = async (skInput: ComboSuperkeyInput, state: SuperkeySavedState, next: number[][]): Promise<void> => {
     try {
-      const data = serializeSuperkeyTable(table, sk.format, state.storedRows);
-      const storedRows = await io.writeSuperkeys(table, sk.format, state.storedRows);
+      const data = serializeSuperkeyTable(next, skInput.format, state.storedRows);
+      const storedRows = await io.writeSuperkeys(next, skInput.format, state.storedRows);
       skSaved = { ...state, table: data, storedRows, keymapStale: true, cleanupDone: true };
     } catch (error) {
       skSaved = { ...state, table: null, storedRows: null, keymapStale: true, cleanupDone: true };
+      throw error;
+    }
+  };
+
+  /* Write the keymap. On failure its Superkeys become uncertain */
+  const writeLayers = async (skInput: ComboSuperkeyInput, state: SuperkeySavedState): Promise<void> => {
+    const keymapSlots = refSlotsOf({
+      customLayers: layers,
+      defaultLayers: skInput.draft.defaultLayers,
+      layerOffset: skInput.draft.layerOffset,
+    });
+
+    try {
+      await io.writeKeymap(layers.flat().join(" "), skInput.onlyCustom);
+    } catch (error) {
+      skSaved = { ...state, uncertainKeymap: sortedUnion(state.uncertainKeymap, keymapSlots) };
+      throw error;
+    }
+
+    skSaved = { ...state, keymapStale: false, keymapRefs: keymapSlots, uncertainKeymap: [] };
+    heldLayers = layers;
+  };
+
+  /* Superkeys go first, so every Superkey a combo or key sends is defined */
+  if (sk && skSaved && table && superkeyWriteNeeded(sk.format, skSaved, table)) {
+    try {
+      await writeTable(sk, skSaved, table);
+    } catch (error) {
       return outcome("superkeys", error);
     }
 
@@ -217,21 +248,12 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
 
   /* The keyboard converts dual-function Superkeys only when the keymap is written. Merged cells need the write too */
   if (sk && skSaved && (skSaved.keymapStale || reconcileDraft(sk.draft.customLayers, layers).length > 0)) {
-    const keymapSlots = refSlotsOf({
-      customLayers: layers,
-      defaultLayers: sk.draft.defaultLayers,
-      layerOffset: sk.draft.layerOffset,
-    });
-
     try {
-      await io.writeKeymap(layers.flat().join(" "), sk.onlyCustom);
+      await writeLayers(sk, skSaved);
     } catch (error) {
-      skSaved = { ...skSaved, uncertainKeymap: sortedUnion(skSaved.uncertainKeymap, keymapSlots) };
       return outcome("keymap", error);
     }
 
-    skSaved = { ...skSaved, keymapStale: false, keymapRefs: keymapSlots, uncertainKeymap: [] };
-    heldLayers = layers;
     done.push("keymap");
   }
 
@@ -258,6 +280,32 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
 
   if (skSaved) {
     skSaved = { ...skSaved, comboRefs: comboSlots, uncertainCombos: [] };
+  }
+
+  /* Keep what the draft references and what the keyboard may still hold, now that the keymap and combos are saved */
+  if (sk && sk.collect && skSaved && table) {
+    const refs = { ...sk.draft, customLayers: layers, combos: input.combos };
+    const keep = new Set([...superkeyRefs(refs).keys(), ...protectedSlots(skSaved)]);
+    const collected = collectSuperkeys(table, keep, collectModeFor(sk.format));
+
+    if (collected !== table) {
+      try {
+        await writeTable(sk, skSaved, collected);
+      } catch (error) {
+        return outcome("skgc", error);
+      }
+
+      table = collected;
+      done.push("skgc");
+
+      try {
+        await writeLayers(sk, skSaved);
+      } catch (error) {
+        return outcome("keymapAfterGc", error);
+      }
+
+      done.push("keymapAfterGc");
+    }
   }
 
   io.storeNames(input.combos, table);

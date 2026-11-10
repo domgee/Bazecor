@@ -99,6 +99,7 @@ const superkeysInput = (
   format: "padded",
   baseline: null,
   onlyCustom: true,
+  collect: false,
   ...overrides,
 });
 
@@ -332,6 +333,95 @@ describe("runComboSave merged keymap Superkeys", () => {
 
     expect(outcome).toMatchObject({ kind: "failed", failed: "keymap" });
     expect(outcome.kind !== "blocked" && outcome.superkeys?.layers).toBe(layers);
+  });
+});
+
+describe("runComboSave unused Superkeys", () => {
+  const layers = [[SK(0)]];
+  const loadedCombos = [combo(0, SK(1))];
+  // The edit drops the only reference to Superkey 1
+  const combos = [combo(0, A)];
+  const saved = savedOf([CTRL_A, FULL_B], layers, loadedCombos);
+
+  const run = (io: ReturnType<typeof mockIO>["io"], overrides: Partial<ComboSuperkeyInput> = {}) =>
+    runComboSave(
+      io,
+      input({
+        combos,
+        savedCombos: serializeCombos(loadedCombos),
+        superkeys: superkeysInput({ draft: draftOf([CTRL_A, FULL_B], layers, combos), saved, collect: true, ...overrides }),
+      }),
+    );
+
+  test("CollectAndLastReferenceDropped_SlotRemovedAfterCombosAndKeymapRewritten", async () => {
+    const { io, steps } = mockIO();
+
+    const outcome = await run(io);
+
+    expect(steps).toEqual([
+      "combos 1",
+      `superkeys ${serializeSuperkeyTable([CTRL_A], "padded", 2)}`,
+      `keymap ${SK(0)}|1`,
+      "names 1 1",
+      "backup",
+    ]);
+    expect(outcome).toMatchObject({
+      kind: "saved",
+      done: ["combos", "skgc", "keymapAfterGc", "backup"],
+      superkeys: { table: [CTRL_A], saved: { storedRows: 1, keymapStale: false, keymapRefs: [0], comboRefs: [] } },
+    });
+  });
+
+  test("NoCollect_SlotKept", async () => {
+    const { io, steps } = mockIO();
+
+    const outcome = await run(io, { collect: false });
+
+    expect(steps).toEqual(["combos 1", "names 1 2", "backup"]);
+    expect(outcome).toMatchObject({ kind: "saved", done: ["combos", "backup"], superkeys: { table: [CTRL_A, FULL_B] } });
+  });
+
+  test("DefaultLayerReference_SlotKept", async () => {
+    const { io, steps } = mockIO();
+    const draft = { ...draftOf([CTRL_A, FULL_B], layers, combos), defaultLayers: [[SK(1)]], layerOffset: 1 };
+
+    await run(io, { draft });
+
+    expect(steps).toEqual(["combos 1", "names 1 2", "backup"]);
+  });
+
+  test("UncertainKeymapSlot_SlotKept", async () => {
+    const { io, steps } = mockIO();
+
+    await run(io, { saved: { ...saved, uncertainKeymap: [1] } });
+
+    expect(steps).toEqual(["combos 1", "names 1 2", "backup"]);
+  });
+
+  test("CleanUpWriteFails_TableUnknownAndKeymapStale", async () => {
+    const { io, steps } = mockIO({ superkeys: true });
+
+    const outcome = await run(io);
+
+    expect(steps).toEqual(["combos 1", `superkeys ${serializeSuperkeyTable([CTRL_A], "padded", 2)}`]);
+    expect(outcome).toMatchObject({
+      kind: "failed",
+      failed: "skgc",
+      superkeys: { table: [CTRL_A, FULL_B], saved: { table: null, storedRows: null, keymapStale: true } },
+    });
+  });
+
+  test("KeymapAfterCleanUpFails_StaysStaleWithCollectedTable", async () => {
+    const { io } = mockIO({ keymap: true });
+
+    const outcome = await run(io);
+
+    expect(outcome).toMatchObject({
+      kind: "failed",
+      failed: "keymapAfterGc",
+      done: ["combos", "skgc"],
+      superkeys: { table: [CTRL_A], saved: { keymapStale: true, uncertainKeymap: [0] } },
+    });
   });
 });
 

@@ -74,14 +74,13 @@ import {
   wheelSwitchesTab,
 } from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
-import { RecoveryCoverage, SuperkeyRemoval, gcInputsKnown, recoveryPaths, runPreGc } from "@Renderer/modules/MultiAction/preGcGate";
+import { collectBlock, gcInputsKnown } from "@Renderer/modules/MultiAction/preGcGate";
 import { loadKeymapReplies } from "@Renderer/modules/MultiAction/comboSave";
 import {
   BackupSkippedError,
   HOLD_TIMEOUT_COMMAND,
   PRIOR_INTERVAL_COMMAND,
   readGlobalNumber,
-  rereadSuperkeys,
   unreadableBeforeBackup,
 } from "@Renderer/modules/DualFunctionKeys/previewReads";
 import {
@@ -147,7 +146,6 @@ import {
   defaultCellName,
   definedSlots,
   dualUseOnlyCode,
-  finalGcTable,
   gcRemovals,
   multiActionBreaks,
   prepareSuperkeyWrite,
@@ -385,8 +383,6 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const skSaved = useRef<SuperkeySavedState>(EMPTY_SUPERKEY_SAVED);
   /* The layout as the keyboard holds it, to tell clashes already on the keyboard from new ones */
   const skBaseline = useRef<SuperkeyDraft | null>(null);
-  /* The Superkey definitions verified recovery backups of this keyboard hold, so a save only backs up what no earlier one holds */
-  const recoveryCovered = useRef<{ neuronID: string; covered: RecoveryCoverage }>({ neuronID: "", covered: new Map() });
   const [altRepeatRules, setAltRepeatRules] = useState<AltRepeatRule[]>([]);
   const [altRepeatState, setAltRepeatState] = useState<AltRepeatState>("unsupported");
   /* Remember the table the keyboard holds so Save only writes a changed table. Null after a failed write */
@@ -1599,10 +1595,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     const saveStart = holdSync.beginSave();
     let reloadHoldMods = false;
     let superkeysInput: SuperkeySaveInput | undefined;
-    let removals: SuperkeyRemoval[] = [];
+    let collect = false;
     let persistedBefore: number[][] | null = null;
 
-    /* Refuse edits from here on, since the recovery backup before the first write takes a while */
+    /* Refuse edits from here on, since the reads before the first write take a while */
     saving.current = true;
     setLoading(true);
     setIsSaving(true);
@@ -1618,66 +1614,37 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         const persisted = skSaved.current.table === null ? null : parseSuperkeysTable(skSaved.current.table);
         /* Unread rules stopped the save above, and unread combos or keymap replies may reference any slot */
         const ready = gcInputsKnown({ combos: combosState, keymapKnown });
-        let previewsOk = true;
+        let readsOk = true;
 
-        /* Read the options a backup records first, so neither backup stores a failed reply from the load */
+        /* Read the options a backup records and superkeys.map again first, so neither the pruning nor the backup trusts a failed reply */
         if (ready && !isVirtual && persisted !== null) {
-          previewsOk =
+          readsOk =
             (await unreadableBeforeBackup(currentDevice, {
               previews: Boolean(store.get("capabilities.dualFunction")),
               hasQuickTap: Boolean(store.get("capabilities.quickTap")),
               perKey: perKeyState === "failed",
+              superkeys: true,
             })) === null;
         }
 
-        if (recoveryCovered.current.neuronID !== neuronID) {
-          recoveryCovered.current = { neuronID, covered: new Map() };
+        persistedBefore = persisted?.table ?? null;
+        const blocked = collectBlock({ ready, isVirtual, readsOk, persistedTable: persistedBefore });
+        collect = blocked === null;
+
+        if (ready && blocked !== null) {
+          log.info(`[LayoutEditor] unused Superkeys kept: ${blocked}`);
+        }
+
+        if (ready && (blocked === "tableUnknown" || blocked === "unreadable")) {
+          const content = blocked === "tableUnknown" ? i18n.editor.multiAction.gcTableUnknown : i18n.editor.multiAction.gcUnreadable;
+          toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={content} />, {
+            autoClose: 6000,
+            icon: "",
+          });
         }
 
         const draft = { ...refs, table: draftTable() };
-        persistedBefore = persisted?.table ?? null;
-        const gate = await runPreGc(
-          { collect: ready, isVirtual, previewsOk, persistedTable: persistedBefore, covered: recoveryCovered.current.covered },
-          {
-            prepare: collect => prepareSuperkeyWrite({ draft, saved: skSaved.current, baseline: skBaseline.current, collect, format }),
-            removals: prepared =>
-              gcRemovals({
-                persistedTable: persistedBefore ?? [],
-                finalTable: finalGcTable(prepared.table, { ...refs, customLayers: prepared.layers }, format),
-              }),
-            backup: async () => {
-              /* Read the Superkeys uncached, so the backup records what the keyboard holds and never a failed reply */
-              if ((await rereadSuperkeys(currentDevice)) === null) {
-                throw new Error("superkeys.map could not be read");
-              }
-
-              const backup = await bkp.DoBackup(await Backup.Commands(currentDevice), neuronID, currentDevice);
-              const path = await Backup.SaveRecoveryBackup(backup, currentDevice);
-              const held = parseSuperkeysTable(backup.backup.find(entry => entry.command === "superkeys.map")?.data);
-              return { path, table: held?.table ?? [] };
-            },
-          },
-        );
-        const { prepared, collect } = gate;
-        recoveryCovered.current = { neuronID, covered: gate.covered };
-        removals = gate.removals;
-
-        if (gate.skipped !== undefined) {
-          log.info(`[LayoutEditor] unused Superkeys kept: ${gate.skipped}`);
-        }
-
-        if (gate.skipped === "backupFailed") {
-          log.warn("[LayoutEditor] recovery backup failed, unused Superkeys kept", gate.error);
-          toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={i18n.editor.multiAction.gcBackupFailed} />, {
-            autoClose: 6000,
-            icon: "",
-          });
-        } else if (gate.skipped === "tableUnknown") {
-          toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={i18n.editor.multiAction.gcTableUnknown} />, {
-            autoClose: 6000,
-            icon: "",
-          });
-        }
+        const prepared = prepareSuperkeyWrite({ draft, saved: skSaved.current, baseline: skBaseline.current, collect, format });
 
         /* Refuse before any write, since the keyboard would play one of the clashing definitions on every key of a group */
         if (prepared.conflicts.length > 0) {
@@ -1766,22 +1733,21 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
       savedAltRepeat.current = saved.savedRules;
 
-      /* Name the recovery backup that holds the Superkeys this save removed, also when a later step failed */
+      /* Count the Superkeys this save removed, also when a later step failed */
       const tableStored = saved.done.includes("superkeys") || saved.done.includes("skgc");
       const removed =
-        saved.superkeys && tableStored && persistedBefore !== null && removals.length > 0
+        saved.superkeys && tableStored && persistedBefore !== null && collect
           ? gcRemovals({ persistedTable: persistedBefore, finalTable: saved.superkeys.table })
           : [];
 
       if (removed.length > 0) {
-        const paths = recoveryPaths(removed, recoveryCovered.current.covered);
         toast.info(
           <ToastMessage
             title={i18n.editor.multiAction.title}
-            content={i18n.editor.multiAction.gcRemoved.replace("{count}", String(removed.length)).replace("{path}", paths.join(", "))}
+            content={i18n.editor.multiAction.gcRemoved.replace("{count}", String(removed.length))}
             icon={<IconArrowDownWithLine />}
           />,
-          { autoClose: false, icon: "" },
+          { autoClose: 6000, icon: "" },
         );
       }
 

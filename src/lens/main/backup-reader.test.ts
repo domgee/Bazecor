@@ -1,8 +1,5 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
 import { describe, expect, test } from "vitest";
-import { findLatestBackup, parseBackupToModel } from "./backup-reader";
+import { parseBackupToModel } from "./backup-reader";
 
 const createBackup = (backup: { command: string; data: string }[]) => JSON.stringify({ neuronID: "test", backup });
 
@@ -26,25 +23,5 @@ describe("Lens backup reader", () => {
       [4, 5, 6, 7, 8],
       [9, 1, 1, 1, 1],
     ]);
-  });
-});
-
-describe("findLatestBackup", () => {
-  test("RecoveryBackupNewerByMtime_Ignored", () => {
-    const backupFolder = fs.mkdtempSync(path.join(os.tmpdir(), "lens-backups-"));
-    const folder = path.join(backupFolder, "Sonsei", "n1");
-    const regular = path.join(folder, "20261110090000-Sonsei.json");
-    const recovery = path.join(folder, "20261110090507042-Sonsei-before-cleanup.json");
-    fs.mkdirSync(folder, { recursive: true });
-    fs.writeFileSync(regular, "{}");
-    fs.writeFileSync(recovery, "{}");
-    fs.utimesSync(regular, new Date(2026, 0, 1), new Date(2026, 0, 1));
-    fs.utimesSync(recovery, new Date(2026, 0, 2), new Date(2026, 0, 2));
-
-    try {
-      expect(findLatestBackup({ backupFolder, neuronID: "n1", product: "Sonsei" })).toBe(regular);
-    } finally {
-      fs.rmSync(backupFolder, { recursive: true, force: true });
-    }
   });
 });

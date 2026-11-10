@@ -364,10 +364,6 @@ export const gcRemovals = ({
     return removed;
   }, []);
 
-/** True when a removed slot and definition is not in a recovery backup yet. `covered` maps a slot to its `actionsKey`. */
-export const recoveryNeeded = (removals: { slot: number; actions: number[] }[], covered: Map<number, string>): boolean =>
-  removals.some(({ slot, actions }) => covered.get(slot) !== actionsKey(actions));
-
 /* ------------------------------------------------------------------------ */
 /* Qukey collisions                                                         */
 /* ------------------------------------------------------------------------ */

@@ -7,7 +7,6 @@ import {
   MultiActionState,
   SkRef,
   SuperkeyDraft,
-  actionsKey,
   applyMultiAction,
   cloneSuperkeyRefs,
   collectSuperkeys,
@@ -21,7 +20,6 @@ import {
   prepareSuperkeyWrite,
   qukeyCollisions,
   reconcileDraft,
-  recoveryNeeded,
   remapFileSuperkeys,
   superkeyRefs,
   superkeyTapSeed,
@@ -454,7 +452,7 @@ describe("conflictMessage", () => {
   });
 });
 
-describe("gcRemovals and recoveryNeeded (Q1)", () => {
+describe("gcRemovals", () => {
   test("replacing the last reference of a slot removes it", () => {
     const persistedTable = [full(A), full(B)];
     const draft = layout([[SK(0), B]]);
@@ -462,25 +460,12 @@ describe("gcRemovals and recoveryNeeded (Q1)", () => {
     const removals = gcRemovals({ persistedTable, finalTable: finalGcTable(persistedTable, draft, "padded") });
 
     expect(removals).toEqual([{ slot: 1, actions: full(B) }]);
-    expect(recoveryNeeded(removals, new Map())).toBe(true);
   });
 
-  test("a later save counts against the new persisted table and needs a backup only for uncovered pairs", () => {
-    const covered = new Map([[1, actionsKey(full(B))]]);
+  test("an idle slot of the persisted table is never counted as removed", () => {
+    const removals = gcRemovals({ persistedTable: [IDLE, full(B)], finalTable: [] });
 
-    // Save 2 removes slot 0, which the first backup did not hold
-    const second = gcRemovals({ persistedTable: [full(A)], finalTable: [] });
-
-    // Save 3 removes slot 1 again with the definition the first backup holds
-    const third = gcRemovals({ persistedTable: [IDLE, full(B)], finalTable: [] });
-
-    // Save 4 removes slot 1 with a new definition
-    const fourth = gcRemovals({ persistedTable: [IDLE, full(A)], finalTable: [] });
-
-    expect(second).toEqual([{ slot: 0, actions: full(A) }]);
-    expect(recoveryNeeded(second, covered)).toBe(true);
-    expect(recoveryNeeded(third, covered)).toBe(false);
-    expect(recoveryNeeded(fourth, covered)).toBe(true);
+    expect(removals).toEqual([{ slot: 1, actions: full(B) }]);
   });
 
   test("a slot only the baseline keymap referenced counts as removed once the draft dropped it", () => {

@@ -43,6 +43,7 @@ import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Ren
 import { ComboSaveIO, loadKeymapReplies, refSlotsOf, runComboSave } from "@Renderer/modules/MultiAction/comboSave";
 import { EMPTY_SUPERKEY_SAVED, SuperkeyMode, SuperkeySavedState } from "@Renderer/modules/HoldMods/layoutSave";
 import { unreadableBeforeBackup } from "@Renderer/modules/DualFunctionKeys/previewReads";
+import { collectBlock } from "@Renderer/modules/MultiAction/preGcGate";
 
 import { useDevice } from "@Renderer/DeviceContext";
 import Store from "@Renderer/utils/Store";
@@ -88,6 +89,7 @@ import {
   conflictMessage,
   defaultCellName,
   definedSlots,
+  gcRemovals,
   multiActionBreaks,
   protectedSlots,
   reconcileDraft,
@@ -495,17 +497,11 @@ function ComboEditor(props: ComboEditorProps) {
     }
 
     const dualFunction = Boolean(store.get("capabilities.dualFunction"));
+    const isVirtual = currentDevice.file === true;
     /* Save Superkeys only when every reference to them is known. Every Multi-action edit is off otherwise, so the table is unchanged */
-    const superkeysInput =
-      superkeysState === "ready" && multiActionBlock() === undefined
-        ? {
-            format: superkeyWriteFormat(currentDevice.device.info.product),
-            draft: { ...draftRefs(combos), table: draftTable() },
-            saved: skSaved.current,
-            baseline: skBaseline.current,
-            onlyCustom: keymap.onlyCustom,
-          }
-        : undefined;
+    const superkeysReady = superkeysState === "ready" && multiActionBlock() === undefined;
+    const persisted = skSaved.current.table === null ? null : parseSuperkeysTable(skSaved.current.table);
+    const persistedBefore = persisted?.table ?? null;
 
     const io: ComboSaveIO = {
       writeSuperkeys: (table, format, storedRows) => writeSuperkeyTable(currentDevice, table, format, storedRows),
@@ -541,12 +537,48 @@ function ComboEditor(props: ComboEditorProps) {
       saving.current = true;
       setIsSaving(true);
 
+      let readsOk = true;
+
+      /* Read the options a backup records and superkeys.map again first, so neither the pruning nor the backup trusts a failed reply */
+      if (superkeysReady && !isVirtual && persisted !== null) {
+        readsOk =
+          (await unreadableBeforeBackup(currentDevice, {
+            previews: dualFunction,
+            hasQuickTap: Boolean(store.get("capabilities.quickTap")),
+            perKey: false,
+            superkeys: true,
+          })) === null;
+      }
+
+      const blocked = collectBlock({ ready: superkeysReady, isVirtual, readsOk, persistedTable: persistedBefore });
+      const collect = blocked === null;
+
+      if (superkeysReady && blocked !== null) {
+        log.info(`[Combos] unused Superkeys kept: ${blocked}`);
+      }
+
+      if (superkeysReady && (blocked === "tableUnknown" || blocked === "unreadable")) {
+        const content = blocked === "tableUnknown" ? i18n.editor.multiAction.gcTableUnknown : i18n.editor.multiAction.gcUnreadable;
+        toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={content} />, { autoClose: 6000 });
+      }
+
+      const superkeysInput = superkeysReady
+        ? {
+            format: superkeyWriteFormat(currentDevice.device.info.product),
+            draft: { ...draftRefs(combos), table: draftTable() },
+            saved: skSaved.current,
+            baseline: skBaseline.current,
+            onlyCustom: keymap.onlyCustom,
+            collect,
+          }
+        : undefined;
+
       const outcome = await runComboSave(io, {
         combos,
         savedCombos: savedCombos.current,
         superkeys: superkeysInput,
         rereadBeforeBackup: dualFunction || superkeysState !== "unsupported",
-        isVirtual: currentDevice.file === true,
+        isVirtual,
       });
 
       /* Refuse before any write, since the keyboard would play one of the clashing definitions on every key of a group */
@@ -580,6 +612,18 @@ function ComboEditor(props: ComboEditorProps) {
           .concat(outcome.warnings.map(conflict => conflictMessage(conflict, rules)))
           .join(" ");
         toast.warn(<ToastMessage title={i18n.editor.multiAction.conflictTitle} content={content} />, { autoClose: 8000 });
+      }
+
+      /* Count the Superkeys this save removed, also when a later step failed */
+      const tableStored = outcome.done.includes("superkeys") || outcome.done.includes("skgc");
+      const removed =
+        outcome.superkeys && tableStored && persistedBefore !== null && collect
+          ? gcRemovals({ persistedTable: persistedBefore, finalTable: outcome.superkeys.table })
+          : [];
+
+      if (removed.length > 0) {
+        const content = i18n.editor.multiAction.gcRemoved.replace("{count}", String(removed.length));
+        toast.info(<ToastMessage title={i18n.editor.multiAction.title} content={content} />, { autoClose: 6000 });
       }
 
       if (outcome.kind === "failed") {
