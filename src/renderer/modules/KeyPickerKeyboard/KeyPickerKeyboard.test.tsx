@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { ThemeProvider } from "styled-components";
 import Light from "@Renderer/theme/LightTheme";
+import type { MultiActionPerKey } from "@Renderer/modules/MultiAction/MultiActionTab";
 import KeyPickerKeyboard from "./KeyPickerKeyboard";
+import type { PerKeyOverride } from "../../../api/parsers/dualFunction";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -19,11 +21,17 @@ vi.mock("@Renderer/utils/Store", () => ({
 vi.mock(".", () => ({ Picker: () => <div /> }));
 vi.mock("@Renderer/modules/KeysTabs/SuperkeysTab", () => ({ default: () => <div /> }));
 /* Render the nested picker for the third action, as a tile click does */
-vi.mock("@Renderer/modules/MultiAction/MultiActionTab", () => ({
-  default: ({ renderPicker }: { renderPicker: (slot: number, onSelect: (code: number) => void) => React.ReactNode }) => (
-    <div data-testid="multiActionTab">{renderPicker(2, () => {})}</div>
-  ),
-}));
+vi.mock("@Renderer/modules/MultiAction/MultiActionTab", async () => {
+  const { isOverrideEmpty } = await import("../../../api/parsers/dualFunction");
+
+  return {
+    default: ({ renderPicker }: { renderPicker: (slot: number, onSelect: (code: number) => void) => React.ReactNode }) => (
+      <div data-testid="multiActionTab">{renderPicker(2, () => {})}</div>
+    ),
+    hasCustomTiming: (perKey?: { override: Parameters<typeof isOverrideEmpty>[0] }) =>
+      perKey !== undefined && !isOverrideEmpty(perKey.override),
+  };
+});
 vi.mock("@Renderer/modules/KeysTabs/MouseTab", () => ({ default: () => <div /> }));
 
 const HOLD_CHECKBOX = "#input-holdUntilLayerChange-checkbox";
@@ -114,7 +122,7 @@ describe("KeyPickerKeyboard Multi-action tab", () => {
     onChange: vi.fn(),
   };
 
-  const renderWith = (props: { keyCode: number; actTab?: string; withMultiAction: boolean }) =>
+  const renderWith = (props: { keyCode: number; actTab?: string; withMultiAction: boolean; extra?: Record<string, unknown> }) =>
     render(
       <ThemeProvider theme={Light}>
         <KeyPickerKeyboard
@@ -128,7 +136,7 @@ describe("KeyPickerKeyboard Multi-action tab", () => {
           actTab={props.actTab ?? "editor"}
           selectedlanguage="en-US"
           isWireless={false}
-          multiAction={props.withMultiAction ? multiAction : undefined}
+          multiAction={props.withMultiAction ? { ...multiAction, ...props.extra } : undefined}
         />
       </ThemeProvider>,
     );
@@ -160,6 +168,32 @@ describe("KeyPickerKeyboard Multi-action tab", () => {
 
     expect(tabNames(container).slice(0, 3)).toEqual(["Keys & Shortcuts", "Multi-action", "Layers and Modifiers"]);
     expect(tabNames(container)).not.toContain("Superkeys");
+  });
+
+  test("a key position with its own dual-function options gets the custom timing chip on the tab", () => {
+    const global: PerKeyOverride = {
+      position: 0,
+      holdTimeout: null,
+      quickTapTerm: null,
+      priorInterval: null,
+      mode: null,
+      chordal: null,
+      speculative: null,
+      retro: null,
+    };
+    const perKey: MultiActionPerKey = {
+      override: { ...global, holdTimeout: 300 },
+      stored: global,
+      keyData: undefined,
+      role: "dualFunction",
+      globals: { holdTimeout: null, quickTapTerm: null, priorInterval: null, options: null },
+      disabled: false,
+      onChange: vi.fn(),
+      onClear: vi.fn(),
+    };
+    const { container } = renderWith({ keyCode: 4, withMultiAction: true, extra: { perKey } });
+
+    expect(tabNames(container)[1]).toBe("Multi-actioncustom timing");
   });
 
   test("without the prop the Superkeys tab stays", () => {

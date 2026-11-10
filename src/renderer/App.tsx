@@ -37,7 +37,6 @@ import SuperkeysEditor from "@Renderer/views/SuperkeysEditor";
 import ComboEditor from "@Renderer/views/ComboEditor";
 import KeyOverridesEditor from "@Renderer/views/KeyOverridesEditor";
 import ConditionalLayersEditor from "@Renderer/views/ConditionalLayersEditor";
-import DualFunctionKeysEditor from "@Renderer/views/DualFunctionKeysEditor";
 import Preferences from "@Renderer/views/Preferences";
 import Welcome from "@Renderer/views/Welcome";
 
@@ -651,20 +650,7 @@ function App() {
               />
             }
           />
-          <Route
-            path="/dual-function-keys"
-            element={
-              <DualFunctionKeysEditor
-                darkMode={darkMode}
-                onDisconnect={onKeyboardDisconnect}
-                startContext={startContext}
-                cancelContext={cancelContext}
-                setLoading={setLoadingData}
-                saveButtonRef={saveButtonRef}
-                discardChangesButtonRef={discardChangesButtonRef}
-              />
-            }
-          />
+          <Route path="/dual-function-keys" element={<Navigate to="/editor" replace />} />
           <Route
             path="/firmware-update"
             element={

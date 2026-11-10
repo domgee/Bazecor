@@ -14,11 +14,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import React from "react";
-
 import { DualFunctionGlobals } from "../../api/parsers/dualFunction";
 
-/** "failed" means the firmware has the commands but the overrides or the keymap could not be read. */
+/** "failed" means the firmware has the commands but the overrides could not be read. */
 export type DualFunctionKeysState = "unsupported" | "ready" | "failed";
 
 /** The global settings a key uses when its field is left on "Use global". Null means it could not be read. */
@@ -27,14 +25,4 @@ export interface DualFunctionGlobalPreview {
   quickTapTerm: number | null;
   priorInterval: number | null;
   options: DualFunctionGlobals | null;
-}
-
-export interface DualFunctionKeysEditorProps {
-  darkMode: boolean;
-  onDisconnect: () => void;
-  startContext: () => void;
-  cancelContext: () => void;
-  setLoading: (loading: boolean) => void;
-  saveButtonRef?: React.RefObject<HTMLButtonElement>;
-  discardChangesButtonRef?: React.RefObject<HTMLButtonElement>;
 }

@@ -17,7 +17,7 @@
 import { DUAL_FUNCTION_COMMAND, parseDualFunctionGlobals } from "../../../api/parsers/dualFunction";
 import { QUICK_TAP_COMMAND, parseQuickTapTerm } from "../../../api/parsers/quickTap";
 
-/* Decide whether the global settings the Dual-function Keys page reads for its previews can be backed up. A failed read leaves its reply in
+/* Decide whether the global settings the per-position options read for their previews can be backed up. A failed read leaves its reply in
  * the Device cache, and the backup after a save would record it */
 
 export const HOLD_TIMEOUT_COMMAND = "qukeys.holdTimeout";
@@ -32,7 +32,7 @@ export const parseGlobalNumber = (raw: unknown): number | null => {
   return parseInt(raw, 10);
 };
 
-/** Return the commands the page reads for its previews. Quick tap is read only when the firmware has it. */
+/** Return the commands read for its previews. Quick tap is read only when the firmware has it. */
 export const previewCommands = (hasQuickTap: boolean): string[] => [
   HOLD_TIMEOUT_COMMAND,
   PRIOR_INTERVAL_COMMAND,
@@ -40,7 +40,7 @@ export const previewCommands = (hasQuickTap: boolean): string[] => [
   DUAL_FUNCTION_COMMAND,
 ];
 
-/** Return true when `raw` is a reply the page can use for `command`. */
+/** Return true when `raw` is a reply the previews can use for `command`. */
 export const isPreviewReadable = (command: string, raw: unknown): boolean => {
   if (command === QUICK_TAP_COMMAND) {
     return parseQuickTapTerm(raw) !== null;
@@ -56,3 +56,41 @@ export const isPreviewReadable = (command: string, raw: unknown): boolean => {
 /** Return the first command whose reply can not be used, or null when every reply can. */
 export const firstUnreadable = (replies: { command: string; raw: unknown }[]): string | null =>
   replies.find(({ command, raw }) => !isPreviewReadable(command, raw))?.command ?? null;
+
+export interface PreviewDevice {
+  noCacheCommand(command: string): Promise<unknown>;
+}
+
+/** Read a global number uncached, and once more after a failure, because a failed reply stays in the Device cache and the backup records it. */
+export const readGlobalNumber = async (device: PreviewDevice, command: string): Promise<number | null> => {
+  const first = parseGlobalNumber(await device.noCacheCommand(command));
+
+  if (first !== null) {
+    return first;
+  }
+
+  return parseGlobalNumber(await device.noCacheCommand(command));
+};
+
+/** Mark a backup left out because a preview command still can not be read. The save itself stands. */
+export class BackupSkippedError extends Error {
+  command: string;
+
+  constructor(command: string) {
+    super(`${command} could not be read`);
+    this.command = command;
+  }
+}
+
+/** Read every preview command again uncached, so the backup records the keyboard's values and not a failed reply from the load. Return the
+ * first command that still can not be read, or null. */
+export const rereadPreviews = async (device: PreviewDevice, hasQuickTap: boolean): Promise<string | null> => {
+  const replies: { command: string; raw: unknown }[] = [];
+
+  for (const command of previewCommands(hasQuickTap)) {
+    // eslint-disable-next-line no-await-in-loop
+    replies.push({ command, raw: await device.noCacheCommand(command) });
+  }
+
+  return firstUnreadable(replies);
+};

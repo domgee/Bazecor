@@ -27,7 +27,7 @@ import MediaAndLightTab from "@Renderer/modules/KeysTabs/MediaAndLightTab";
 import MouseTab from "@Renderer/modules/KeysTabs/MouseTab";
 import WirelessTab from "@Renderer/modules/KeysTabs/WirelessTab";
 import LayerLensTab from "@Renderer/modules/KeysTabs/LayerLensTab";
-import MultiActionTab, { MultiActionProps } from "@Renderer/modules/MultiAction/MultiActionTab";
+import MultiActionTab, { MultiActionProps, hasCustomTiming } from "@Renderer/modules/MultiAction/MultiActionTab";
 import CustomKeyCodeModal from "@Renderer/components/molecules/CustomModal/ModalCustomKeycode";
 import { Separator } from "@Renderer/components/atoms/Separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@Renderer/components/atoms/Tooltip";
@@ -447,6 +447,11 @@ function KeyPickerKeyboard(props: Props) {
                     {!sk20 && <div className="badge badge-primary leading-none ml-1 font-bold text-[9px] text-white">BETA</div>}
                     {(multiAction.storage === "superkey" || multiAction.storage === "dualUse") && (
                       <span className="multiActionDot ml-1 inline-block w-1.5 h-1.5 rounded-full bg-primary/100" />
+                    )}
+                    {multiAction.context !== "combo" && hasCustomTiming(multiAction.perKey) && (
+                      <span className="multiActionCustomTiming ml-1 rounded-full px-1.5 text-[9px] font-bold bg-orange-200/15 text-orange-200">
+                        {i18n.editor.multiAction.customTiming}
+                      </span>
                     )}
                   </TabsTrigger>
                 )}

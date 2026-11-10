@@ -27,10 +27,34 @@ import {
 } from "@Renderer/components/atoms/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@Renderer/components/atoms/Popover";
 import MacrosMemoryUsage from "@Renderer/modules/Macros/MacrosMemoryUsage";
+import OverridePanel from "@Renderer/modules/DualFunctionKeys/OverridePanel";
+import { KeyRole, OverridePatch } from "@Renderer/modules/DualFunctionKeys/overrideTable";
+import { DualFunctionGlobalPreview } from "@Renderer/types/dualFunctionKeys";
+import { KeyType } from "@Renderer/types/layout";
+import { PerKeyOverride, isOverrideEmpty } from "../../../api/parsers/dualFunction";
 
 /* The Multi-action tab edits the five Superkey actions of one key, saved as a plain key, a dual-function key or a Superkey */
 
 export type MultiActionStorage = "plain" | "dualUse" | "superkey";
+
+/** The dual-function options of the selected physical key, which apply on every layer. */
+export interface MultiActionPerKey {
+  override: PerKeyOverride;
+  /* The override as the keyboard holds it, which fixes the slider bounds */
+  stored: PerKeyOverride;
+  keyData: KeyType | undefined;
+  role: KeyRole;
+  globals: DualFunctionGlobalPreview;
+  /* Makes the options read-only, with the reason shown when given */
+  disabled: boolean;
+  disabledReason?: string;
+  onChange: (patch: OverridePatch) => void;
+  onClear: () => void;
+}
+
+/** True when the key position has options of its own. */
+export const hasCustomTiming = (perKey: MultiActionPerKey | undefined): boolean =>
+  perKey !== undefined && !isOverrideEmpty(perKey.override);
 
 export interface MultiActionProps {
   /* "dualUseOnly" on keyboards without Superkeys, where only Tap and Hold exist */
@@ -49,6 +73,8 @@ export interface MultiActionProps {
   notice?: string;
   actionLabel?: (code: number) => string;
   onChange: (actions: number[]) => void;
+  /* Only for cells and previous-key tabs on keyboards with per-key dual-function options */
+  perKey?: MultiActionPerKey;
 }
 
 interface MultiActionTabProps extends MultiActionProps {
@@ -118,10 +144,13 @@ const MultiActionTab = ({
   notice,
   actionLabel = code => String(code),
   onChange,
+  perKey,
   disabled = false,
   renderPicker,
 }: MultiActionTabProps) => {
   const [openSlot, setOpenSlot] = useState<number | null>(null);
+  const [timingOpen, setTimingOpen] = useState(false);
+  const customTiming = hasCustomTiming(perKey);
   const readOnly = disabled || disabledReason !== undefined;
   const tiles = mode === "dualUseOnly" ? TILES.slice(0, 2) : TILES;
   const onlyTap = actions.slice(1).every(action => action === IDLE);
@@ -215,6 +244,47 @@ const MultiActionTab = ({
       {mode === "full" && (
         <div className="flex">
           <MacrosMemoryUsage context="superkeys" mem={capacity.used} tMem={capacity.max} warningOffset={0} />
+        </div>
+      )}
+      {perKey !== undefined && context !== "combo" && (
+        <div className="multiActionTiming flex flex-col gap-2 border-t border-gray-100 dark:border-gray-600 pt-3">
+          <button
+            type="button"
+            aria-expanded={timingOpen}
+            className="flex items-center gap-2 self-start text-ssm font-semibold text-gray-500 dark:text-gray-50"
+            onClick={() => setTimingOpen(open => !open)}
+          >
+            <span aria-hidden>{timingOpen ? "\u25BE" : "\u25B8"}</span>
+            {i18n.editor.multiAction.timingTitle}
+            {customTiming && (
+              <span className="multiActionCustomTiming rounded-full px-2 py-0.5 text-[10px] bg-orange-200/15 text-orange-200">
+                {i18n.editor.multiAction.customTiming}
+              </span>
+            )}
+          </button>
+          {timingOpen && (
+            <>
+              <p className="text-ssm text-gray-400 dark:text-gray-200">{i18n.editor.multiAction.timingNote}</p>
+              {context === "rule" && (
+                <p className="text-ssm text-gray-400 dark:text-gray-200">{i18n.editor.multiAction.timingRuleNote}</p>
+              )}
+              {perKey.disabledReason !== undefined && (
+                <p role="alert" className="text-ssm font-semibold text-red-200 dark:text-red-100">
+                  {perKey.disabledReason}
+                </p>
+              )}
+              <OverridePanel
+                override={perKey.override}
+                stored={perKey.stored}
+                keyData={perKey.keyData}
+                role={perKey.role}
+                globals={perKey.globals}
+                disabled={disabled || perKey.disabled || perKey.disabledReason !== undefined}
+                onChange={perKey.onChange}
+                onClear={perKey.onClear}
+              />
+            </>
+          )}
         </div>
       )}
     </div>

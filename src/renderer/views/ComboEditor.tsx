@@ -42,7 +42,7 @@ import { MultiActionProps, MultiActionStorage } from "@Renderer/modules/MultiAct
 import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 import { ComboSaveIO, readKeymapReplies, refSlotsOf, runComboSave } from "@Renderer/modules/MultiAction/comboSave";
 import { EMPTY_SUPERKEY_SAVED, SuperkeyMode, SuperkeySavedState } from "@Renderer/modules/HoldMods/layoutSave";
-import { firstUnreadable, previewCommands } from "@Renderer/modules/DualFunctionKeys/previewReads";
+import { rereadPreviews } from "@Renderer/modules/DualFunctionKeys/previewReads";
 
 import { useDevice } from "@Renderer/DeviceContext";
 import Store from "@Renderer/utils/Store";
@@ -522,17 +522,7 @@ function ComboEditor(props: ComboEditorProps) {
         await writeUncached(currentDevice, "combos.map", serialized);
       },
       storeNames,
-      /* Read the previews again uncached, so the backup records the keyboard's values and not a failed reply */
-      rereadPreviews: async () => {
-        const replies: { command: string; raw: unknown }[] = [];
-
-        for (const command of previewCommands(Boolean(store.get("capabilities.quickTap")))) {
-          // eslint-disable-next-line no-await-in-loop
-          replies.push({ command, raw: await currentDevice.noCacheCommand(command) });
-        }
-
-        return firstUnreadable(replies);
-      },
+      rereadPreviews: () => rereadPreviews(currentDevice, Boolean(store.get("capabilities.quickTap"))),
       /* Same as the other editors: a backup after every save. Lens reads the combos it badges from the newest backup */
       backup: async () => {
         const commands = await Backup.Commands(currentDevice);

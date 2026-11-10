@@ -95,7 +95,6 @@ const English = {
       changeName: "Change name",
       keyOverrides: "Key <br>Overrides",
       conditionalLayers: "Conditional <br>Layers",
-      dualFunctionKeys: "Dual-function <br>Keys",
     },
     deviceMenu: {
       Homepage: "Homepage",
@@ -665,6 +664,12 @@ const English = {
       saveFailed: "The keyboard did not store the Superkeys.",
       gcFailed: "The keyboard did not store the cleaned-up Superkeys.",
       perKeyFailed: "The keyboard did not store the dual-function options for the key positions.",
+      timingTitle: "Timing for this key position",
+      customTiming: "custom timing",
+      timingNote: "Applies to this physical key on every layer.",
+      timingRuleNote: "These options belong to the physical key, not to this previous-key tab.",
+      timingUnreadable: "The dual-function options of the key positions could not be read. Reload to edit them.",
+      backupSkipped: "The layout is saved, but the backup was skipped because {0} could not be read.",
     },
     keyOverrides: {
       title: "Key Overrides",
@@ -741,15 +746,6 @@ const English = {
       savedTitle: "Conditional layers saved",
     },
     dualFunctionKeys: {
-      title: "Dual-function Keys",
-      intro:
-        "Give single keys their own dual-function settings. Click a key to set its timeouts, decision mode, Chordal Hold, Speculative Hold and Retro Tapping. A field on Use global follows Preferences.",
-      introLayers:
-        "The settings belong to the physical key and apply on every layer. The layer list only changes the labels on the keys.",
-      counter: "keys with overrides",
-      layer: "Show layer",
-      clearAll: "Clear all",
-      pickKey: "Click a key to set its overrides.",
       position: "Key {0}",
       handLeft: "Left hand",
       handRight: "Right hand",
@@ -770,14 +766,7 @@ const English = {
       chordalThumb: "Thumb keys count as either hand, so Chordal Hold never applies to them.",
       speculative: "Speculative Hold",
       retro: "Retro Tapping",
-      clearKey: "Clear this key",
-      loadFailed: "The dual-function key settings could not be read. Saving is off until they load.",
-      reload: "Reload from the keyboard (discards unsaved changes)",
-      unsupported: "This keyboard's firmware does not have per-key dual-function settings. Update the firmware and reconnect.",
-      saveFailed: "The keyboard did not store the dual-function key settings.",
-      saved: "Your dual-function key settings are now on the keyboard.",
-      savedTitle: "Dual-function keys saved",
-      backupSkipped: "The settings are saved, but the backup was skipped because {0} could not be read.",
+      clearKey: "Use global for all",
     },
     oldMacroModal: {
       title: "Update your macros",
@@ -1060,7 +1049,7 @@ const English = {
       neutralizerKeycode: "Keycode",
       neutralizerSharedTip:
         "Also applies to keys that turn Speculative Hold or Retro Tapping on per key, even while they are off here.",
-      perKeyNote: "Set these options and the timeouts for single keys on the Dual-function Keys page.",
+      perKeyNote: "Set these options and the timeouts for a single key position in the Layout editor, under Multi-action.",
     },
     superkeys: {
       title: "Typing",

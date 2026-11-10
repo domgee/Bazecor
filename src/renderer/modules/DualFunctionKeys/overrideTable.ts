@@ -25,7 +25,7 @@ import {
 } from "../../../api/parsers/dualFunction";
 import { SwapHandsCodes, isSwapTap } from "../../../hw/swaphands";
 
-/* Edit the per-key dual-function overrides of the Dual-function Keys page. Every function returns a new list, sorted by position, with no
+/* Edit the per-key dual-function overrides. Every function returns a new list, sorted by position, with no
  * entry that only uses the global settings, so the list always matches what the keyboard sends back */
 
 /** The ranges the page offers. The keyboard accepts more, so a stored value outside them widens its slider. */

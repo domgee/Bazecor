@@ -3,7 +3,14 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { ThemeProvider } from "styled-components";
 import Light from "@Renderer/theme/LightTheme";
-import MultiActionTab, { MultiActionProps, multiActionStatus, wheelSwitchesTab } from "./MultiActionTab";
+import { emptyOverride } from "@Renderer/modules/DualFunctionKeys/overrideTable";
+import MultiActionTab, {
+  MultiActionPerKey,
+  MultiActionProps,
+  hasCustomTiming,
+  multiActionStatus,
+  wheelSwitchesTab,
+} from "./MultiActionTab";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -43,6 +50,22 @@ const renderTab = (props: Partial<MultiActionProps> = {}) => {
 };
 
 const tile = (index: number) => screen.getByTestId(`multiAction-tile-${index}`);
+
+const POSITION = 14;
+
+const perKeyProps = (props: Partial<MultiActionPerKey> = {}): MultiActionPerKey => ({
+  override: emptyOverride(POSITION),
+  stored: emptyOverride(POSITION),
+  keyData: undefined,
+  role: "dualFunction",
+  globals: { holdTimeout: 250, quickTapTerm: null, priorInterval: 75, options: null },
+  disabled: false,
+  onChange: vi.fn(),
+  onClear: vi.fn(),
+  ...props,
+});
+
+const openTiming = () => fireEvent.click(screen.getByRole("button", { name: /Timing for this key position/ }));
 
 describe("multiActionStatus", () => {
   const base = {
@@ -174,6 +197,121 @@ describe("MultiActionTab", () => {
     expect(
       screen.getByText("Superkey 76 is beyond the keyboard's limit of 70. Editing gives this key its own Superkey."),
     ).not.toBeNull();
+  });
+});
+
+describe("per-position options", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  test("a cell shows the options collapsed, and opening them shows the note and the options", () => {
+    renderTab({ perKey: perKeyProps() });
+
+    expect(screen.getByRole("button", { name: /Timing for this key position/ }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Hold timeout")).toBeNull();
+
+    openTiming();
+
+    expect(screen.getByText("Applies to this physical key on every layer.")).not.toBeNull();
+    expect(screen.queryByText("These options belong to the physical key, not to this previous-key tab.")).toBeNull();
+    expect(screen.getByText("Hold timeout")).not.toBeNull();
+    expect(screen.getByText("Use global (250 ms)")).not.toBeNull();
+  });
+
+  test("a previous-key tab also says the options belong to the physical key", () => {
+    renderTab({ context: "rule", perKey: perKeyProps() });
+
+    openTiming();
+
+    expect(screen.getByText("Applies to this physical key on every layer.")).not.toBeNull();
+    expect(screen.getByText("These options belong to the physical key, not to this previous-key tab.")).not.toBeNull();
+  });
+
+  test("a combo result has no per-position options", () => {
+    renderTab({ context: "combo", perKey: perKeyProps() });
+
+    expect(screen.queryByRole("button", { name: /Timing for this key position/ })).toBeNull();
+  });
+
+  test("a key without per-position options has no section", () => {
+    renderTab();
+
+    expect(screen.queryByRole("button", { name: /Timing for this key position/ })).toBeNull();
+  });
+
+  test("the options show also for a key that is not dual-function", () => {
+    renderTab({ perKey: perKeyProps({ role: "other" }) });
+
+    openTiming();
+
+    expect(screen.getByText(/this is not a dual-function key/)).not.toBeNull();
+    expect(screen.getByText("Hold timeout")).not.toBeNull();
+  });
+
+  test("a key position with its own options shows the custom timing chip, and reset clears them", () => {
+    const onClear = vi.fn();
+    renderTab({ perKey: perKeyProps({ override: { ...emptyOverride(POSITION), mode: 1 }, onClear }) });
+
+    expect(screen.getByText("custom timing")).not.toBeNull();
+
+    openTiming();
+    fireEvent.click(screen.getByRole("button", { name: "Use global for all" }));
+
+    expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  test("a key position on the global options has no chip and nothing to reset", () => {
+    renderTab({ perKey: perKeyProps() });
+
+    expect(screen.queryByText("custom timing")).toBeNull();
+
+    openTiming();
+
+    expect((screen.getByRole("button", { name: "Use global for all" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("a turned-off Superkey part leaves the per-position options editable", () => {
+    const onClear = vi.fn();
+    renderTab({
+      disabledReason: "The Superkeys could not be read. Reload to edit multi-action keys.",
+      perKey: perKeyProps({ override: { ...emptyOverride(POSITION), retro: true }, onClear }),
+    });
+
+    openTiming();
+    fireEvent.click(screen.getByRole("button", { name: "Use global for all" }));
+
+    expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  test("unreadable options are read-only and say why", () => {
+    renderTab({
+      perKey: perKeyProps({
+        override: { ...emptyOverride(POSITION), mode: 1 },
+        disabledReason: "The dual-function options of the key positions could not be read. Reload to edit them.",
+      }),
+    });
+
+    openTiming();
+
+    expect(screen.getByRole("alert").textContent).toBe(
+      "The dual-function options of the key positions could not be read. Reload to edit them.",
+    );
+    expect((screen.getByRole("button", { name: "Use global for all" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("options turned off during a save can not be reset", () => {
+    renderTab({ perKey: perKeyProps({ override: { ...emptyOverride(POSITION), mode: 1 }, disabled: true }) });
+
+    openTiming();
+
+    expect((screen.getByRole("button", { name: "Use global for all" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("hasCustomTiming is true only for a key position with options of its own", () => {
+    expect(hasCustomTiming(undefined)).toBe(false);
+    expect(hasCustomTiming(perKeyProps())).toBe(false);
+    expect(hasCustomTiming(perKeyProps({ override: { ...emptyOverride(POSITION), holdTimeout: 300 } }))).toBe(true);
   });
 });
 

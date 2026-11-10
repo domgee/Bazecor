@@ -67,8 +67,29 @@ import {
   usedHoldCodes,
   withHoldBaseline,
 } from "@Renderer/modules/HoldMods/layoutSave";
-import { MultiActionProps, MultiActionStorage, wheelSwitchesTab } from "@Renderer/modules/MultiAction/MultiActionTab";
+import {
+  MultiActionPerKey,
+  MultiActionProps,
+  MultiActionStorage,
+  wheelSwitchesTab,
+} from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
+import {
+  BackupSkippedError,
+  HOLD_TIMEOUT_COMMAND,
+  PRIOR_INTERVAL_COMMAND,
+  readGlobalNumber,
+  rereadPreviews,
+} from "@Renderer/modules/DualFunctionKeys/previewReads";
+import {
+  OverridePatch,
+  clearOverride,
+  keyRole,
+  overrideAt,
+  updateOverride,
+} from "@Renderer/modules/DualFunctionKeys/overrideTable";
+import { backupAfterSave } from "@Renderer/modules/KeyOverrides/backupAfterSave";
+import { DualFunctionGlobalPreview, DualFunctionKeysState } from "@Renderer/types/dualFunctionKeys";
 
 // Components
 import LayerSelector from "@Renderer/components/organisms/Select/LayerSelector";
@@ -173,8 +194,21 @@ import {
   writeHoldMods,
   writeUncached,
 } from "../../api/parsers/holdMods";
+import {
+  DualFunctionDevice,
+  PerKeyOverride,
+  VALID_POSITIONS,
+  parsePerKeyOverrides,
+  readDualFunctionGlobals,
+  readPerKeyOverrides,
+  serializePerKeyOverrides,
+  writePerKeyOverrides,
+} from "../../api/parsers/dualFunction";
+import { readQuickTapTerm } from "../../api/parsers/quickTap";
 
 const store = Store.getStore();
+
+const NO_GLOBALS: DualFunctionGlobalPreview = { holdTimeout: null, quickTapTerm: null, priorInterval: null, options: null };
 
 const Styles = Styled.div`
 .keyboard-editor {
@@ -370,6 +404,12 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const holdSaved = useRef<HoldSavedState>(EMPTY_HOLD_SAVED);
   /* Apply only the newest load, only when no edit came after it started, and never while a save runs */
   const holdSync = useRef(createHoldModsSync()).current;
+  /* The per-key dual-function options, which belong to the physical key and apply on every layer */
+  const [perKeyState, setPerKeyState] = useState<DualFunctionKeysState>("unsupported");
+  const [perKeyList, setPerKeyList] = useState<PerKeyOverride[]>([]);
+  const [perKeyGlobals, setPerKeyGlobals] = useState<DualFunctionGlobalPreview>(NO_GLOBALS);
+  /* The serialized options on the keyboard, so Save writes only changes. Null after a failed write */
+  const perKeySaved = useRef<string | null>(null);
 
   const [modified, setModified] = useState(false);
   const [modeselect, setModeselect] = useState<ModeType>("keyboard");
@@ -696,6 +736,54 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     return holdModsSettled ? "settled" : "pending";
   };
 
+  /* Read the per-key options and the global values their "Use global" choices show. Return false when a global value could not be read,
+   * since its failed reply stays in the Device cache for the next backup */
+  const loadPerKey = useCallback(async (currentDevice: DualFunctionDevice): Promise<boolean> => {
+    perKeySaved.current = null;
+    setPerKeyList([]);
+
+    if (!store.get("capabilities.dualFunction")) {
+      setPerKeyState("unsupported");
+      setPerKeyGlobals(NO_GLOBALS);
+      return true;
+    }
+
+    let previewsOk = false;
+
+    try {
+      const hasQuickTap = Boolean(store.get("capabilities.quickTap"));
+      const globals: DualFunctionGlobalPreview = {
+        holdTimeout: await readGlobalNumber(currentDevice, HOLD_TIMEOUT_COMMAND),
+        quickTapTerm: hasQuickTap ? await readQuickTapTerm(currentDevice) : null,
+        priorInterval: await readGlobalNumber(currentDevice, PRIOR_INTERVAL_COMMAND),
+        options: await readDualFunctionGlobals(currentDevice),
+      };
+      setPerKeyGlobals(globals);
+      previewsOk =
+        globals.holdTimeout !== null &&
+        (!hasQuickTap || globals.quickTapTerm !== null) &&
+        globals.priorInterval !== null &&
+        globals.options !== null;
+
+      const read = await readPerKeyOverrides(currentDevice);
+
+      if (read === null) {
+        log.warn("[LayoutEditor] qukeys.perKey could not be read");
+        setPerKeyState("failed");
+        return previewsOk;
+      }
+
+      perKeySaved.current = serializePerKeyOverrides(read);
+      setPerKeyList(read);
+      setPerKeyState("ready");
+    } catch (error) {
+      log.error("[LayoutEditor] per-key options failed to load", error);
+      setPerKeyState("failed");
+    }
+
+    return previewsOk;
+  }, []);
+
   const scanKeyboard = useCallback(
     async (lang: string) => {
       log.info("Scanning KEYBOARD");
@@ -858,6 +946,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
         await loadAltRepeatRules(currentDevice);
         await loadHoldMods(currentDevice, device);
+        const previewsOk = await loadPerKey(currentDevice);
         setAltRepeatTab(-1);
 
         setScanningStep(9);
@@ -892,7 +981,16 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         setScanningStep(0);
 
         // Save in the background, since Layer Lens has nothing to draw until the keyboard has a backup
-        Backup.SaveFirstBackup(chipID, currentDevice).catch(error => log.warn("[LayoutEditor] first backup failed", error));
+        const saveFirstBackup = async () => {
+          /* Skip it while a preview still can not be read, so it never records the failed reply */
+          if (!previewsOk && (await rereadPreviews(currentDevice, Boolean(store.get("capabilities.quickTap")))) !== null) {
+            log.warn("[LayoutEditor] first backup skipped, a dual-function preview could not be read");
+            return;
+          }
+
+          await Backup.SaveFirstBackup(chipID, currentDevice);
+        };
+        saveFirstBackup().catch(error => log.warn("[LayoutEditor] first backup failed", error));
       } catch (e) {
         log.error(e);
         toast.error(e);
@@ -912,6 +1010,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       onDisconnect,
       loadAltRepeatRules,
       loadHoldMods,
+      loadPerKey,
     ],
   );
 
@@ -1522,6 +1621,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         saved: holdSaved.current,
         savedRules: savedAltRepeat.current,
         superkeys: superkeysInput,
+        perKey: perKeyState === "ready" ? { list: perKeyList, saved: perKeySaved.current } : undefined,
       };
       const saved = await runLayoutSave(
         {
@@ -1533,6 +1633,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           },
           writeRules: rules => writeAltRepeatRules(currentDevice, rules, firmwareLayerCount(keymap), keysPerLayer()),
           writeSuperkeys: (table, format, storedRows) => writeSuperkeyTable(currentDevice, table, format, storedRows),
+          writePerKey: list => writePerKeyOverrides(currentDevice, list),
         },
         saveInput,
       );
@@ -1540,6 +1641,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       /* Keep what the keyboard may hold of the Superkeys also after a failed step */
       if (saved.superkeys) {
         skSaved.current = saved.superkeys.saved;
+      }
+
+      if (saved.perKeySaved !== undefined) {
+        perKeySaved.current = saved.perKeySaved;
       }
 
       /* Keep a baseline a load read during the save, and read the keyboard again before allocating */
@@ -1606,9 +1711,39 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       setIsMultiSelected(false);
       setSelectedPaletteColor(null);
       setIsColorButtonSelected(false);
-      const commands = await Backup.Commands(currentDevice);
-      const backup = await bkp.DoBackup(commands, neuronID, currentDevice);
-      Backup.SaveBackup(backup, currentDevice);
+      await backupAfterSave(
+        currentDevice.file === true,
+        async () => {
+          /* Read the previews again first, so the backup never records a failed reply from the load */
+          if (store.get("capabilities.dualFunction")) {
+            const unreadable = await rereadPreviews(currentDevice, Boolean(store.get("capabilities.quickTap")));
+
+            if (unreadable !== null) {
+              throw new BackupSkippedError(unreadable);
+            }
+          }
+
+          const commands = await Backup.Commands(currentDevice);
+          const backup = await bkp.DoBackup(commands, neuronID, currentDevice);
+          Backup.SaveBackup(backup, currentDevice);
+        },
+        error => {
+          /* Fail the save as before on any other backup error */
+          if (!(error instanceof BackupSkippedError)) {
+            throw error;
+          }
+
+          log.warn("[LayoutEditor] backup after save skipped", error);
+          toast.warn(
+            <ToastMessage
+              title={i18n.success.changesSaved}
+              content={i18n.editor.multiAction.backupSkipped.replace("{0}", error.command)}
+              icon={<IconArrowDownWithLine />}
+            />,
+            { autoClose: 4000, icon: "" },
+          );
+        },
+      );
       cancelContext();
       toast.success(
         <ToastMessage
@@ -2959,6 +3094,39 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     onHoldChange: onRuleHoldChange,
   });
 
+  /* Edit the options of a key position. They apply on every layer and are saved with the layout */
+  const editPerKey = (edit: (list: PerKeyOverride[]) => PerKeyOverride[]) => {
+    if (savePending() || perKeyState !== "ready") {
+      return;
+    }
+
+    setPerKeyList(list => edit(list));
+    setModified(true);
+    startContext();
+  };
+
+  /* The dual-function options of the selected key position, or undefined when the keyboard has none for it */
+  const perKeyFor = (): MultiActionPerKey | undefined => {
+    if (perKeyState === "unsupported" || !VALID_POSITIONS.includes(currentKeyIndex)) {
+      return undefined;
+    }
+
+    const position = currentKeyIndex;
+    const stored = perKeySaved.current === null ? [] : (parsePerKeyOverrides(perKeySaved.current) ?? []);
+
+    return {
+      override: overrideAt(perKeyList, position),
+      stored: overrideAt(stored, position),
+      keyData: layerData[position],
+      role: keyRole(keymap.custom[customLayerIdx]?.[position]?.keyCode, superkeys),
+      globals: perKeyGlobals,
+      disabled: isSaving,
+      disabledReason: perKeyState === "failed" ? i18n.editor.multiAction.timingUnreadable : undefined,
+      onChange: (patch: OverridePatch) => editPerKey(list => updateOverride(list, position, patch)),
+      onClear: () => editPerKey(list => clearOverride(list, position)),
+    };
+  };
+
   /* The Multi-action tab for a key whose code is `keyCode` */
   const multiActionFor = (keyCode: number, context: "cell" | "rule", onChange: (actions: number[]) => void): MultiActionProps => {
     const table = draftTable();
@@ -3003,6 +3171,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       notice,
       actionLabel: action => actionText(action, labelCtx),
       onChange,
+      perKey: perKeyFor(),
     };
   };
 
