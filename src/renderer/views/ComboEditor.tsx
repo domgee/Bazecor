@@ -39,7 +39,7 @@ import MacrosMemoryUsage from "@Renderer/modules/Macros/MacrosMemoryUsage";
 import { ComboBreakDialog } from "@Renderer/components/molecules/CustomModal/ComboBreakDialog";
 import { AltRepeatBreakDialog } from "@Renderer/components/molecules/CustomModal/AltRepeatBreakDialog";
 import { MultiActionProps, MultiActionStorage } from "@Renderer/modules/MultiAction/MultiActionTab";
-import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
+import { actionText, keyFaceSlots, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 import { ComboSaveIO, loadKeymapReplies, refSlotsOf, runComboSave } from "@Renderer/modules/MultiAction/comboSave";
 import { EMPTY_SUPERKEY_SAVED, SuperkeyMode, SuperkeySavedState } from "@Renderer/modules/HoldMods/layoutSave";
 import { unreadableBeforeBackup } from "@Renderer/modules/DualFunctionKeys/previewReads";
@@ -1074,7 +1074,15 @@ function ComboEditor(props: ComboEditorProps) {
       /* Label Superkeys from their actions, as the Layout Editor does */
       if (key?.extraLabel === "SUPER") {
         const slot = key.keyCode - SUPERKEY_FIRST;
-        return { ...key, label: superkeyFace(superkeys[slot]?.actions, slot, labelCtx) };
+        const faceSlots = keyFaceSlots(key.keyCode, superkeys, labelCtx);
+        return { ...key, label: superkeyFace(superkeys[slot]?.actions, slot, labelCtx), faceSlots };
+      }
+
+      /* Draw a dual-function key's tap and hold in the slots */
+      const faceSlots = key ? keyFaceSlots(key.keyCode, superkeys, labelCtx) : null;
+
+      if (faceSlots !== null) {
+        return { ...key, faceSlots };
       }
 
       if (!key || typeof key.label !== "string" || /\p{L}/u.test(key.label)) return key;

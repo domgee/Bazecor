@@ -143,6 +143,13 @@ export const keyboardCanvasStyles = css`
           hyphens: auto;
         }
       }
+      .keyContentSlots {
+        position: absolute;
+        top: 0;
+        left: 0;
+        overflow: visible;
+        color: ${({ theme }) => theme.styles.raiseKeyboard.contentColor};
+      }
       .labelClass-withModifiers {
         margin-bottom: 8px;
       }

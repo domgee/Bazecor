@@ -73,7 +73,7 @@ import {
   MultiActionStorage,
   wheelSwitchesTab,
 } from "@Renderer/modules/MultiAction/MultiActionTab";
-import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
+import { actionText, keyFaceSlots, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 import { collectBlock, gcInputsKnown } from "@Renderer/modules/MultiAction/preGcGate";
 import { loadKeymapReplies } from "@Renderer/modules/MultiAction/comboSave";
 import {
@@ -2952,15 +2952,17 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       });
     }
 
-    /* Label Superkeys from the draft's actions, on copies so the label follows every edit */
+    /* Label Superkeys and dual-function keys from the draft's actions, on copies so the label follows every edit */
     if (localLayerData !== undefined) {
       localLayerData = localLayerData.map(key => {
+        const faceSlots = keyFaceSlots(key.keyCode, superkeys ?? [], labelCtx);
+
         if (key.extraLabel !== "SUPER") {
-          return key;
+          return faceSlots === null ? key : { ...key, faceSlots };
         }
 
         const slot = key.keyCode - SUPERKEY_FIRST;
-        return { ...key, label: superkeyFace(superkeys?.[slot]?.actions, slot, labelCtx) };
+        return { ...key, label: superkeyFace(superkeys?.[slot]?.actions, slot, labelCtx), faceSlots };
       });
     }
     // log.info("SAVING USEFFECT!!:", localLayerData, localIsReadOnly, localShowDefaults, cLayer);

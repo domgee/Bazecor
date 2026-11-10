@@ -15,10 +15,11 @@
  */
 
 import { SuperkeysType } from "@Renderer/types/superkeys";
-import { compactActionText, modStyleFor } from "../../../lens/renderer/action-labels";
-import type { LabelContext, ModStyle } from "../../../lens/renderer/action-labels";
+import { compactActionLabel, compactActionText, modStyleFor, superkeySlotLabels } from "../../../lens/renderer/action-labels";
+import type { LabelContext, ModStyle, SlotLabels } from "../../../lens/renderer/action-labels";
 import { layoutOverrides, symbolOverrides } from "../../../lens/renderer/keycodes";
-import { MAX_ACTIVE_SUPERKEYS, isIdleSuperkey, normalizeActions } from "../../../api/parsers/superkeys";
+import { MAX_ACTIVE_SUPERKEYS, SUPERKEY_FIRST, isIdleSuperkey, normalizeActions } from "../../../api/parsers/superkeys";
+import { decodeDualUse } from "../../../api/parsers/altRepeat";
 
 /* Superkey names and key faces generated from the actions, so they follow every edit */
 
@@ -85,3 +86,26 @@ export const withGeneratedNames = (table: ReadonlyArray<ReadonlyArray<number>>, 
 
 /** The short text for one action, or its keycode when Lens has no label for it. */
 export const actionText = (code: number, ctx: LabelContext): string => compactActionText(code, ctx) || String(code);
+
+/** The actions a key face shows in the Layer Lens slots, or null for a plain key. A Superkey fills all five slots, a dual-function key
+ * its tap and hold. A Superkey with no actions or beyond the limit keeps its plain label. */
+export const keyFaceSlots = (
+  keyCode: number,
+  table: ReadonlyArray<{ actions: number[] } | undefined>,
+  ctx: LabelContext,
+): SlotLabels | null => {
+  const slot = keyCode - SUPERKEY_FIRST;
+
+  if (slot >= 0 && slot < MAX_ACTIVE_SUPERKEYS) {
+    const actions = table[slot]?.actions;
+    return actions === undefined ? null : superkeySlotLabels(normalizeActions(actions), ctx);
+  }
+
+  const dualUse = decodeDualUse(keyCode);
+
+  if (dualUse === null) {
+    return null;
+  }
+
+  return [compactActionLabel(dualUse.tap, ctx), compactActionLabel(dualUse.hold, ctx), null, null, null];
+};

@@ -1745,6 +1745,7 @@ class KeymapISO extends React.Component {
             centerPrimary={getCenterPrimary(4, 6, 0, 0, true)}
             centerExtra={getCenterExtra(4, 6, 0, 0, true)}
             keyCode={getLabel(4, 6).keyCode}
+            selectedKey={getLabel(4, 6)}
           />
 
           <Key
@@ -1766,6 +1767,7 @@ class KeymapISO extends React.Component {
             centerPrimary={getCenterPrimary(4, 7, 0, 0, true)}
             centerExtra={getCenterExtra(4, 7, 0, 0, true)}
             keyCode={getLabel(4, 7).keyCode}
+            selectedKey={getLabel(4, 7)}
           />
           <Key
             keyType="regularKey"
@@ -1786,6 +1788,7 @@ class KeymapISO extends React.Component {
             centerPrimary={getCenterPrimary(4, 8, 0, 0, true)}
             centerExtra={getCenterExtra(4, 8, 0, 0, true)}
             keyCode={getLabel(4, 8).keyCode}
+            selectedKey={getLabel(4, 8)}
           />
           <Key
             keyType="t8"
@@ -1806,6 +1809,7 @@ class KeymapISO extends React.Component {
             centerPrimary={getCenterPrimary(4, 9, 0, 0, true)}
             centerExtra={getCenterExtra(4, 9, 0, 0, true)}
             keyCode={getLabel(4, 9).keyCode}
+            selectedKey={getLabel(4, 9)}
           />
         </g>
         <g id="Areas">

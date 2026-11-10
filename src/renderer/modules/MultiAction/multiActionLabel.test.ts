@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { labelContext, superkeyFace, superkeyName, withGeneratedNames } from "./multiActionLabel";
+import { keyFaceSlots, labelContext, superkeyFace, superkeyName, withGeneratedNames } from "./multiActionLabel";
+import { dualUseCodeFor } from "../../../api/parsers/altRepeat";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -52,5 +53,59 @@ describe("withGeneratedNames", () => {
       { actions: [A, GUI, 1, 1, 1], name: "A/⌘", id: 0 },
       { actions: [1, 1, 1, 1, 1], name: "", id: 1 },
     ]);
+  });
+});
+
+describe("keyFaceSlots", () => {
+  const SUPERKEY_1 = 53980;
+  const CTRL = 224;
+  // Layer 2 shift, the hold of a dual-function layer key
+  const LAYER_2 = 17451;
+
+  test("SuperkeyWithFiveActions_EverySlotInLensOrder", () => {
+    const slots = keyFaceSlots(SUPERKEY_1, [{ actions: [A, GUI, B, 6, 7] }], ctx);
+
+    // Tap, hold, tap and hold, double tap, double tap and hold
+    expect(slots).toEqual([{ text: "A" }, { text: "⌘" }, { text: "B" }, { text: "C" }, { text: "D" }]);
+  });
+
+  test("SuperkeyWithTapAndHold_OtherSlotsEmpty", () => {
+    expect(keyFaceSlots(SUPERKEY_1 + 1, [{ actions: [1, 1, 1, 1, 1] }, { actions: [A, GUI] }], ctx)).toEqual([
+      { text: "A" },
+      { text: "⌘" },
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  test("DualFunctionModifierKey_TapCentreAndHoldTopRight", () => {
+    expect(keyFaceSlots(dualUseCodeFor(A, CTRL) as number, [], ctx)).toEqual([{ text: "A" }, { text: "⌃" }, null, null, null]);
+  });
+
+  test("DualFunctionLayerKey_HoldWithLayerIcon", () => {
+    expect(keyFaceSlots(dualUseCodeFor(A, LAYER_2) as number, [], ctx)).toEqual([
+      { text: "A" },
+      { text: "2", holdIcon: "shift" },
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  test.each([
+    [A, [{ actions: [A, GUI] }]], // plain key
+    [SUPERKEY_1, [{ actions: [1, 1, 1, 1, 1] }]], // idle Superkey
+    [SUPERKEY_1, []], // undefined Superkey
+    [SUPERKEY_1 + 70, [{ actions: [A, GUI] }]], // Superkey beyond the limit
+  ])("key %i with table %j has no slots", (code, table) => {
+    expect(keyFaceSlots(code, table, ctx)).toBeNull();
+  });
+
+  test("EditedTable_SlotsFollowTheDraft", () => {
+    const before = keyFaceSlots(SUPERKEY_1, [{ actions: [A, GUI] }], ctx);
+    const after = keyFaceSlots(SUPERKEY_1, [{ actions: [B, GUI] }], ctx);
+
+    expect([before?.[0], after?.[0]]).toEqual([{ text: "A" }, { text: "B" }]);
   });
 });

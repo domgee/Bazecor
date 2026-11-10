@@ -14,6 +14,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+import type { SlotLabels } from "../../lens/renderer/action-labels";
+
 export interface LayoutEditorProps {
   onDisconnect: () => void;
   startContext: () => void;
@@ -35,6 +37,8 @@ export interface KeyType {
   extraLabel?: string | JSX.Element;
   verbose?: string | JSX.Element;
   alt?: boolean;
+  /* The Multi-action slots the editors draw in place of the label */
+  faceSlots?: SlotLabels | null;
 }
 
 export interface SegmentedKeyType {

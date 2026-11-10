@@ -19,6 +19,7 @@
 
 import React, { useState, useEffect } from "react";
 import ListModifiersKey from "@Renderer/components/molecules/ListModifiers/ListModifiersKey";
+import KeyFaceLabel from "./KeyFaceLabel";
 
 interface KeyShapeProps {
   keyType: string;
@@ -68,6 +69,7 @@ function Key(props: KeyShapeProps) {
   const yShape2 = y;
   const widthShape2 = width - 8;
   const heightShape2 = height - 8;
+  const silhouette = keyType.startsWith("sonsei-") || keyType.startsWith("defy-");
 
   const [color, setColor] = useState("rgb(255,255,255)");
 
@@ -147,14 +149,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g xmlns="http://www.w3.org/2000/svg" className="contentForeignObject">
-            <foreignObject x={xShape2} y={yShape2} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={xShape2}
+              y={yShape2}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={x} y={y} width={width + 6} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -243,14 +247,16 @@ function Key(props: KeyShapeProps) {
               strokeOpacity="1"
             />
           </g>
-          <foreignObject x={42} y={1} width={widthShape2 - 52} height={heightShape2}>
-            <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-              <ul>
-                <li className="extraLabel">{centerExtra}</li>
-                <li className="labelClass">{centerPrimary}</li>
-              </ul>
-            </div>
-          </foreignObject>
+          <KeyFaceLabel
+            x={42}
+            y={1}
+            width={widthShape2 - 52}
+            height={heightShape2}
+            centerExtra={centerExtra}
+            centerPrimary={centerPrimary}
+            slots={selectedKey?.faceSlots}
+            silhouette={silhouette}
+          />
           <foreignObject x={40} y={1} width={widthShape2 - 52} height={height}>
             <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
           </foreignObject>
@@ -338,14 +344,16 @@ function Key(props: KeyShapeProps) {
               strokeOpacity="1"
             />
           </g>
-          <foreignObject x={3} y={1} width={widthShape2 - 52} height={heightShape2}>
-            <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-              <ul>
-                <li className="extraLabel">{centerExtra}</li>
-                <li className="labelClass">{centerPrimary}</li>
-              </ul>
-            </div>
-          </foreignObject>
+          <KeyFaceLabel
+            x={3}
+            y={1}
+            width={widthShape2 - 52}
+            height={heightShape2}
+            centerExtra={centerExtra}
+            centerPrimary={centerPrimary}
+            slots={selectedKey?.faceSlots}
+            silhouette={silhouette}
+          />
           <foreignObject x={0} y={1} width={width - 52} height={height}>
             <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
           </foreignObject>
@@ -443,14 +451,16 @@ function Key(props: KeyShapeProps) {
               strokeOpacity="1"
             />
           </g>
-          <foreignObject x={3} y={0} width={widthShape2 - 6} height={49}>
-            <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-              <ul>
-                <li className="extraLabel">{centerExtra}</li>
-                <li className="labelClass">{centerPrimary}</li>
-              </ul>
-            </div>
-          </foreignObject>
+          <KeyFaceLabel
+            x={3}
+            y={0}
+            width={widthShape2 - 6}
+            height={49}
+            centerExtra={centerExtra}
+            centerPrimary={centerPrimary}
+            slots={selectedKey?.faceSlots}
+            silhouette={silhouette}
+          />
           <foreignObject x={0} y={1} width={width} height={60}>
             <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
           </foreignObject>
@@ -458,7 +468,7 @@ function Key(props: KeyShapeProps) {
       ) : (
         ""
       )}
-      
+
       {/* SONSEI THUMBS KEYS*/}
 
       {keyType == "sonsei-t1" ? (
@@ -541,14 +551,16 @@ function Key(props: KeyShapeProps) {
               strokeOpacity="1"
             />
           </g>
-          <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-            <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-              <ul>
-                <li className="extraLabel">{centerExtra}</li>
-                <li className="labelClass">{centerPrimary}</li>
-              </ul>
-            </div>
-          </foreignObject>
+          <KeyFaceLabel
+            x={3}
+            y={1}
+            width={widthShape2}
+            height={heightShape2}
+            centerExtra={centerExtra}
+            centerPrimary={centerPrimary}
+            slots={selectedKey?.faceSlots}
+            silhouette={silhouette}
+          />
           <foreignObject x={0} y={1} width={width} height={height}>
             <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
           </foreignObject>
@@ -637,14 +649,16 @@ function Key(props: KeyShapeProps) {
               strokeOpacity="1"
             />
           </g>
-          <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-            <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-              <ul>
-                <li className="extraLabel">{centerExtra}</li>
-                <li className="labelClass">{centerPrimary}</li>
-              </ul>
-            </div>
-          </foreignObject>
+          <KeyFaceLabel
+            x={3}
+            y={1}
+            width={widthShape2}
+            height={heightShape2}
+            centerExtra={centerExtra}
+            centerPrimary={centerPrimary}
+            slots={selectedKey?.faceSlots}
+            silhouette={silhouette}
+          />
           <foreignObject x={0} y={1} width={width} height={height}>
             <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
           </foreignObject>
@@ -733,14 +747,16 @@ function Key(props: KeyShapeProps) {
               strokeOpacity="1"
             />
           </g>
-          <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-            <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-              <ul>
-                <li className="extraLabel">{centerExtra}</li>
-                <li className="labelClass">{centerPrimary}</li>
-              </ul>
-            </div>
-          </foreignObject>
+          <KeyFaceLabel
+            x={3}
+            y={1}
+            width={widthShape2}
+            height={heightShape2}
+            centerExtra={centerExtra}
+            centerPrimary={centerPrimary}
+            slots={selectedKey?.faceSlots}
+            silhouette={silhouette}
+          />
           <foreignObject x={0} y={1} width={width} height={height}>
             <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
           </foreignObject>
@@ -829,14 +845,16 @@ function Key(props: KeyShapeProps) {
               strokeOpacity="1"
             />
           </g>
-          <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-            <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-              <ul>
-                <li className="extraLabel">{centerExtra}</li>
-                <li className="labelClass">{centerPrimary}</li>
-              </ul>
-            </div>
-          </foreignObject>
+          <KeyFaceLabel
+            x={3}
+            y={1}
+            width={widthShape2}
+            height={heightShape2}
+            centerExtra={centerExtra}
+            centerPrimary={centerPrimary}
+            slots={selectedKey?.faceSlots}
+            silhouette={silhouette}
+          />
           <foreignObject x={0} y={1} width={width} height={height}>
             <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
           </foreignObject>
@@ -844,7 +862,7 @@ function Key(props: KeyShapeProps) {
       ) : (
         ""
       )}
-      
+
       {keyType == "sonsei-tR1" ? (
         <g
           id={id}
@@ -926,14 +944,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -942,7 +962,7 @@ function Key(props: KeyShapeProps) {
       ) : (
         ""
       )}
-      
+
       {/* DEFY THUMBS KEYS */}
       {keyType == "defy-t1" ? (
         <g
@@ -1024,14 +1044,16 @@ function Key(props: KeyShapeProps) {
               strokeOpacity="1"
             />
           </g>
-          <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-            <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-              <ul>
-                <li className="extraLabel">{centerExtra}</li>
-                <li className="labelClass">{centerPrimary}</li>
-              </ul>
-            </div>
-          </foreignObject>
+          <KeyFaceLabel
+            x={3}
+            y={1}
+            width={widthShape2}
+            height={heightShape2}
+            centerExtra={centerExtra}
+            centerPrimary={centerPrimary}
+            slots={selectedKey?.faceSlots}
+            silhouette={silhouette}
+          />
           <foreignObject x={0} y={1} width={width} height={height}>
             <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
           </foreignObject>
@@ -1122,14 +1144,16 @@ function Key(props: KeyShapeProps) {
           </g>
 
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -1219,14 +1243,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -1317,14 +1343,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -1414,14 +1442,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={16} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={16}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={12} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -1511,14 +1541,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -1608,14 +1640,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -1705,14 +1739,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -1802,14 +1838,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -1899,14 +1937,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -1996,14 +2036,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -2093,14 +2135,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -2190,14 +2234,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -2287,14 +2333,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -2384,14 +2432,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
@@ -2481,14 +2531,16 @@ function Key(props: KeyShapeProps) {
             />
           </g>
           <g className="keyContentLabelRotate">
-            <foreignObject x={3} y={1} width={widthShape2} height={heightShape2}>
-              <div xmlns="http://www.w3.org/1999/xhtml" className="keyContentLabel">
-                <ul>
-                  <li className="extraLabel">{centerExtra}</li>
-                  <li className="labelClass">{centerPrimary}</li>
-                </ul>
-              </div>
-            </foreignObject>
+            <KeyFaceLabel
+              x={3}
+              y={1}
+              width={widthShape2}
+              height={heightShape2}
+              centerExtra={centerExtra}
+              centerPrimary={centerPrimary}
+              slots={selectedKey?.faceSlots}
+              silhouette={silhouette}
+            />
             <foreignObject x={0} y={1} width={width} height={height}>
               <ListModifiersKey keyCode={keyCode} size="xs" selectedKey={selectedKey} />
             </foreignObject>
