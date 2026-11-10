@@ -533,12 +533,25 @@ describe("Backup.SaveRecoveryBackup and getLatestBackup", () => {
     expect(ipcRenderer.send).not.toHaveBeenCalled();
   });
 
-  test("BackupWithoutSuperkeys_Refused", async () => {
-    useBackupFolder();
+  test("BackupWithoutSuperkeys_RefusedBeforeWriting", async () => {
+    const keyboardFolder = useBackupFolder();
 
     const save = Backup.SaveRecoveryBackup({ ...backup, backup: [{ command: "superkeys.map", data: "" }] }, keyboard, now);
 
     await expect(save).rejects.toThrow("does not hold the Superkeys");
+    expect(fs.existsSync(keyboardFolder) ? fs.readdirSync(keyboardFolder) : []).toEqual([]);
+  });
+
+  test("ReadBackDiffers_FileRemovedAndRefused", async () => {
+    const keyboardFolder = useBackupFolder();
+    // Return another file's content, as if the write did not land in full
+    const readFile = vi.spyOn(fs.promises, "readFile").mockResolvedValueOnce("{}");
+
+    const save = Backup.SaveRecoveryBackup(backup, keyboard, now);
+
+    await expect(save).rejects.toThrow("does not hold the Superkeys");
+    expect(fs.readdirSync(keyboardFolder)).toEqual([]);
+    readFile.mockRestore();
   });
 
   test("VirtualKeyboard_Refused", async () => {

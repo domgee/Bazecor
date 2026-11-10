@@ -780,6 +780,13 @@ export default class Backup {
       throw new Error("A virtual keyboard has no recovery backup");
     }
 
+    const holdsSuperkeys = (candidate: BackupType) =>
+      parseSuperkeysTable(candidate?.backup?.find(entry => entry.command === SUPERKEYS_COMMAND)?.data) !== null;
+
+    if (!holdsSuperkeys(backup)) {
+      throw new Error("The recovery backup does not hold the Superkeys");
+    }
+
     const json = JSON.stringify(backup, null, 2);
     const folderPath = path.join(store.get("settings.backupFolder") as string, device.device.info.product, backup.neuronID);
     const date = now();
@@ -802,11 +809,20 @@ export default class Backup {
         throw error;
       }
 
-      // eslint-disable-next-line no-await-in-loop
-      const written = await fs.promises.readFile(fullPath, "utf-8");
-      const data = (JSON.parse(written) as BackupType).backup?.find(entry => entry.command === SUPERKEYS_COMMAND)?.data;
+      let verified = false;
 
-      if (written !== json || parseSuperkeysTable(data) === null) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const written = await fs.promises.readFile(fullPath, "utf-8");
+        verified = written === json && holdsSuperkeys(JSON.parse(written) as BackupType);
+      } catch (error) {
+        log.warn(`[Backup] recovery backup ${fullPath} could not be read back`, error);
+      }
+
+      /* Remove a file that failed verification, so a manual restore never offers it */
+      if (!verified) {
+        // eslint-disable-next-line no-await-in-loop
+        await fs.promises.unlink(fullPath).catch(error => log.warn(`[Backup] could not remove ${fullPath}`, error));
         throw new Error(`The recovery backup ${fullPath} does not hold the Superkeys`);
       }
 

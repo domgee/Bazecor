@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { Conflict, PreparedSuperkeyWrite } from "../../../api/parsers/multiAction";
-import { PreGcIo, RecoveryCoverage, planPreGc, recoveryPaths, runPreGc, withRecoveryBackup } from "./preGcGate";
+import { readKeymapReplies } from "./comboSave";
+import { PreGcIo, RecoveryCoverage, gcInputsKnown, planPreGc, recoveryPaths, runPreGc, withRecoveryBackup } from "./preGcGate";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -134,6 +135,19 @@ describe("runPreGc", () => {
     expect(io.prepare.mock.calls).toEqual([[false]]);
     expect(io.backup).not.toHaveBeenCalled();
     expect(result).toEqual({ prepared: kept, collect: false, removals: [], covered: new Map(), skipped: "tableUnknown" });
+  });
+
+  test("PartialDefaultLayerReply_NoGc", async () => {
+    const io = createIo(async () => ({ path: PATH, table: [] }));
+    // Two keys per layer, and the default reply stops before the second layer's Superkey reference
+    const replies = readKeymapReplies({ custom: "53980 4", defaults: "4 5 53981", onlyCustom: "0" }, 2);
+
+    const result = await runPreGc({ ...input, collect: gcInputsKnown({ combos: "ready", keymapKnown: replies !== null }) }, io);
+
+    expect(replies).toBeNull();
+    expect(io.prepare.mock.calls).toEqual([[false]]);
+    expect(io.backup).not.toHaveBeenCalled();
+    expect(result.collect).toBe(false);
   });
 
   test("NotCollecting_PreparedWithoutCollectingAndNothingSkipped", async () => {

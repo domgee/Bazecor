@@ -74,12 +74,14 @@ import {
   wheelSwitchesTab,
 } from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
-import { RecoveryCoverage, SuperkeyRemoval, recoveryPaths, runPreGc } from "@Renderer/modules/MultiAction/preGcGate";
+import { RecoveryCoverage, SuperkeyRemoval, gcInputsKnown, recoveryPaths, runPreGc } from "@Renderer/modules/MultiAction/preGcGate";
+import { readKeymapReplies } from "@Renderer/modules/MultiAction/comboSave";
 import {
   BackupSkippedError,
   HOLD_TIMEOUT_COMMAND,
   PRIOR_INTERVAL_COMMAND,
   readGlobalNumber,
+  rereadSuperkeys,
   unreadableBeforeBackup,
 } from "@Renderer/modules/DualFunctionKeys/previewReads";
 import {
@@ -376,6 +378,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const [superkeysBeyond, setSuperkeysBeyond] = useState<Map<number, number[]>>(new Map());
   /* The combos as the strict parser reads them. Allocation needs them, since their outputs use Superkey slots */
   const [combosState, setCombosState] = useState<CombosState>("unsupported");
+  /* False when a keymap reply at load was not whole layers, so Superkey references may be missing */
+  const [keymapKnown, setKeymapKnown] = useState(true);
   const [strictCombos, setStrictCombos] = useState<ComboType[]>([]);
   /* Remember what the keyboard holds of the Superkeys, so Save writes only changes and an edit never reuses a slot it may play */
   const skSaved = useRef<SuperkeySavedState>(EMPTY_SUPERKEY_SAVED);
@@ -471,6 +475,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   );
 
   const onLayerNameChange = (newName: string) => {
+    if (savePending()) {
+      return;
+    }
+
     const slicedLayerNames = layerNames.slice();
     slicedLayerNames[currentLayer] = {
       id: currentLayer,
@@ -841,7 +849,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         const defaults = (await currentDevice?.noCacheCommand("keymap.default")) as string;
         setScanningStep(5);
         const custom = (await currentDevice?.noCacheCommand("keymap.custom")) as string;
-        const onlycstm = (await currentDevice?.command("keymap.onlyCustom")) as string;
+        const onlycstm = (await currentDevice?.noCacheCommand("keymap.onlyCustom")) as string;
         const onlyCustom = Boolean(parseInt(onlycstm, 10));
         const KeyMap: KeymapType = {
           custom: undefined,
@@ -850,6 +858,14 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         };
 
         const layerSize = currentDevice.device.keyboard.rows * currentDevice.device.keyboard.columns;
+        /* Allocate and collect Superkeys only with replies that are exactly what the firmware sends, since a short reply hides references */
+        const nextKeymapKnown = readKeymapReplies({ custom, defaults, onlyCustom: onlycstm }, layerSize) !== null;
+
+        if (!nextKeymapKnown) {
+          log.error("[LayoutEditor] the keymap replies could not be read", custom, defaults, onlycstm);
+        }
+
+        setKeymapKnown(nextKeymapKnown);
         KeyMap.custom = parseKeymapRaw(custom, layerSize).map(l => l.map((k: number) => keymapDB.parse(k)));
         KeyMap.default = parseKeymapRaw(defaults, layerSize).map(l => l.map((k: number) => keymapDB.parse(k)));
         KeyMap.onlyCustom = onlyCustom;
@@ -998,6 +1014,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             previews: !perKeyLoad.previewsOk,
             hasQuickTap: Boolean(store.get("capabilities.quickTap")),
             perKey: !perKeyLoad.perKeyOk,
+            superkeys: nextSuperkeysState === "failed",
           });
 
           if (unreadable !== null) {
@@ -1251,6 +1268,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       return undefined;
     }
 
+    if (!keymapKnown) {
+      return i18n.editor.multiAction.keymapUnknown;
+    }
+
     if (combosState === "failed") {
       return i18n.editor.multiAction.combosUnknown;
     }
@@ -1482,6 +1503,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
    * @param {number} ledIndex Number of current selected keyboard button
    */
   const onButtonKeyboardColorChange = (cLayer: number, layer: number, ledIndex: number) => {
+    if (savePending()) {
+      return;
+    }
+
     const isEqualColor = onVerificationColor(selectedPaletteColor, cLayer, ledIndex);
     if (!(!modified && isEqualColor)) {
       const colormap = colorMap.slice();
@@ -1592,8 +1617,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       if (superkeysState === "ready") {
         const format = superkeyWriteFormat(currentDevice?.device.info.product);
         const persisted = skSaved.current.table === null ? null : parseSuperkeysTable(skSaved.current.table);
-        /* Unread rules stopped the save above, and unread combos may reference any slot */
-        const ready = combosState !== "failed";
+        /* Unread rules stopped the save above, and unread combos or keymap replies may reference any slot */
+        const ready = gcInputsKnown({ combos: combosState, keymapKnown });
         let previewsOk = true;
 
         /* Read the options a backup records first, so neither backup stores a failed reply from the load */
@@ -1622,8 +1647,11 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                 finalTable: finalGcTable(prepared.table, { ...refs, customLayers: prepared.layers }, format),
               }),
             backup: async () => {
-              /* Read the Superkeys uncached, so the backup records what the keyboard holds and not a cached write */
-              await currentDevice.noCacheCommand("superkeys.map");
+              /* Read the Superkeys uncached, so the backup records what the keyboard holds and never a failed reply */
+              if ((await rereadSuperkeys(currentDevice)) === null) {
+                throw new Error("superkeys.map could not be read");
+              }
+
               const backup = await bkp.DoBackup(await Backup.Commands(currentDevice), neuronID, currentDevice);
               const path = await Backup.SaveRecoveryBackup(backup, currentDevice);
               const held = parseSuperkeysTable(backup.backup.find(entry => entry.command === "superkeys.map")?.data);
@@ -1739,6 +1767,25 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
       savedAltRepeat.current = saved.savedRules;
 
+      /* Name the recovery backup that holds the Superkeys this save removed, also when a later step failed */
+      const tableStored = saved.done.includes("superkeys") || saved.done.includes("skgc");
+      const removed =
+        saved.superkeys && tableStored && persistedBefore !== null && removals.length > 0
+          ? gcRemovals({ persistedTable: persistedBefore, finalTable: saved.superkeys.table })
+          : [];
+
+      if (removed.length > 0) {
+        const paths = recoveryPaths(removed, recoveryCovered.current.covered);
+        toast.info(
+          <ToastMessage
+            title={i18n.editor.multiAction.title}
+            content={i18n.editor.multiAction.gcRemoved.replace("{count}", String(removed.length)).replace("{path}", paths.join(", "))}
+            icon={<IconArrowDownWithLine />}
+          />,
+          { autoClose: false, icon: "" },
+        );
+      }
+
       if (saved.failed !== undefined) {
         log.error(`[LayoutEditor] save stopped at the ${saved.failed} step`, saved.error);
 
@@ -1799,6 +1846,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             previews: Boolean(store.get("capabilities.dualFunction")),
             hasQuickTap: Boolean(store.get("capabilities.quickTap")),
             perKey: perKeyState === "failed",
+            superkeys: superkeysState !== "unsupported",
           });
 
           if (unreadable !== null) {
@@ -1826,24 +1874,6 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           );
         },
       );
-      /* Name the recovery backup that holds the Superkeys this save removed */
-      const removed =
-        saved.superkeys && persistedBefore !== null && removals.length > 0
-          ? gcRemovals({ persistedTable: persistedBefore, finalTable: saved.superkeys.table })
-          : [];
-
-      if (removed.length > 0) {
-        const paths = recoveryPaths(removed, recoveryCovered.current.covered);
-        toast.info(
-          <ToastMessage
-            title={i18n.editor.multiAction.title}
-            content={i18n.editor.multiAction.gcRemoved.replace("{count}", String(removed.length)).replace("{path}", paths.join(", "))}
-            icon={<IconArrowDownWithLine />}
-          />,
-          { autoClose: false, icon: "" },
-        );
-      }
-
       /* Clear the dirty state only now, since a virtual keyboard keeps the save only in the file the backup writes */
       setModified(false);
       setLeftSideModified(false);
@@ -2000,6 +2030,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   };
 
   const applyColorMapChangeBL = (side: string, colorIndex: number) => {
+    if (savePending()) {
+      return;
+    }
+
     const { currentDevice } = state;
     const idx = keymap.onlyCustom ? currentLayer : currentLayer - keymap.default.length;
     const layerMap = { keys: currentDevice.device.keyboard, underglow: currentDevice.device.keyboardUnderglow };
@@ -2043,6 +2077,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   };
 
   const applyColorMapChangeUG = (side: string, colorIndex: number) => {
+    if (savePending()) {
+      return;
+    }
+
     const { currentDevice } = state;
     const idx = keymap.onlyCustom ? currentLayer : currentLayer - keymap.default.length;
     const layerMap = { keys: currentDevice.device.keyboard, underglow: currentDevice.device.keyboardUnderglow };
@@ -2086,6 +2124,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   };
 
   const clearLayer = (fillKeyCode = BlankTable.keys[1].code, colorIndex = 15, chooseYourKeyboardSide = "BOTH") => {
+    if (savePending()) {
+      return;
+    }
+
     const { currentDevice } = state;
     const layerMap = { keys: currentDevice.device.keyboard, underglow: currentDevice.device.keyboardUnderglow };
     const newKeymap = keymap.custom.slice();
@@ -2167,6 +2209,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   };
 
   const onColorSelect = (colorIndex: number) => {
+    if (savePending()) {
+      return;
+    }
+
     const { currentDevice } = state;
     const isEqualColor = onVerificationColor(colorIndex, currentLayer, currentLedIndex);
     // log.info(
@@ -2200,6 +2246,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   };
 
   const onColorPick = (colorIndex: number, r: number, g: number, b: number) => {
+    if (savePending()) {
+      return;
+    }
+
     const newPalette = palette.slice();
     const setColors = (red: number, green: number, blue: number) => ({
       r: red,

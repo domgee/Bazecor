@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   BackupSkippedError,
@@ -14,6 +14,10 @@ import {
 } from "./previewReads";
 
 const OPTIONS_OFF = "0 0 0 0 0 0 0";
+
+vi.mock("electron-log/renderer", () => ({
+  default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
+}));
 
 describe("preview reads", () => {
   test("list every preview command, with quick tap only when the firmware has it", () => {
@@ -177,6 +181,28 @@ describe("preview reads", () => {
 
       expect(await unreadableBeforeBackup(device, { previews: false, hasQuickTap: true, perKey: false })).toBeNull();
       expect(sent).toEqual([]);
+    });
+
+    test("block the backup while superkeys.map fails twice", async () => {
+      const { device, sent } = deviceWith({ "superkeys.map": new Error("timeout") });
+
+      const unreadable = await unreadableBeforeBackup(device, { previews: false, hasQuickTap: false, perKey: false, superkeys: true });
+
+      expect(unreadable).toBe("superkeys.map");
+      expect(sent).toEqual(["superkeys.map", "superkeys.map"]);
+    });
+
+    test("let the backup run when superkeys.map reads on the retry", async () => {
+      let calls = 0;
+      const device = {
+        noCacheCommand: async () => {
+          calls += 1;
+          return calls === 1 ? new Error("timeout") : "4 224 5 1 1 0 65535";
+        },
+      };
+
+      expect(await unreadableBeforeBackup(device, { previews: false, hasQuickTap: false, perKey: false, superkeys: true })).toBeNull();
+      expect(calls).toBe(2);
     });
 
     test("read only qukeys.perKey when only its load failed", async () => {

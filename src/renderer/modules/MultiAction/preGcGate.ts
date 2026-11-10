@@ -33,6 +33,10 @@ export type PreGcPlan = { action: "none" } | { action: "backup" } | { action: "s
 /** A slot's definition in a verified recovery backup, and that backup's path */
 export type RecoveryCoverage = Map<number, { key: string; path: string }>;
 
+/** True when every reference outside the draft is known, so a slot no reference uses is really unused */
+export const gcInputsKnown = ({ combos, keymapKnown }: { combos: "ready" | "unsupported" | "failed"; keymapKnown: boolean }): boolean =>
+  combos !== "failed" && keymapKnown;
+
 /** Why the save must not collect, or null when it may. Decide this before prepareSuperkeyWrite. */
 export const collectBlock = ({
   ready,

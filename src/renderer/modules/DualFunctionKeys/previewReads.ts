@@ -21,6 +21,7 @@ import {
   parsePerKeyOverrides,
 } from "../../../api/parsers/dualFunction";
 import { QUICK_TAP_COMMAND, parseQuickTapTerm } from "../../../api/parsers/quickTap";
+import { ParsedSuperkeys, SUPERKEYS_COMMAND, parseSuperkeysTable } from "../../../api/parsers/superkeys";
 
 /* Decide whether the global settings the per-position options read for their previews can be backed up. A failed read leaves its reply in
  * the Device cache, and the backup after a save would record it */
@@ -102,9 +103,13 @@ export const rereadPreviews = async (device: PreviewDevice, hasQuickTap: boolean
 
 /** Read again uncached what a backup would record from a failed reply: the previews when `previews`, and qukeys.perKey when `perKey`, since
  * its load failed. Return the first command that still can not be read, or null when the backup may run. */
+/** The Superkey table read uncached with one retry, or null. A failed reply stays in the cache, so a backup must follow a good read */
+export const rereadSuperkeys = async (device: PreviewDevice): Promise<ParsedSuperkeys | null> =>
+  parseSuperkeysTable(await device.noCacheCommand(SUPERKEYS_COMMAND)) ?? parseSuperkeysTable(await device.noCacheCommand(SUPERKEYS_COMMAND));
+
 export const unreadableBeforeBackup = async (
   device: PreviewDevice,
-  checks: { previews: boolean; hasQuickTap: boolean; perKey: boolean },
+  checks: { previews: boolean; hasQuickTap: boolean; perKey: boolean; superkeys?: boolean },
 ): Promise<string | null> => {
   if (checks.previews) {
     const unreadable = await rereadPreviews(device, checks.hasQuickTap);
@@ -116,6 +121,10 @@ export const unreadableBeforeBackup = async (
 
   if (checks.perKey && parsePerKeyOverrides(await device.noCacheCommand(PER_KEY_COMMAND)) === null) {
     return PER_KEY_COMMAND;
+  }
+
+  if (checks.superkeys && (await rereadSuperkeys(device)) === null) {
+    return SUPERKEYS_COMMAND;
   }
 
   return null;
