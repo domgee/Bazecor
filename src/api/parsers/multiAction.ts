@@ -297,6 +297,10 @@ export const superkeyTapSeed = (code: number): number | null => {
   return notOffered ? null : code;
 };
 
+/** True for a plain cell whose own code can't seed the Tap. Superkey and dual-function cells show their own actions. */
+export const tapSeedRefused = (code: number): boolean =>
+  superkeySlot(code) === null && decodeDualUse(code) === null && superkeyTapSeed(code) === null;
+
 /** The slots with a definition in a table. */
 export const definedSlots = (table: ReadonlyArray<ReadonlyArray<number>>): number[] =>
   table.reduce<number[]>((slots, actions, slot) => (isIdleSuperkey(actions) ? slots : [...slots, slot]), []);

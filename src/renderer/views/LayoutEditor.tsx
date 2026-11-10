@@ -131,6 +131,7 @@ import {
   superkeyRefs,
   superkeySlot,
   superkeyTapSeed,
+  tapSeedRefused,
 } from "../../api/parsers/multiAction";
 import {
   MAX_ALT_REPEAT_RULES,
@@ -2638,7 +2639,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     const tapSeed = superkeyTapSeed(cellCode);
     let actions = normalizeActions([tapSeed ?? IDLE_ACTION]);
     let storage: MultiActionStorage = "plain";
-    let notice: string | undefined = tapSeed === null ? i18n.editor.multiAction.tapNotSeeded : undefined;
+    let notice: string | undefined = tapSeedRefused(cellCode) ? i18n.editor.multiAction.tapNotSeeded : undefined;
 
     if (slot !== null) {
       storage = "superkey";

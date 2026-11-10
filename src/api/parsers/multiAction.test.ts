@@ -25,6 +25,7 @@ import {
   remapFileSuperkeys,
   superkeyRefs,
   superkeyTapSeed,
+  tapSeedRefused,
 } from "./multiAction";
 
 vi.mock("electron-log/renderer", () => ({
@@ -634,5 +635,18 @@ describe("applyMultiAction with slots the keyboard holds", () => {
     const result = applyMultiAction(state, cell(0, 0), full(A));
 
     expect(result).toEqual({ table: [full(A), full(B), full(A)], code: SK(2) });
+  });
+});
+
+describe("tapSeedRefused", () => {
+  test.each([
+    [SK(0), false], // A Superkey shows its own actions
+    [dualUseCodeFor(A, CTRL), false], // A dual-function key shows its tap and hold
+    [A, false], // A plain key seeds Tap
+    [54115 + A, false], // Autoshift A seeds its base key
+    [17450, true], // Layer shift 1 can't be a Superkey Tap
+    [54372, true], // Swap hands while held can't be a Superkey Tap
+  ])("code %i gives %s", (code, expected) => {
+    expect(tapSeedRefused(code as number)).toBe(expected);
   });
 });
