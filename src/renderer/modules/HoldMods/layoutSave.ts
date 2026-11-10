@@ -247,13 +247,14 @@ const holdsTable = (saved: string | null, table: number[][]): boolean => {
   );
 };
 
-/* A padded write also clears stale rows behind the table. With an unknown row count it runs once per editor session */
-const needsSuperkeyWrite = (sk: SuperkeySaveInput, saved: SuperkeySavedState, table: number[][]): boolean => {
+/** True when superkeys.map needs a write. A padded write also clears stale rows behind the table, once per editor session when the row
+ * count is unknown. */
+export const superkeyWriteNeeded = (format: SuperkeyWriteFormat, saved: SuperkeySavedState, table: number[][]): boolean => {
   if (!holdsTable(saved.table, table)) {
     return true;
   }
 
-  if (sk.format !== "padded") {
+  if (format !== "padded") {
     return false;
   }
 
@@ -351,7 +352,7 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
   }
 
   /* Superkeys go before the keymap, so every Superkey a key sends is defined */
-  if (skReady && sendSuperkeys && skSaved && skTable && needsSuperkeyWrite(sk, skSaved, skTable)) {
+  if (skReady && sendSuperkeys && skSaved && skTable && superkeyWriteNeeded(sk.format, skSaved, skTable)) {
     try {
       skSaved = await writeSuperkeys(sendSuperkeys, skTable, skSaved, sk.format);
     } catch (error) {

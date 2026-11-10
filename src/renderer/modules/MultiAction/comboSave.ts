@@ -1,0 +1,216 @@
+/* Bazecor
+ * Copyright (C) 2026  DygmaLab SE.
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+import { ComboType } from "@Renderer/types/combos";
+import { Conflict, LayoutRefs, SuperkeyDraft, prepareSuperkeyWrite, superkeyRefs } from "../../../api/parsers/multiAction";
+import { serializeCombos } from "../../../api/parsers/combos";
+import { SuperkeyWriteFormat, serializeSuperkeyTable } from "../../../api/parsers/superkeys";
+import { SuperkeySavedState, superkeyWriteNeeded } from "../HoldMods/layoutSave";
+
+/* The Combo Editor save. The order is superkeys.map, the keymap when a Superkey write made it stale, combos.map, names and the backup.
+ * The Combo Editor never removes Superkeys, so it needs no clean-up and no recovery backup. */
+
+export type ComboSaveStep = "superkeys" | "keymap" | "combos" | "backup";
+
+export interface ComboSuperkeyInput {
+  format: SuperkeyWriteFormat;
+  /* The draft table and every reference, with the edited combos */
+  draft: SuperkeyDraft;
+  saved: SuperkeySavedState;
+  /* The layout as the keyboard held it at load or the last save, to tell old clashes from new ones */
+  baseline: SuperkeyDraft | null;
+  onlyCustom: boolean;
+}
+
+export interface ComboSaveInput {
+  combos: ComboType[];
+  /* The serialized combos on the keyboard, null when unknown */
+  savedCombos: string | null;
+  /* Only when the Superkeys and every reference to them are known */
+  superkeys?: ComboSuperkeyInput;
+  /* Read the dual-function previews again before the backup */
+  dualFunction: boolean;
+  /* A virtual keyboard keeps the save only in the backup file, so a backup that does not run fails the save */
+  isVirtual: boolean;
+}
+
+export interface ComboSaveIO {
+  /* Each write throws when the keyboard did not store the data */
+  writeSuperkeys: (table: number[][], format: SuperkeyWriteFormat, storedRows: number | null) => Promise<number | null>;
+  writeKeymap: (serialized: string, onlyCustom: boolean) => Promise<void>;
+  writeCombos: (serialized: string) => Promise<void>;
+  /* Store the combo names and the generated Superkey names, which the backup reads */
+  storeNames: (combos: ComboType[], table: number[][] | null) => void;
+  /* The first preview command that can not be read, or null */
+  rereadPreviews: () => Promise<string | null>;
+  backup: () => Promise<void>;
+}
+
+export type ComboSaveOutcome =
+  | { kind: "blocked"; conflicts: Conflict[]; warnings: Conflict[] }
+  | {
+      kind: "saved" | "failed";
+      /* The steps that wrote, in order */
+      done: ComboSaveStep[];
+      failed?: ComboSaveStep;
+      error?: unknown;
+      warnings: Conflict[];
+      savedCombos: string | null;
+      /* Only with a Superkey input. The table the save ends with and the saved state, also after a failed step */
+      superkeys?: { table: number[][]; layers: number[][]; saved: SuperkeySavedState };
+      /* A real keyboard keeps the save when the backup is left out. The preview command that could not be read, or the backup error */
+      backupSkipped?: string;
+      backupError?: unknown;
+    };
+
+const sortedUnion = (into: number[], slots: number[]): number[] => Array.from(new Set(into.concat(slots))).sort((a, b) => a - b);
+
+/** The slots that some of these references use. */
+export const refSlotsOf = (refs: Partial<LayoutRefs>): number[] =>
+  [...superkeyRefs({ customLayers: [], defaultLayers: [], layerOffset: 0, rules: [], combos: [], ...refs }).keys()].sort(
+    (a, b) => a - b,
+  );
+
+/** Save the combos and the Superkeys their outputs use. Stop at the first failed step and report the progress. */
+export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Promise<ComboSaveOutcome> => {
+  const sk = input.superkeys;
+  let warnings: Conflict[] = [];
+  let table: number[][] | null = null;
+  let layers: number[][] = [];
+  let skSaved = sk?.saved;
+  let { savedCombos } = input;
+  const done: ComboSaveStep[] = [];
+
+  if (sk) {
+    const prepared = prepareSuperkeyWrite({
+      draft: sk.draft,
+      saved: sk.saved,
+      baseline: sk.baseline,
+      collect: false,
+      format: sk.format,
+    });
+
+    if (prepared.conflicts.length > 0) {
+      return { kind: "blocked", conflicts: prepared.conflicts, warnings: prepared.warnings };
+    }
+
+    ({ warnings } = prepared);
+    ({ table, layers } = prepared);
+  }
+
+  const outcome = (
+    failed?: ComboSaveStep,
+    error?: unknown,
+    extra: { backupSkipped?: string; backupError?: unknown } = {},
+  ): ComboSaveOutcome => ({
+    kind: failed === undefined ? "saved" : "failed",
+    done,
+    failed,
+    error,
+    warnings,
+    savedCombos,
+    ...(skSaved && table ? { superkeys: { table, layers, saved: skSaved } } : {}),
+    ...extra,
+  });
+
+  /* Superkeys go first, so every Superkey a combo or key sends is defined */
+  if (sk && skSaved && table && superkeyWriteNeeded(sk.format, skSaved, table)) {
+    const state = skSaved;
+
+    try {
+      const data = serializeSuperkeyTable(table, sk.format, state.storedRows);
+      const storedRows = await io.writeSuperkeys(table, sk.format, state.storedRows);
+      skSaved = { ...state, table: data, storedRows, keymapStale: true, cleanupDone: true };
+    } catch (error) {
+      skSaved = { ...state, table: null, storedRows: null, keymapStale: true, cleanupDone: true };
+      return outcome("superkeys", error);
+    }
+
+    done.push("superkeys");
+  }
+
+  /* The keyboard converts dual-function Superkeys only when the keymap is written */
+  if (sk && skSaved?.keymapStale) {
+    const keymapSlots = refSlotsOf({
+      customLayers: layers,
+      defaultLayers: sk.draft.defaultLayers,
+      layerOffset: sk.draft.layerOffset,
+    });
+
+    try {
+      await io.writeKeymap(layers.flat().join(" "), sk.onlyCustom);
+    } catch (error) {
+      skSaved = { ...skSaved, uncertainKeymap: sortedUnion(skSaved.uncertainKeymap, keymapSlots) };
+      return outcome("keymap", error);
+    }
+
+    skSaved = { ...skSaved, keymapStale: false, keymapRefs: keymapSlots, uncertainKeymap: [] };
+    done.push("keymap");
+  }
+
+  const serialized = serializeCombos(input.combos);
+  const comboSlots = refSlotsOf({ combos: input.combos });
+
+  if (serialized !== savedCombos) {
+    try {
+      await io.writeCombos(serialized);
+    } catch (error) {
+      /* The write may have landed before its reply failed */
+      savedCombos = null;
+
+      if (skSaved) {
+        skSaved = { ...skSaved, uncertainCombos: sortedUnion(skSaved.uncertainCombos, comboSlots) };
+      }
+
+      return outcome("combos", error);
+    }
+
+    savedCombos = serialized;
+    done.push("combos");
+  }
+
+  if (skSaved) {
+    skSaved = { ...skSaved, comboRefs: comboSlots, uncertainCombos: [] };
+  }
+
+  io.storeNames(input.combos, table);
+
+  /* Read the previews again first, so the backup never records a failed reply from the load */
+  if (input.dualFunction) {
+    const unreadable = await io.rereadPreviews();
+
+    if (unreadable !== null) {
+      if (input.isVirtual) {
+        return outcome("backup", new Error(`${unreadable} could not be read`));
+      }
+
+      return outcome(undefined, undefined, { backupSkipped: unreadable });
+    }
+  }
+
+  try {
+    await io.backup();
+  } catch (error) {
+    if (input.isVirtual) {
+      return outcome("backup", error);
+    }
+
+    return outcome(undefined, undefined, { backupError: error });
+  }
+
+  done.push("backup");
+  return outcome();
+};

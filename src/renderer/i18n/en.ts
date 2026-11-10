@@ -532,6 +532,11 @@ const English = {
     combos: {
       add: "Add new combo",
       newCombo: "New combo",
+      cloneCapacity:
+        "All 70 Superkey slots are in use, so this combo's multi-action result can't be copied. Clear a multi-action key and save first. Nothing was changed.",
+      cloneMissing: "This combo's result uses a Superkey that is not defined, so the copy starts without a result.",
+      backupSkipped: "The combos are saved, but the backup was skipped because {0} could not be read.",
+      backupFailed: "The combos are saved, but the backup after the save failed.",
       createModal: {
         createNew: "Name your new combo",
         rename: "Rename combo",

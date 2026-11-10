@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Styled from "styled-components";
 
 import { keyboardCanvasStyles } from "@Renderer/modules/KeyboardCanvas/keyboardCanvasStyles";
@@ -36,6 +36,13 @@ import { PageHeader } from "@Renderer/modules/PageHeader";
 import { KeyPickerKeyboard } from "@Renderer/modules/KeyPickerKeyboard";
 import SuperkeysSelector from "@Renderer/components/organisms/Select/SuperkeysSelector";
 import MacrosMemoryUsage from "@Renderer/modules/Macros/MacrosMemoryUsage";
+import { ComboBreakDialog } from "@Renderer/components/molecules/CustomModal/ComboBreakDialog";
+import { AltRepeatBreakDialog } from "@Renderer/components/molecules/CustomModal/AltRepeatBreakDialog";
+import { MultiActionProps, MultiActionStorage } from "@Renderer/modules/MultiAction/MultiActionTab";
+import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
+import { ComboSaveIO, refSlotsOf, runComboSave } from "@Renderer/modules/MultiAction/comboSave";
+import { EMPTY_SUPERKEY_SAVED, SuperkeyMode, SuperkeySavedState } from "@Renderer/modules/HoldMods/layoutSave";
+import { firstUnreadable, previewCommands } from "@Renderer/modules/DualFunctionKeys/previewReads";
 
 import { useDevice } from "@Renderer/DeviceContext";
 import Store from "@Renderer/utils/Store";
@@ -44,6 +51,7 @@ import { KeymapType, KeyType, PaletteType, SegmentedKeyType } from "@Renderer/ty
 import { Neuron } from "@Renderer/types/neurons";
 import { MacrosType } from "@Renderer/types/macros";
 import { SuperkeysType } from "@Renderer/types/superkeys";
+import { AltRepeatBlock, AltRepeatRule, AltRepeatState } from "@Renderer/types/altRepeat";
 import {
   COMBO_FLAG_ENABLED,
   COMBO_POSITION_UNUSED,
@@ -57,6 +65,7 @@ import {
 import { KeymapDB } from "../../api/keymap";
 import Backup from "../../api/backup";
 import {
+  ComboBreakReason,
   blockedComboPositions,
   comboMembers,
   duplicateComboIndex,
@@ -64,9 +73,39 @@ import {
   isLegacyCombosReply,
   overlappingComboIndexes,
   parseCombosRaw,
+  parseCombosStrict,
   serializeCombos,
 } from "../../api/parsers/combos";
-import { parseColormapRaw, parseKeymapRaw, parseMacrosRaw, parsePaletteRaw, parseSuperkeysRaw } from "../../api/parsers";
+import { parseColormapRaw, parseKeymapRaw, parseMacrosRaw, parsePaletteRaw } from "../../api/parsers";
+import { decodeDualUse, readAltRepeatRules } from "../../api/parsers/altRepeat";
+import { writeUncached } from "../../api/parsers/holdMods";
+import {
+  LayoutRefs,
+  SkRef,
+  SuperkeyDraft,
+  applyMultiAction,
+  cloneSuperkeyRefs,
+  conflictMessage,
+  defaultCellName,
+  definedSlots,
+  multiActionBreaks,
+  protectedSlots,
+  reconcileDraft,
+  refName,
+  superkeyRefs,
+  superkeySlot,
+  superkeyTapSeed,
+  tapSeedRefused,
+} from "../../api/parsers/multiAction";
+import { transferUsed } from "../../api/parsers/layerTransfer";
+import {
+  MAX_ACTIVE_SUPERKEYS,
+  SUPERKEY_FIRST,
+  normalizeActions,
+  parseSuperkeysTable,
+  superkeyWriteFormat,
+  writeSuperkeyTable,
+} from "../../api/parsers/superkeys";
 
 const store = Store.getStore();
 const bkp = new Backup();
@@ -99,6 +138,17 @@ const SLOT_KEYS = ["slot-a", "slot-b", "slot-c", "slot-d", "slot-e", "slot-f"];
 /** Which slot of the selected combo the keyboard below is currently feeding. */
 type PickTarget = { kind: "member"; slot: number } | { kind: "action" } | null;
 
+/* What Undo after a break warning puts back */
+interface ComboSnapshot {
+  superkeys: SuperkeysType[];
+  combos: ComboType[];
+}
+
+type ComboBreakState = { reason: ComboBreakReason; comboIndexes: number[]; undo: ComboSnapshot };
+type RuleBreakState = { reason: AltRepeatBlock; ruleCount: number; undo: ComboSnapshot };
+
+const IDLE_ACTION = 1;
+
 function ComboEditor(props: ComboEditorProps) {
   const { darkMode, startContext, cancelContext, setLoading, saveButtonRef, discardChangesButtonRef } = props;
   const { state } = useDevice();
@@ -119,6 +169,25 @@ function ComboEditor(props: ComboEditorProps) {
   /* Offer them as combo outputs, and tell complex superkeys, which cannot be a combo member, from the ones run as Qukeys, which can.
    * See comboBreakReason(). */
   const [superkeys, setSuperkeys] = useState<SuperkeysType[]>([]);
+  /* "ready" once superkeys.map is read uncached and parsed */
+  const [superkeysState, setSuperkeysState] = useState<SuperkeyMode>("unsupported");
+  /* Rows at or above 70 from the load, kept to show what such a result held */
+  const [superkeysBeyond, setSuperkeysBeyond] = useState<Map<number, number[]>>(new Map());
+  /* False when the strict parser rejects the combos, since then not every Superkey reference is known */
+  const [combosKnown, setCombosKnown] = useState(true);
+  /* The previous-key rules, read only to know their Superkey references and the tabs an edit blocks */
+  const [rules, setRules] = useState<AltRepeatRule[]>([]);
+  const [rulesState, setRulesState] = useState<AltRepeatState>("unsupported");
+  /* Remember what the keyboard holds, so Save writes only changes and an edit never reuses a slot the keyboard may play */
+  const skSaved = useRef<SuperkeySavedState>(EMPTY_SUPERKEY_SAVED);
+  /* The layout as the keyboard holds it, to tell clashes already on the keyboard from new ones */
+  const skBaseline = useRef<SuperkeyDraft | null>(null);
+  /* The serialized combos on the keyboard, null when unknown */
+  const savedCombos = useRef<string | null>(null);
+  const [comboBreak, setComboBreak] = useState<ComboBreakState | null>(null);
+  const [ruleBreak, setRuleBreak] = useState<RuleBreakState | null>(null);
+  /* Hold the rules warning until the combo warning closes */
+  const [pendingRuleBreak, setPendingRuleBreak] = useState<RuleBreakState | null>(null);
   const [isWireless, setIsWireless] = useState(false);
   const [deviceName, setDeviceName] = useState("");
   const [neuronID, setNeuronID] = useState("");
@@ -144,10 +213,11 @@ function ComboEditor(props: ComboEditorProps) {
     try {
       setLoadingData(true);
 
-      const raw = (await currentDevice.command("combos.map")) as string;
+      /* Read uncached, so the editor knows exactly what the keyboard holds before it allocates Superkey slots */
+      const raw = (await currentDevice.noCacheCommand("combos.map")) as string;
       log.info("[Combos] combos.map ->", JSON.stringify(raw));
 
-      if (!raw || raw.trim().length === 0) {
+      if (typeof raw !== "string" || raw.trim().length === 0) {
         /* The command is unknown to this firmware. Say so rather than showing
          * an editor that silently cannot save. */
         log.warn("[Combos] empty reply: this firmware does not support combos.map");
@@ -177,31 +247,97 @@ function ComboEditor(props: ComboEditorProps) {
 
       const neurons = (store.get("neurons") as Neuron[]) ?? [];
       const neuron = neurons.find(n => n.id === chipID);
+      const loadedLayerNames = (neuron?.layers ?? []).map(layer => layer?.name ?? "");
 
+      /* Edit the combos as before, and allocate Superkeys only with combos the strict parser accepts */
+      const strict = parseCombosStrict(raw);
       setCombos(parseCombosRaw(raw, neuron?.combos ?? []));
-      setLayerNames((neuron?.layers ?? []).map(layer => layer?.name ?? ""));
+      setCombosKnown(strict !== null);
+      savedCombos.current = strict === null ? null : serializeCombos(strict);
+      setLayerNames(loadedLayerNames);
 
       /* Macros, so the result picker can offer them. Names come from the
        * neuron store, as in the Macro Editor. */
       const macrosRaw = (await currentDevice.command("macros.map")) as string;
-      setMacros(macrosRaw ? parseMacrosRaw(macrosRaw, neuron?.macros ?? []) : []);
+      const loadedMacros = macrosRaw ? parseMacrosRaw(macrosRaw, neuron?.macros ?? []) : [];
+      setMacros(loadedMacros);
 
-      const superkeysRaw = (await currentDevice.command("superkeys.map")) as string;
-      setSuperkeys(superkeysRaw ? parseSuperkeysRaw(superkeysRaw, neuron?.superkeys ?? []) : []);
+      let nextSuperkeysState: SuperkeyMode = "unsupported";
+      let rawSuper: string | null = null;
+      let skParsed: ReturnType<typeof parseSuperkeysTable> = null;
 
-      const keymapRaw = (await currentDevice.command("keymap.custom")) as string;
-      const keymapDefault = (await currentDevice.command("keymap.default")) as string;
-      const onlyCustom = Boolean(parseInt((await currentDevice.command("keymap.onlyCustom")) as string, 10));
+      if (store.get("capabilities.superkeys")) {
+        const reply = await currentDevice.noCacheCommand("superkeys.map");
+        skParsed = parseSuperkeysTable(reply);
+
+        if (skParsed === null) {
+          log.error("[Combos] superkeys.map could not be read", reply);
+          nextSuperkeysState = "failed";
+        } else {
+          nextSuperkeysState = "ready";
+          rawSuper = reply as string;
+        }
+      }
+
+      const skTable = skParsed?.table ?? [];
+      const loadCtx = labelContext(
+        currentLanguageLayout,
+        loadedLayerNames,
+        loadedMacros.map(macro => macro.name ?? ""),
+      );
+      setSuperkeys(withGeneratedNames(skTable, loadCtx));
+      setSuperkeysState(nextSuperkeysState);
+      setSuperkeysBeyond(skParsed?.beyond ?? new Map());
+
+      const keymapRaw = (await currentDevice.noCacheCommand("keymap.custom")) as string;
+      const keymapDefault = (await currentDevice.noCacheCommand("keymap.default")) as string;
+      const onlyCustom = Boolean(parseInt((await currentDevice.noCacheCommand("keymap.onlyCustom")) as string, 10));
 
       /* The board SVG wants parsed keys, not raw codes, so it can render each
        * label. Same shape the Layout Editor builds. */
       const layerSize = currentDevice.device.keyboard.rows * currentDevice.device.keyboard.columns;
+      const customCodes: number[][] = parseKeymapRaw(keymapRaw, layerSize);
+      const defaultCodes: number[][] = parseKeymapRaw(keymapDefault, layerSize);
 
       setKeymap({
-        custom: parseKeymapRaw(keymapRaw, layerSize).map(l => l.map((k: number) => keymapDB.parse(k))),
-        default: parseKeymapRaw(keymapDefault, layerSize).map(l => l.map((k: number) => keymapDB.parse(k))),
+        custom: customCodes.map(l => l.map((k: number) => keymapDB.parse(k))),
+        default: defaultCodes.map(l => l.map((k: number) => keymapDB.parse(k))),
         onlyCustom,
       });
+
+      /* The rules reference Superkeys too, and an edited Superkey can block the tabs of a key that uses it */
+      let nextRules: AltRepeatRule[] = [];
+      let nextRulesState: AltRepeatState = "unsupported";
+
+      if (store.get("capabilities.altRepeat")) {
+        const read = await readAltRepeatRules(currentDevice);
+        nextRulesState = read === null ? "failed" : "ready";
+        nextRules = read ?? [];
+
+        if (read === null) {
+          log.error("[Combos] altrepeat.map could not be read");
+        }
+      }
+
+      setRules(nextRules);
+      setRulesState(nextRulesState);
+
+      const scanRefs: LayoutRefs = {
+        customLayers: customCodes,
+        defaultLayers: onlyCustom ? [] : defaultCodes,
+        layerOffset: onlyCustom ? 0 : defaultCodes.length,
+        rules: nextRules,
+        combos: strict ?? [],
+      };
+      skSaved.current = {
+        ...EMPTY_SUPERKEY_SAVED,
+        table: rawSuper,
+        storedRows: skParsed?.storedRows ?? null,
+        keymapRefs: refSlotsOf({ ...scanRefs, rules: [], combos: [] }),
+        ruleRefs: refSlotsOf({ rules: nextRules }),
+        comboRefs: refSlotsOf({ combos: strict ?? [] }),
+      };
+      skBaseline.current = nextSuperkeysState === "ready" ? { ...scanRefs, table: skTable } : null;
 
       /* Colours, so the board reads exactly as it does in the Layout Editor.
        * The LED count has to be worked out the same way, or parseColormapRaw
@@ -226,7 +362,7 @@ function ComboEditor(props: ComboEditorProps) {
       setLoadingData(false);
       setLoading(false);
     }
-  }, [state, setLoading, keymapDB]);
+  }, [state, setLoading, keymapDB, currentLanguageLayout]);
 
   useEffect(() => {
     loadCombos();
@@ -234,38 +370,215 @@ function ComboEditor(props: ComboEditorProps) {
   }, []);
 
   /* ---------------------------------------------------------------------- */
+  /* Superkeys                                                               */
+  /* ---------------------------------------------------------------------- */
+
+  /* Label Superkeys from their actions, so key faces follow every edit */
+  const labelCtx = useMemo(
+    () =>
+      labelContext(
+        currentLanguageLayout,
+        layerNames,
+        macros.map(macro => macro.name ?? ""),
+      ),
+    [currentLanguageLayout, layerNames, macros],
+  );
+
+  const keymapCodes = useMemo(
+    () => ({
+      custom: keymap.custom.map(layer => layer.map(key => key.keyCode)),
+      default: keymap.default.map(layer => layer.map(key => key.keyCode)),
+    }),
+    [keymap],
+  );
+
+  const layerOffset = keymap.onlyCustom ? 0 : keymap.default.length;
+
+  /* Everything that can reference a Superkey, with these combos */
+  const draftRefs = (list: ComboType[]): LayoutRefs => ({
+    customLayers: keymapCodes.custom,
+    defaultLayers: keymap.onlyCustom ? [] : keymapCodes.default,
+    layerOffset,
+    rules: rulesState === "ready" ? rules : [],
+    combos: list,
+  });
+
+  const draftTable = (): number[][] =>
+    superkeys.slice(0, MAX_ACTIVE_SUPERKEYS).map(superkey => normalizeActions(superkey.actions));
+
+  /* Why Multi-action edits are off, or undefined. A new slot is safe only when every reference to the slots is known */
+  const multiActionBlock = (): string | undefined => {
+    if (superkeysState === "failed") {
+      return i18n.editor.multiAction.unreadable;
+    }
+
+    if (superkeysState !== "ready") {
+      return undefined;
+    }
+
+    if (!combosKnown) {
+      return i18n.editor.multiAction.combosUnknown;
+    }
+
+    return rulesState === "failed" ? i18n.editor.multiAction.rulesUnknown : undefined;
+  };
+
+  /* The slots the keyboard holds a definition in. After a failed write it may hold the loaded table or the draft */
+  const heldSlots = (): Set<number> => {
+    const persisted = skSaved.current.table === null ? null : parseSuperkeysTable(skSaved.current.table);
+
+    if (persisted !== null) {
+      return new Set(definedSlots(persisted.table));
+    }
+
+    return new Set([...definedSlots(skBaseline.current?.table ?? []), ...definedSlots(draftTable())]);
+  };
+
+  /* The capacity meter counts slots the keyboard still holds as used, since a new Superkey never takes one */
+  const superkeysInUse = (refs: Map<number, SkRef[]>): number =>
+    new Set([...refs.keys(), ...protectedSlots(skSaved.current), ...heldSlots()].filter(s => s < MAX_ACTIVE_SUPERKEYS)).size;
+
+  const showMultiActionToast = (content: string) => {
+    toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={content} />, { autoClose: 4000 });
+  };
+
+  /* ---------------------------------------------------------------------- */
   /* Save                                                                    */
   /* ---------------------------------------------------------------------- */
 
+  const storeNames = (list: ComboType[], table: number[][] | null) => {
+    const neurons = (store.get("neurons") as Neuron[]) ?? [];
+    const index = neurons.findIndex(n => n.id === neuronID);
+
+    if (index < 0) {
+      return;
+    }
+
+    neurons[index].combos = list;
+
+    if (table !== null) {
+      neurons[index].superkeys = withGeneratedNames(table, labelCtx);
+    }
+
+    store.set("neurons", neurons);
+  };
+
   const onApply = async () => {
     const { currentDevice } = state;
-    if (!currentDevice) return;
+
+    if (!currentDevice) {
+      return;
+    }
+
+    /* Save Superkeys only when every reference to them is known. Every Multi-action edit is off otherwise, so the table is unchanged */
+    const superkeysInput =
+      superkeysState === "ready" && multiActionBlock() === undefined
+        ? {
+            format: superkeyWriteFormat(currentDevice.device.info.product),
+            draft: { ...draftRefs(combos), table: draftTable() },
+            saved: skSaved.current,
+            baseline: skBaseline.current,
+            onlyCustom: keymap.onlyCustom,
+          }
+        : undefined;
+
+    const io: ComboSaveIO = {
+      writeSuperkeys: (table, format, storedRows) => writeSuperkeyTable(currentDevice, table, format, storedRows),
+      writeKeymap: async (serialized, onlyCustom) => {
+        await writeUncached(currentDevice, "keymap.custom", serialized);
+        await writeUncached(currentDevice, "keymap.onlyCustom", onlyCustom ? "1" : "0");
+      },
+      writeCombos: async serialized => {
+        log.info(`[Combos] saving ${combos.length} combo(s)`);
+        await writeUncached(currentDevice, "combos.map", serialized);
+      },
+      storeNames,
+      /* Read the previews again uncached, so the backup records the keyboard's values and not a failed reply */
+      rereadPreviews: async () => {
+        const replies: { command: string; raw: unknown }[] = [];
+
+        for (const command of previewCommands(Boolean(store.get("capabilities.quickTap")))) {
+          // eslint-disable-next-line no-await-in-loop
+          replies.push({ command, raw: await currentDevice.noCacheCommand(command) });
+        }
+
+        return firstUnreadable(replies);
+      },
+      /* Same as the other editors: a backup after every save. Lens reads the combos it badges from the newest backup */
+      backup: async () => {
+        const commands = await Backup.Commands(currentDevice);
+        const backup = await bkp.DoBackup(commands, neuronID, currentDevice);
+        Backup.SaveBackup(backup, currentDevice);
+      },
+    };
 
     try {
       setIsSaving(true);
 
-      const payload = serializeCombos(combos);
-      log.info(`[Combos] saving ${combos.length} combo(s)`);
-      await currentDevice.command("combos.map", payload);
+      const outcome = await runComboSave(io, {
+        combos,
+        savedCombos: savedCombos.current,
+        superkeys: superkeysInput,
+        dualFunction: Boolean(store.get("capabilities.dualFunction")),
+        isVirtual: currentDevice.file === true,
+      });
 
-      /* Names go to the neuron store in the same commit, so a save never
-       * leaves the labels describing a different set of combos. */
-      const neurons = (store.get("neurons") as Neuron[]) ?? [];
-      const index = neurons.findIndex(n => n.id === neuronID);
-      if (index >= 0) {
-        neurons[index].combos = combos;
-        store.set("neurons", neurons);
+      /* Refuse before any write, since the keyboard would play one of the clashing definitions on every key of a group */
+      if (outcome.kind === "blocked") {
+        const content = outcome.conflicts.map(conflict => conflictMessage(conflict, rules)).join(" ");
+        toast.error(<ToastMessage title={i18n.editor.multiAction.conflictTitle} content={content} />, { autoClose: false });
+        return;
       }
 
-      /* Same as the other editors: a backup after every save. Lens reads the
-       * combos it badges from the newest backup, and is told to reload by it. */
-      const commands = await Backup.Commands(currentDevice);
-      const backup = await bkp.DoBackup(commands, neuronID, currentDevice);
-      Backup.SaveBackup(backup, currentDevice);
+      /* Keep what the keyboard may hold also after a failed step, so a retry writes what is needed */
+      savedCombos.current = outcome.savedCombos;
+
+      if (outcome.superkeys) {
+        skSaved.current = outcome.superkeys.saved;
+      }
+
+      if (outcome.warnings.length > 0) {
+        const content = [i18n.editor.multiAction.conflictWarning]
+          .concat(outcome.warnings.map(conflict => conflictMessage(conflict, rules)))
+          .join(" ");
+        toast.warn(<ToastMessage title={i18n.editor.multiAction.conflictTitle} content={content} />, { autoClose: 8000 });
+      }
+
+      if (outcome.kind === "failed") {
+        log.error(`[Combos] save stopped at the ${outcome.failed} step`, outcome.error);
+        throw outcome.error instanceof Error ? outcome.error : new Error(String(outcome.error));
+      }
+
+      if (outcome.superkeys) {
+        const { table, layers } = outcome.superkeys;
+
+        /* Show merged Superkeys as the keyboard now holds them */
+        if (reconcileDraft(keymapCodes.custom, layers).length > 0) {
+          setKeymap({
+            default: keymap.default,
+            onlyCustom: keymap.onlyCustom,
+            custom: keymap.custom.map((layer, l) =>
+              layer.map((key, i) => (layers[l][i] === key.keyCode ? key : keymapDB.parse(layers[l][i]))),
+            ),
+          });
+        }
+
+        setSuperkeys(withGeneratedNames(table, labelCtx));
+        skBaseline.current = { ...draftRefs(combos), customLayers: layers, table };
+      }
+
+      if (outcome.backupSkipped !== undefined) {
+        const content = i18n.editor.combos.backupSkipped.replace("{0}", outcome.backupSkipped);
+        toast.warn(<ToastMessage title="Combos saved" content={content} />, { autoClose: 4000 });
+      } else if (outcome.backupError !== undefined) {
+        log.warn("[Combos] backup after save failed", outcome.backupError);
+        toast.warn(<ToastMessage title="Combos saved" content={i18n.editor.combos.backupFailed} />, { autoClose: 4000 });
+      } else {
+        toast.success(<ToastMessage title="Combos saved" content="Your combos are now on the keyboard." />, { autoClose: 2000 });
+      }
 
       setModified(false);
       cancelContext();
-      toast.success(<ToastMessage title="Combos saved" content="Your combos are now on the keyboard." />, { autoClose: 2000 });
     } catch (error) {
       log.error("[Combos] failed to save", error);
       toast.error(<ToastMessage title="Could not save combos" content={String(error)} />, { autoClose: 4000 });
@@ -326,6 +639,36 @@ function ComboEditor(props: ComboEditorProps) {
     const source = combos[selected];
     if (!source) return;
 
+    /* Give a Superkey result its own copy, so the two combos never share one */
+    let { action } = source;
+
+    if (superkeySlot(action) !== null && superkeysState !== "unsupported") {
+      const block = multiActionBlock();
+
+      if (block !== undefined) {
+        showMultiActionToast(block);
+        return;
+      }
+
+      const table = draftTable();
+      const cloned = cloneSuperkeyRefs([action], table, table, transferUsed(draftRefs(combos), skSaved.current, heldSlots()));
+
+      if ("error" in cloned) {
+        showMultiActionToast(i18n.editor.combos.cloneCapacity);
+        return;
+      }
+
+      [action] = cloned.codes;
+
+      if (cloned.missing.length > 0) {
+        showMultiActionToast(i18n.editor.combos.cloneMissing);
+      }
+
+      if (cloned.table !== table) {
+        setSuperkeys(withGeneratedNames(cloned.table, labelCtx));
+      }
+    }
+
     /* Everything is copied, keys included. The usual reason to clone is the
      * same chord on another layer: change the copy's layer and it is done.
      * Until then it duplicates the source, which the editor points out. */
@@ -334,7 +677,7 @@ function ComboEditor(props: ComboEditorProps) {
       positions: source.positions.slice(),
       layer: source.layer,
       flags: source.flags,
-      action: source.action,
+      action,
     };
 
     const list = renumber(combos.concat([copy]));
@@ -436,6 +779,183 @@ function ComboEditor(props: ComboEditorProps) {
     updateCombo(selected, { ...combo, action: keyCode, flags: combo.flags || COMBO_FLAG_ENABLED });
   };
 
+  /* Show one warning at a time. The combo warning goes first */
+  const showBreaks = (
+    comboReason: ComboBreakReason | null,
+    comboIndexes: number[],
+    ruleReason: AltRepeatBlock | null,
+    ruleCount: number,
+    undo: ComboSnapshot,
+  ) => {
+    const rulesBreak =
+      rulesState === "ready" && ruleReason !== null && ruleCount > 0 ? { reason: ruleReason, ruleCount, undo } : null;
+
+    if (comboReason && comboIndexes.length > 0) {
+      setComboBreak({ reason: comboReason, comboIndexes, undo });
+      setPendingRuleBreak(rulesBreak);
+    } else if (rulesBreak) {
+      setRuleBreak(rulesBreak);
+    }
+  };
+
+  const restoreSnapshot = (snapshot: ComboSnapshot) => {
+    setSuperkeys(snapshot.superkeys);
+    setCombos(snapshot.combos);
+    setModified(true);
+    startContext();
+  };
+
+  const undoComboBreak = () => {
+    if (comboBreak) {
+      restoreSnapshot(comboBreak.undo);
+    }
+
+    setComboBreak(null);
+    setPendingRuleBreak(null);
+  };
+
+  const keepComboBreak = () => {
+    setComboBreak(null);
+    setRuleBreak(pendingRuleBreak);
+    setPendingRuleBreak(null);
+  };
+
+  const undoRuleBreak = () => {
+    if (ruleBreak) {
+      restoreSnapshot(ruleBreak.undo);
+    }
+
+    setRuleBreak(null);
+  };
+
+  /* Set the five actions of the selected combo's result, as a plain key or a Superkey */
+  const onComboMultiActionChange = (actions: number[]) => {
+    const current = combos[selected];
+
+    if (!current || superkeysState !== "ready" || multiActionBlock() !== undefined) {
+      return;
+    }
+
+    const table = draftTable();
+    const result = applyMultiAction(
+      {
+        table,
+        refs: superkeyRefs(draftRefs(combos)),
+        protectedSlots: protectedSlots(skSaved.current),
+        currentCode: current.action,
+        heldSlots: heldSlots(),
+      },
+      { kind: "combo", index: selected },
+      actions,
+    );
+
+    if ("error" in result) {
+      showMultiActionToast(result.error === "capacity" ? i18n.editor.multiAction.capacity : i18n.editor.multiAction.emptyRule);
+      return;
+    }
+
+    const { table: nextTable, code: nextCode } = result;
+
+    if (nextCode === current.action && nextTable === table) {
+      return;
+    }
+
+    const undo: ComboSnapshot = { superkeys, combos };
+    const list =
+      nextCode === current.action
+        ? combos
+        : combos.map((each, index) =>
+            index === selected ? { ...each, action: nextCode, flags: each.flags || COMBO_FLAG_ENABLED } : each,
+          );
+
+    /* Check every key that uses an edited Superkey, on the custom and the default layers */
+    const ruleList = rulesState === "ready" ? rules : [];
+    const custom = multiActionBreaks(
+      { customLayers: keymapCodes.custom, table, layerOffset },
+      { customLayers: keymapCodes.custom, table: nextTable, layerOffset },
+      list,
+      ruleList,
+    );
+    const defaults = keymap.onlyCustom
+      ? null
+      : multiActionBreaks(
+          { customLayers: keymapCodes.default, table, layerOffset: 0 },
+          { customLayers: keymapCodes.default, table: nextTable, layerOffset: 0 },
+          list,
+          ruleList,
+        );
+    const comboIndexes = [...new Set([...custom.comboIndexes, ...(defaults?.comboIndexes ?? [])])].sort((a, b) => a - b);
+
+    if (nextTable !== table) {
+      setSuperkeys(withGeneratedNames(nextTable, labelCtx));
+    }
+
+    log.info(`[Combos] combo ${selected} multi-action -> ${nextCode}`);
+    commit(list);
+    showBreaks(
+      custom.comboReason ?? defaults?.comboReason ?? null,
+      comboIndexes,
+      custom.ruleReason ?? defaults?.ruleReason ?? null,
+      custom.ruleCount + (defaults?.ruleCount ?? 0),
+      undo,
+    );
+  };
+
+  /* The Multi-action tab for the selected combo's result. Keyboards without Superkeys have none, since a result can't be dual-function */
+  const comboMultiAction = (): MultiActionProps | undefined => {
+    const current = combos[selected];
+
+    if (!current || superkeysState === "unsupported") {
+      return undefined;
+    }
+
+    const code = current.action;
+    const table = draftTable();
+    const refs = superkeyRefs(draftRefs(combos));
+    const slot = superkeySlot(code);
+    const dualUse = decodeDualUse(code);
+    const tapSeed = superkeyTapSeed(code);
+    let actions = normalizeActions([tapSeed ?? IDLE_ACTION]);
+    let storage: MultiActionStorage = "plain";
+    let notice: string | undefined = tapSeedRefused(code) ? i18n.editor.multiAction.tapNotSeeded : undefined;
+
+    if (slot !== null) {
+      storage = "superkey";
+
+      if (slot >= MAX_ACTIVE_SUPERKEYS) {
+        actions = normalizeActions(superkeysBeyond.get(slot));
+        notice = i18n.editor.multiAction.beyondLimit
+          .replace("{slot}", String(slot + 1))
+          .replace("{max}", String(MAX_ACTIVE_SUPERKEYS));
+      } else if (slot >= table.length) {
+        actions = normalizeActions([]);
+        notice = i18n.editor.multiAction.undefinedSlot.replace("{slot}", String(slot + 1));
+      } else {
+        actions = table[slot];
+      }
+    } else if (dualUse !== null) {
+      storage = "dualUse";
+      actions = normalizeActions([dualUse.tap, dualUse.hold]);
+    }
+
+    const ruleList = rulesState === "ready" ? rules : [];
+    const users = slot === null ? [] : (refs.get(slot) ?? []).map(ref => refName(ref, ruleList, defaultCellName));
+
+    return {
+      mode: "full",
+      context: "combo",
+      actions,
+      storage,
+      slot: slot !== null && slot < MAX_ACTIVE_SUPERKEYS ? slot : null,
+      users,
+      capacity: { used: superkeysInUse(refs), max: MAX_ACTIVE_SUPERKEYS },
+      disabledReason: multiActionBlock(),
+      notice,
+      actionLabel: action => actionText(action, labelCtx),
+      onChange: onComboMultiActionChange,
+    };
+  };
+
   /* ---------------------------------------------------------------------- */
   /* Render helpers                                                          */
   /* ---------------------------------------------------------------------- */
@@ -463,13 +983,17 @@ function ComboEditor(props: ComboEditorProps) {
    * the first five characters of the name in place of the bare number. */
   const withName = useCallback(
     (key: KeyType): KeyType => {
+      /* Label Superkeys from their actions, as the Layout Editor does */
+      if (key?.extraLabel === "SUPER") {
+        const slot = key.keyCode - SUPERKEY_FIRST;
+        return { ...key, label: superkeyFace(superkeys[slot]?.actions, slot, labelCtx) };
+      }
+
       if (!key || typeof key.label !== "string" || /\p{L}/u.test(key.label)) return key;
-      let name: string | undefined;
-      if (key.extraLabel === "MACRO") name = macros[key.keyCode - 53852]?.name;
-      if (key.extraLabel === "SUPER") name = superkeys[key.keyCode - 53980]?.name;
+      const name = key.extraLabel === "MACRO" ? macros[key.keyCode - 53852]?.name : undefined;
       return name ? { ...key, label: name.substring(0, 5) } : key;
     },
-    [macros, superkeys],
+    [macros, superkeys, labelCtx],
   );
 
   const layerData = useMemo((): KeyType[] => {
@@ -812,6 +1336,7 @@ function ComboEditor(props: ComboEditorProps) {
               resetScroll={() => {}}
               allowAutoshift={false}
               fullMouse
+              multiAction={comboMultiAction()}
             />
           </>
         ) : (
@@ -849,6 +1374,23 @@ function ComboEditor(props: ComboEditorProps) {
           </>
         )}
       </div>
+
+      <ComboBreakDialog
+        open={comboBreak !== null}
+        reason={comboBreak?.reason ?? null}
+        comboIndexes={comboBreak?.comboIndexes ?? []}
+        combos={combos}
+        onUndo={undoComboBreak}
+        onKeep={keepComboBreak}
+      />
+
+      <AltRepeatBreakDialog
+        open={ruleBreak !== null}
+        reason={ruleBreak?.reason ?? null}
+        ruleCount={ruleBreak?.ruleCount ?? 0}
+        onUndo={undoRuleBreak}
+        onKeep={() => setRuleBreak(null)}
+      />
     </Styles>
   );
 }
