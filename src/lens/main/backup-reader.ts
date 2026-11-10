@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import type { KeyboardModel, LensKeyboardRef } from "../shared/types";
 import { SONSEI_KEYS_PER_LAYER, SONSEI_COLOR_LAYER_SIZE, getProductSpec } from "../shared/constants";
+import { isRecoveryBackupFile } from "../shared/recoveryBackup";
 import {
   parseKeymap,
   parsePaletteRGB,
@@ -100,7 +101,7 @@ export function findLatestBackup(keyboard: LensKeyboardRef): string | null {
 
   const files = fs
     .readdirSync(folderPath)
-    .filter(f => f.endsWith(".json"))
+    .filter(f => f.endsWith(".json") && !isRecoveryBackupFile(f))
     .map(f => path.join(folderPath, f));
   if (files.length === 0) return null;
 

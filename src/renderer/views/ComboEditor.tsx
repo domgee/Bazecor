@@ -613,6 +613,11 @@ function ComboEditor(props: ComboEditorProps) {
   };
 
   const destroyContext = async () => {
+    /* Keep the draft while a save runs, since the save still writes it and a reload would race its writes */
+    if (saving.current) {
+      return;
+    }
+
     setModified(false);
     cancelContext();
     await loadCombos();

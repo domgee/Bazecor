@@ -74,6 +74,7 @@ import {
   wheelSwitchesTab,
 } from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
+import { RecoveryCoverage, SuperkeyRemoval, recoveryPaths, runPreGc } from "@Renderer/modules/MultiAction/preGcGate";
 import {
   BackupSkippedError,
   HOLD_TIMEOUT_COMMAND,
@@ -144,6 +145,8 @@ import {
   defaultCellName,
   definedSlots,
   dualUseOnlyCode,
+  finalGcTable,
+  gcRemovals,
   multiActionBreaks,
   prepareSuperkeyWrite,
   protectedSlots,
@@ -378,6 +381,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const skSaved = useRef<SuperkeySavedState>(EMPTY_SUPERKEY_SAVED);
   /* The layout as the keyboard holds it, to tell clashes already on the keyboard from new ones */
   const skBaseline = useRef<SuperkeyDraft | null>(null);
+  /* The Superkey definitions verified recovery backups of this keyboard hold, so a save only backs up what no earlier one holds */
+  const recoveryCovered = useRef<{ neuronID: string; covered: RecoveryCoverage }>({ neuronID: "", covered: new Map() });
   const [altRepeatRules, setAltRepeatRules] = useState<AltRepeatRule[]>([]);
   const [altRepeatState, setAltRepeatState] = useState<AltRepeatState>("unsupported");
   /* Remember the table the keyboard holds so Save only writes a changed table. Null after a failed write */
@@ -1566,63 +1571,124 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
     const custom = draftCodes(keymap.custom);
     const refs = draftRefs(custom, altRepeatRules);
-    let superkeysInput: SuperkeySaveInput | undefined;
-
-    if (superkeysState === "ready") {
-      const format = superkeyWriteFormat(currentDevice?.device.info.product);
-      /* Keep unused Superkeys until the Superkeys page is gone, since it still names slots no key uses */
-      const collect = false;
-      const prepared = prepareSuperkeyWrite({
-        draft: { ...refs, table: draftTable() },
-        saved: skSaved.current,
-        baseline: skBaseline.current,
-        collect,
-        format,
-      });
-
-      /* Refuse before any write, since the keyboard would play one of the clashing definitions on every key of a group */
-      if (prepared.conflicts.length > 0) {
-        const content = prepared.conflicts.map(conflict => conflictMessage(conflict, altRepeatRules)).join(" ");
-        toast.error(
-          <ToastMessage title={i18n.editor.multiAction.conflictTitle} content={content} icon={<IconArrowDownWithLine />} />,
-          {
-            autoClose: false,
-            icon: "",
-          },
-        );
-        return;
-      }
-
-      if (prepared.warnings.length > 0) {
-        const content = [i18n.editor.multiAction.conflictWarning]
-          .concat(prepared.warnings.map(conflict => conflictMessage(conflict, altRepeatRules)))
-          .join(" ");
-        toast.warn(
-          <ToastMessage title={i18n.editor.multiAction.conflictTitle} content={content} icon={<IconArrowDownWithLine />} />,
-          {
-            autoClose: 8000,
-            icon: "",
-          },
-        );
-      }
-
-      superkeysInput = {
-        mode: "ready",
-        format,
-        prepared: { table: prepared.table, layers: prepared.layers },
-        collect,
-        draftRefs: { defaultLayers: refs.defaultLayers, layerOffset: refs.layerOffset, combos: refs.combos },
-        saved: skSaved.current,
-      };
-    }
-
+    const isVirtual = currentDevice.file === true;
     const saveStart = holdSync.beginSave();
     let reloadHoldMods = false;
+    let superkeysInput: SuperkeySaveInput | undefined;
+    let removals: SuperkeyRemoval[] = [];
+    let persistedBefore: number[][] | null = null;
+
+    /* Refuse edits from here on, since the recovery backup before the first write takes a while */
+    saving.current = true;
+    setLoading(true);
+    setIsSaving(true);
+
+    const stopBeforeWrite = () => {
+      setLoading(false);
+      setIsSaving(false);
+    };
 
     try {
-      saving.current = true;
-      setLoading(true);
-      setIsSaving(true);
+      if (superkeysState === "ready") {
+        const format = superkeyWriteFormat(currentDevice?.device.info.product);
+        const persisted = skSaved.current.table === null ? null : parseSuperkeysTable(skSaved.current.table);
+        /* Unread rules stopped the save above, and unread combos may reference any slot */
+        const ready = combosState !== "failed";
+        let previewsOk = true;
+
+        /* Read the options a backup records first, so neither backup stores a failed reply from the load */
+        if (ready && !isVirtual && persisted !== null) {
+          previewsOk =
+            (await unreadableBeforeBackup(currentDevice, {
+              previews: Boolean(store.get("capabilities.dualFunction")),
+              hasQuickTap: Boolean(store.get("capabilities.quickTap")),
+              perKey: perKeyState === "failed",
+            })) === null;
+        }
+
+        if (recoveryCovered.current.neuronID !== neuronID) {
+          recoveryCovered.current = { neuronID, covered: new Map() };
+        }
+
+        const draft = { ...refs, table: draftTable() };
+        persistedBefore = persisted?.table ?? null;
+        const gate = await runPreGc(
+          { collect: ready, isVirtual, previewsOk, persistedTable: persistedBefore, covered: recoveryCovered.current.covered },
+          {
+            prepare: collect => prepareSuperkeyWrite({ draft, saved: skSaved.current, baseline: skBaseline.current, collect, format }),
+            removals: prepared =>
+              gcRemovals({
+                persistedTable: persistedBefore ?? [],
+                finalTable: finalGcTable(prepared.table, { ...refs, customLayers: prepared.layers }, format),
+              }),
+            backup: async () => {
+              /* Read the Superkeys uncached, so the backup records what the keyboard holds and not a cached write */
+              await currentDevice.noCacheCommand("superkeys.map");
+              const backup = await bkp.DoBackup(await Backup.Commands(currentDevice), neuronID, currentDevice);
+              const path = await Backup.SaveRecoveryBackup(backup, currentDevice);
+              const held = parseSuperkeysTable(backup.backup.find(entry => entry.command === "superkeys.map")?.data);
+              return { path, table: held?.table ?? [] };
+            },
+          },
+        );
+        const { prepared, collect } = gate;
+        recoveryCovered.current = { neuronID, covered: gate.covered };
+        removals = gate.removals;
+
+        if (gate.skipped !== undefined) {
+          log.info(`[LayoutEditor] unused Superkeys kept: ${gate.skipped}`);
+        }
+
+        if (gate.skipped === "backupFailed") {
+          log.warn("[LayoutEditor] recovery backup failed, unused Superkeys kept", gate.error);
+          toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={i18n.editor.multiAction.gcBackupFailed} />, {
+            autoClose: 6000,
+            icon: "",
+          });
+        } else if (gate.skipped === "tableUnknown") {
+          toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={i18n.editor.multiAction.gcTableUnknown} />, {
+            autoClose: 6000,
+            icon: "",
+          });
+        }
+
+        /* Refuse before any write, since the keyboard would play one of the clashing definitions on every key of a group */
+        if (prepared.conflicts.length > 0) {
+          const content = prepared.conflicts.map(conflict => conflictMessage(conflict, altRepeatRules)).join(" ");
+          toast.error(
+            <ToastMessage title={i18n.editor.multiAction.conflictTitle} content={content} icon={<IconArrowDownWithLine />} />,
+            {
+              autoClose: false,
+              icon: "",
+            },
+          );
+          stopBeforeWrite();
+          return;
+        }
+
+        if (prepared.warnings.length > 0) {
+          const content = [i18n.editor.multiAction.conflictWarning]
+            .concat(prepared.warnings.map(conflict => conflictMessage(conflict, altRepeatRules)))
+            .join(" ");
+          toast.warn(
+            <ToastMessage title={i18n.editor.multiAction.conflictTitle} content={content} icon={<IconArrowDownWithLine />} />,
+            {
+              autoClose: 8000,
+              icon: "",
+            },
+          );
+        }
+
+        superkeysInput = {
+          mode: "ready",
+          format,
+          prepared: { table: prepared.table, layers: prepared.layers },
+          collect,
+          draftRefs: { defaultLayers: refs.defaultLayers, layerOffset: refs.layerOffset, combos: refs.combos },
+          saved: skSaved.current,
+        };
+      }
+
       const saveInput: LayoutSaveInput = {
         mode: holdSaveMode(),
         layers: custom,
@@ -1760,6 +1826,24 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           );
         },
       );
+      /* Name the recovery backup that holds the Superkeys this save removed */
+      const removed =
+        saved.superkeys && persistedBefore !== null && removals.length > 0
+          ? gcRemovals({ persistedTable: persistedBefore, finalTable: saved.superkeys.table })
+          : [];
+
+      if (removed.length > 0) {
+        const paths = recoveryPaths(removed, recoveryCovered.current.covered);
+        toast.info(
+          <ToastMessage
+            title={i18n.editor.multiAction.title}
+            content={i18n.editor.multiAction.gcRemoved.replace("{count}", String(removed.length)).replace("{path}", paths.join(", "))}
+            icon={<IconArrowDownWithLine />}
+          />,
+          { autoClose: false, icon: "" },
+        );
+      }
+
       /* Clear the dirty state only now, since a virtual keyboard keeps the save only in the file the backup writes */
       setModified(false);
       setLeftSideModified(false);
@@ -3327,6 +3411,11 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           isColorActive={modeselect !== "keyboard"}
           saveContext={onApply}
           destroyContext={() => {
+            /* Keep the draft while a save runs, since the save still writes it and a rescan would race its writes */
+            if (saving.current) {
+              return;
+            }
+
             log.info("cancelling context: ", props);
             scanned.current = false;
             cancelContext();

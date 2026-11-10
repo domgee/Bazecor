@@ -47,9 +47,10 @@ import {
 import { HOLD_MODS_COMMAND, holdModsTargetOf, restoreHoldMods, writeHoldMods } from "../parsers/holdMods";
 import restoreCommand from "./restoreCommand";
 import { fitPaletteToFormat } from "../parsers/palette";
-import { SUPERKEYS_COMMAND, fitSuperkeysForTarget } from "../parsers/superkeys";
+import { SUPERKEYS_COMMAND, fitSuperkeysForTarget, parseSuperkeysTable } from "../parsers/superkeys";
 import { rgb2w } from "../color";
 import { isSupportedLensProduct } from "../../lens/shared/constants";
+import { RECOVERY_BACKUP_SUFFIX, isRecoveryBackupFile } from "../../lens/shared/recoveryBackup";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const glob = require(`glob`);
@@ -183,6 +184,19 @@ const convertDefySonseiCommand = (spec: ConversionSpec, command: string, data: s
     default:
       return data;
   }
+};
+
+const pad = (value: number, width = 2) => `${value}`.padStart(width, "0");
+
+/** The backup file name for `date`, YYYYMMDDhhmmss with milliseconds when asked, then the keyboard's name and the suffix */
+export const backupFileName = (date: Date, neuronName: string | undefined, suffix = "", withMilliseconds = false): string => {
+  const stamp =
+    `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
+    `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}` +
+    `${withMilliseconds ? pad(date.getMilliseconds(), 3) : ""}`;
+  const name = neuronName === undefined || neuronName === "" ? "NoName" : neuronName;
+
+  return `${stamp}-${name.replace(/[^\w\s]/gi, "")}${suffix}.json`;
 };
 
 export default class Backup {
@@ -341,7 +355,7 @@ export default class Backup {
     }
 
     const folderPath = path.join(store.get("settings.backupFolder") as string, device.device.info.product, neuronID);
-    if (fs.existsSync(folderPath) && fs.readdirSync(folderPath).some(f => f.endsWith(".json"))) {
+    if (fs.existsSync(folderPath) && fs.readdirSync(folderPath).some(f => f.endsWith(".json") && !isRecoveryBackupFile(f))) {
       return false;
     }
 
@@ -377,19 +391,7 @@ export default class Backup {
     try {
       if (localBackup.neuron.name === undefined || localBackup.neuron.name === "") localBackup.neuron.name = "NoName";
       const folderPath = path.join(folder, product, localBackup.neuronID);
-      const fullPath = path.join(
-        folder,
-        product,
-        localBackup.neuronID,
-        `${
-          d.getFullYear() +
-          `0${d.getMonth() + 1}`.slice(-2) +
-          `0${d.getDate()}`.slice(-2) +
-          `0${d.getHours()}`.slice(-2) +
-          `0${d.getMinutes()}`.slice(-2) +
-          `0${d.getSeconds()}`.slice(-2)
-        }-${localBackup.neuron.name.replace(/[^\w\s]/gi, "")}.json`,
-      );
+      const fullPath = path.join(folder, product, localBackup.neuronID, backupFileName(d, localBackup.neuron.name));
       const json = JSON.stringify(localBackup, null, 2);
       log.info(fullPath, folderPath, localBackup);
       log.info("Creating folders");
@@ -769,6 +771,52 @@ export default class Backup {
     return false;
   };
 
+  /**
+   * Save a backup before the Layout editor removes unused Superkeys, so a manual restore can bring them back
+   * @returns The path of the file, written and read back
+   */
+  static async SaveRecoveryBackup(backup: BackupType, device: Device, now: () => Date = () => new Date()): Promise<string> {
+    if (device.file !== false) {
+      throw new Error("A virtual keyboard has no recovery backup");
+    }
+
+    const json = JSON.stringify(backup, null, 2);
+    const folderPath = path.join(store.get("settings.backupFolder") as string, device.device.info.product, backup.neuronID);
+    const date = now();
+
+    await fs.promises.mkdir(folderPath, { recursive: true });
+
+    /* Never overwrite an earlier recovery file, which may hold Superkeys this one does not */
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const suffix = attempt === 0 ? RECOVERY_BACKUP_SUFFIX : `${RECOVERY_BACKUP_SUFFIX}-${attempt + 1}`;
+      const fullPath = path.join(folderPath, backupFileName(date, backup.neuron?.name, suffix, true));
+
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await fs.promises.writeFile(fullPath, json, { flag: "wx" });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
+          continue;
+        }
+
+        throw error;
+      }
+
+      // eslint-disable-next-line no-await-in-loop
+      const written = await fs.promises.readFile(fullPath, "utf-8");
+      const data = (JSON.parse(written) as BackupType).backup?.find(entry => entry.command === SUPERKEYS_COMMAND)?.data;
+
+      if (written !== json || parseSuperkeysTable(data) === null) {
+        throw new Error(`The recovery backup ${fullPath} does not hold the Superkeys`);
+      }
+
+      log.info(`[Backup] recovery backup saved to ${fullPath}`);
+      return fullPath;
+    }
+
+    throw new Error(`No free name for a recovery backup in ${folderPath}`);
+  }
+
   static getLatestBackup = async (backupFolder: string, neuronID: string, device: Device) => {
     try {
       // creating folder path with current device
@@ -783,7 +831,8 @@ export default class Backup {
       if (process.platform === "win32") folderSync = glob.sync(`${folderPath}\\*json`.replace(/\\/g, "/"));
       else folderSync = glob.sync(`${folderPath}/*json`);
       type FolderMapType = { name: string; ctime: Date };
-      const mappedFolder: FolderMapType[] = folderSync.map((name: string) => ({
+      /* Leave out recovery backups, which hold the keyboard as it was before a clean-up */
+      const mappedFolder: FolderMapType[] = folderSync.filter((name: string) => !isRecoveryBackupFile(name)).map((name: string) => ({
         name,
         ctime: fs.statSync(name).ctime,
       }));
