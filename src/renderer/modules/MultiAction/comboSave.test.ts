@@ -60,7 +60,7 @@ const mockIO = (fail: Fail = {}) => {
     storeNames: vi.fn((combos: ComboType[], table: number[][] | null) => {
       steps.push(`names ${combos.length} ${table === null ? "-" : table.length}`);
     }),
-    rereadPreviews: vi.fn(async () => {
+    unreadableBeforeBackup: vi.fn(async () => {
       steps.push("previews");
       return fail.previews ?? null;
     }),
@@ -105,7 +105,7 @@ const superkeysInput = (
 const input = (overrides: Partial<ComboSaveInput>): ComboSaveInput => ({
   combos: [],
   savedCombos: serializeCombos([]),
-  dualFunction: false,
+  rereadBeforeBackup: false,
   isVirtual: false,
   ...overrides,
 });
@@ -415,33 +415,42 @@ describe("runComboSave failures", () => {
 });
 
 describe("runComboSave backup", () => {
-  test("the previews are read again before the backup", async () => {
+  test("the commands the backup records are read again before it", async () => {
     const { io, steps } = mockIO();
 
-    const outcome = await runComboSave(io, input({ combos: [combo(0, A)], dualFunction: true }));
+    const outcome = await runComboSave(io, input({ combos: [combo(0, A)], rereadBeforeBackup: true }));
 
     expect(steps).toEqual(["combos 1", "names 1 -", "previews", "backup"]);
     expect(outcome).toMatchObject({ kind: "saved", done: ["combos", "backup"] });
   });
 
-  test("an unreadable preview skips the backup and keeps the save on a real keyboard", async () => {
+  test("an unreadable command skips the backup and keeps the save on a real keyboard", async () => {
     const { io, steps } = mockIO({ previews: "qukeys.holdTimeout" });
 
-    const outcome = await runComboSave(io, input({ combos: [combo(0, A)], dualFunction: true }));
+    const outcome = await runComboSave(io, input({ combos: [combo(0, A)], rereadBeforeBackup: true }));
 
     expect(steps).toEqual(["combos 1", "names 1 -", "previews"]);
     expect(outcome).toMatchObject({ kind: "saved", done: ["combos"], backupSkipped: "qukeys.holdTimeout" });
   });
 
-  test("an unreadable preview or a failed backup fails the save on a virtual keyboard", async () => {
+  test("an unreadable command or a failed backup fails the save on a virtual keyboard", async () => {
     const skipped = await runComboSave(
       mockIO({ previews: "qukeys.holdTimeout" }).io,
-      input({ combos: [combo(0, A)], dualFunction: true, isVirtual: true }),
+      input({ combos: [combo(0, A)], rereadBeforeBackup: true, isVirtual: true }),
     );
     const failed = await runComboSave(mockIO({ backup: true }).io, input({ combos: [combo(0, A)], isVirtual: true }));
 
     expect(skipped).toMatchObject({ kind: "failed", failed: "backup" });
     expect(failed).toMatchObject({ kind: "failed", failed: "backup" });
+  });
+
+  test("an unreadable superkeys.map skips the backup and keeps the save on a real keyboard", async () => {
+    const { io, steps } = mockIO({ previews: "superkeys.map" });
+
+    const outcome = await runComboSave(io, input({ combos: [combo(0, A)], rereadBeforeBackup: true }));
+
+    expect(steps).toEqual(["combos 1", "names 1 -", "previews"]);
+    expect(outcome).toMatchObject({ kind: "saved", done: ["combos"], backupSkipped: "superkeys.map" });
   });
 
   test("a failed backup keeps the save on a real keyboard", async () => {

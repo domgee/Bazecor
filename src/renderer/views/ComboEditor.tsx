@@ -42,7 +42,7 @@ import { MultiActionProps, MultiActionStorage } from "@Renderer/modules/MultiAct
 import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 import { ComboSaveIO, readKeymapReplies, refSlotsOf, runComboSave } from "@Renderer/modules/MultiAction/comboSave";
 import { EMPTY_SUPERKEY_SAVED, SuperkeyMode, SuperkeySavedState } from "@Renderer/modules/HoldMods/layoutSave";
-import { rereadPreviews } from "@Renderer/modules/DualFunctionKeys/previewReads";
+import { unreadableBeforeBackup } from "@Renderer/modules/DualFunctionKeys/previewReads";
 
 import { useDevice } from "@Renderer/DeviceContext";
 import Store from "@Renderer/utils/Store";
@@ -499,6 +499,7 @@ function ComboEditor(props: ComboEditorProps) {
       return;
     }
 
+    const dualFunction = Boolean(store.get("capabilities.dualFunction"));
     /* Save Superkeys only when every reference to them is known. Every Multi-action edit is off otherwise, so the table is unchanged */
     const superkeysInput =
       superkeysState === "ready" && multiActionBlock() === undefined
@@ -522,7 +523,13 @@ function ComboEditor(props: ComboEditorProps) {
         await writeUncached(currentDevice, "combos.map", serialized);
       },
       storeNames,
-      rereadPreviews: () => rereadPreviews(currentDevice, Boolean(store.get("capabilities.quickTap"))),
+      unreadableBeforeBackup: () =>
+        unreadableBeforeBackup(currentDevice, {
+          previews: dualFunction,
+          hasQuickTap: Boolean(store.get("capabilities.quickTap")),
+          perKey: false,
+          superkeys: superkeysState !== "unsupported",
+        }),
       /* Same as the other editors: a backup after every save. Lens reads the combos it badges from the newest backup */
       backup: async () => {
         const commands = await Backup.Commands(currentDevice);
@@ -543,7 +550,7 @@ function ComboEditor(props: ComboEditorProps) {
         combos,
         savedCombos: savedCombos.current,
         superkeys: superkeysInput,
-        dualFunction: Boolean(store.get("capabilities.dualFunction")),
+        rereadBeforeBackup: dualFunction || superkeysState !== "unsupported",
         isVirtual: currentDevice.file === true,
       });
 

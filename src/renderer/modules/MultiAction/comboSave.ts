@@ -48,8 +48,8 @@ export interface ComboSaveInput {
   savedCombos: string | null;
   /* Only when the Superkeys and every reference to them are known */
   superkeys?: ComboSuperkeyInput;
-  /* Read the dual-function previews again before the backup */
-  dualFunction: boolean;
+  /* Read the commands the backup records again before it, since a failed read at load stays in the cache */
+  rereadBeforeBackup: boolean;
   /* A virtual keyboard keeps the save only in the backup file, so a backup that does not run fails the save */
   isVirtual: boolean;
 }
@@ -61,8 +61,8 @@ export interface ComboSaveIO {
   writeCombos: (serialized: string) => Promise<void>;
   /* Store the combo names and the generated Superkey names, which the backup reads */
   storeNames: (combos: ComboType[], table: number[][] | null) => void;
-  /* The first preview command that can not be read, or null */
-  rereadPreviews: () => Promise<string | null>;
+  /* The first command the backup records that can not be read, or null */
+  unreadableBeforeBackup: () => Promise<string | null>;
   backup: () => Promise<void>;
 }
 
@@ -79,7 +79,7 @@ export type ComboSaveOutcome =
       /* Only with a Superkey input. The table the save ends with, the custom layers the keyboard holds and the saved state, also after a
        * failed step */
       superkeys?: { table: number[][]; layers: number[][]; saved: SuperkeySavedState };
-      /* A real keyboard keeps the save when the backup is left out. The preview command that could not be read, or the backup error */
+      /* A real keyboard keeps the save when the backup is left out. The command that could not be read, or the backup error */
       backupSkipped?: string;
       backupError?: unknown;
     };
@@ -239,9 +239,9 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
 
   io.storeNames(input.combos, table);
 
-  /* Read the previews again first, so the backup never records a failed reply from the load */
-  if (input.dualFunction) {
-    const unreadable = await io.rereadPreviews();
+  /* Read again first, so the backup never records a failed reply from the load */
+  if (input.rereadBeforeBackup) {
+    const unreadable = await io.unreadableBeforeBackup();
 
     if (unreadable !== null) {
       if (input.isVirtual) {
