@@ -10,6 +10,7 @@ import {
   previewCommands,
   readGlobalNumber,
   rereadPreviews,
+  unreadableBeforeBackup,
 } from "./previewReads";
 
 const OPTIONS_OFF = "0 0 0 0 0 0 0";
@@ -125,5 +126,64 @@ describe("preview reads", () => {
     expect(error).toBeInstanceOf(Error);
     expect(error.command).toBe("qukeys.holdTimeout");
     expect(error.message).toBe("qukeys.holdTimeout could not be read");
+  });
+
+  describe("unreadableBeforeBackup", () => {
+    const READABLE: Record<string, unknown> = {
+      "qukeys.holdTimeout": "250",
+      "qukeys.minimumPriorInterval": "75",
+      "qukeys.dualFunction": OPTIONS_OFF,
+      "qukeys.perKey": "0",
+    };
+
+    const deviceWith = (replies: Record<string, unknown>) => {
+      const sent: string[] = [];
+      const device = {
+        noCacheCommand: async (command: string) => {
+          sent.push(command);
+          return replies[command];
+        },
+      };
+
+      return { device, sent };
+    };
+
+    test("block the backup while qukeys.perKey, whose load failed, still can not be read", async () => {
+      const { device, sent } = deviceWith({ ...READABLE, "qukeys.perKey": new Error("timeout") });
+
+      const unreadable = await unreadableBeforeBackup(device, { previews: true, hasQuickTap: false, perKey: true });
+
+      expect(unreadable).toBe("qukeys.perKey");
+      expect(sent).toEqual(["qukeys.holdTimeout", "qukeys.minimumPriorInterval", "qukeys.dualFunction", "qukeys.perKey"]);
+    });
+
+    test("let the backup run once qukeys.perKey reads again", async () => {
+      const { device } = deviceWith(READABLE);
+
+      expect(await unreadableBeforeBackup(device, { previews: true, hasQuickTap: false, perKey: true })).toBeNull();
+    });
+
+    test("name an unreadable preview before qukeys.perKey", async () => {
+      const { device, sent } = deviceWith({ ...READABLE, "qukeys.holdTimeout": "", "qukeys.perKey": "" });
+
+      const unreadable = await unreadableBeforeBackup(device, { previews: true, hasQuickTap: false, perKey: true });
+
+      expect(unreadable).toBe("qukeys.holdTimeout");
+      expect(sent).not.toContain("qukeys.perKey");
+    });
+
+    test("read nothing when neither the previews nor qukeys.perKey need it", async () => {
+      const { device, sent } = deviceWith({});
+
+      expect(await unreadableBeforeBackup(device, { previews: false, hasQuickTap: true, perKey: false })).toBeNull();
+      expect(sent).toEqual([]);
+    });
+
+    test("read only qukeys.perKey when only its load failed", async () => {
+      const { device, sent } = deviceWith(READABLE);
+
+      expect(await unreadableBeforeBackup(device, { previews: false, hasQuickTap: false, perKey: true })).toBeNull();
+      expect(sent).toEqual(["qukeys.perKey"]);
+    });
   });
 });

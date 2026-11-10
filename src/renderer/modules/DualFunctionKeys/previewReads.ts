@@ -14,7 +14,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { DUAL_FUNCTION_COMMAND, parseDualFunctionGlobals } from "../../../api/parsers/dualFunction";
+import {
+  DUAL_FUNCTION_COMMAND,
+  PER_KEY_COMMAND,
+  parseDualFunctionGlobals,
+  parsePerKeyOverrides,
+} from "../../../api/parsers/dualFunction";
 import { QUICK_TAP_COMMAND, parseQuickTapTerm } from "../../../api/parsers/quickTap";
 
 /* Decide whether the global settings the per-position options read for their previews can be backed up. A failed read leaves its reply in
@@ -93,4 +98,25 @@ export const rereadPreviews = async (device: PreviewDevice, hasQuickTap: boolean
   }
 
   return firstUnreadable(replies);
+};
+
+/** Read again uncached what a backup would record from a failed reply: the previews when `previews`, and qukeys.perKey when `perKey`, since
+ * its load failed. Return the first command that still can not be read, or null when the backup may run. */
+export const unreadableBeforeBackup = async (
+  device: PreviewDevice,
+  checks: { previews: boolean; hasQuickTap: boolean; perKey: boolean },
+): Promise<string | null> => {
+  if (checks.previews) {
+    const unreadable = await rereadPreviews(device, checks.hasQuickTap);
+
+    if (unreadable !== null) {
+      return unreadable;
+    }
+  }
+
+  if (checks.perKey && parsePerKeyOverrides(await device.noCacheCommand(PER_KEY_COMMAND)) === null) {
+    return PER_KEY_COMMAND;
+  }
+
+  return null;
 };
