@@ -4,6 +4,10 @@ import { altRepeatMissed, createHoldModsSync, holdModsRetryWanted } from "./hold
 import { loadHoldModsForEditor } from "./layoutLoad";
 import { keymapSaveKey, runLayoutSave, withHoldBaseline } from "./layoutSave";
 
+vi.mock("electron-log/renderer", () => ({
+  default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
+}));
+
 const PARTIAL = 0x982b;
 const PARTIAL_SLOT_1 = 0xb82b;
 const GUI = 16;

@@ -1,6 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 import { loadHoldModsForEditor } from "./layoutLoad";
 
+vi.mock("electron-log/renderer", () => ({
+  default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
+}));
+
 const PARTIAL = 0x982b;
 const GUI = 16;
 const HELP = "keymap.custom\r\nlayerhold.state\r\nholdmods.map\r\naltrepeat.map";

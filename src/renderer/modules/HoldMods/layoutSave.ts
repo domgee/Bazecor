@@ -17,6 +17,7 @@
 import { AltRepeatRule } from "@Renderer/types/altRepeat";
 import { HoldModsEntry } from "@Renderer/types/holdMods";
 import { serializeAltRepeat } from "../../../api/parsers/altRepeat";
+import { PerKeyOverride, serializePerKeyOverrides } from "../../../api/parsers/dualFunction";
 import {
   HoldRefSkip,
   canonicalHoldSave,
@@ -26,6 +27,13 @@ import {
   plainPartialHoldLayers,
   serializeHoldMods,
 } from "../../../api/parsers/holdMods";
+import { LayoutRefs, collectModeFor, collectSuperkeys, protectedSlots, superkeyRefs } from "../../../api/parsers/multiAction";
+import {
+  SuperkeyWriteFormat,
+  normalizeActions,
+  parseSuperkeysTable,
+  serializeSuperkeyTable,
+} from "../../../api/parsers/superkeys";
 import { isPartialHold } from "../../../hw/layerhold";
 
 /* The Layout editor's save of the keymap, the previous-key rules and the held modifiers table.
@@ -33,12 +41,68 @@ import { isPartialHold } from "../../../hw/layerhold";
  * The table goes first, so every partial code the keymap and rules send has its entry. Entries no key uses go last, after the keymap and
  * the rules are stored. The saved state tracks what the keyboard may hold after each step, so a failed save never lets a later edit change
  * the meaning of a code the keyboard may still use.
+ *
+ * With Superkeys the order is table, superkeys.map, keymap, rules, per-key options, unused table entries, unused Superkeys. The keyboard
+ * converts dual-function Superkeys only when the keymap is written, so every Superkey write is followed by a keymap write.
  */
 
 /** "settled": the table and rules are loaded. "unsupported": the firmware lacks the table. "pending": the table is not loaded yet. */
 export type LayoutSaveMode = "settled" | "unsupported" | "pending";
 
-export type LayoutSaveStep = "table" | "keymap" | "rules" | "gc";
+export type LayoutSaveStep = "table" | "superkeys" | "keymap" | "rules" | "perKey" | "gc" | "skgc" | "keymapAfterGc";
+
+/** "ready": the table is loaded and parsed. "unsupported": the keyboard has no Superkeys. "failed": the table could not be read. */
+export type SuperkeyMode = "ready" | "unsupported" | "failed";
+
+/** What the keyboard holds of the Superkeys as far as the editor knows. Slots are Superkey indexes. */
+export interface SuperkeySavedState {
+  /* The superkeys.map data on the keyboard, null when unknown */
+  table: string | null;
+  /* The firmware's active row count, null when unknown */
+  storedRows: number | null;
+  /* A Superkey write landed, or may have, after the last keymap write */
+  keymapStale: boolean;
+  /* The padded clean-up write for an unknown row count ran in this editor session */
+  cleanupDone: boolean;
+  keymapRefs: number[];
+  ruleRefs: number[];
+  comboRefs: number[];
+  /* Slots of a write that failed, which the keyboard may hold */
+  uncertainKeymap: number[];
+  uncertainRules: number[];
+  uncertainCombos: number[];
+}
+
+export const EMPTY_SUPERKEY_SAVED: SuperkeySavedState = {
+  table: null,
+  storedRows: null,
+  keymapStale: false,
+  cleanupDone: false,
+  keymapRefs: [],
+  ruleRefs: [],
+  comboRefs: [],
+  uncertainKeymap: [],
+  uncertainRules: [],
+  uncertainCombos: [],
+};
+
+export interface SuperkeySaveInput {
+  mode: SuperkeyMode;
+  format: SuperkeyWriteFormat;
+  /* From prepareSuperkeyWrite. In ready mode its layers are the ones saved */
+  prepared: { table: number[][]; layers: number[][] };
+  /* Drop the Superkeys nothing references once the keymap and rules are saved */
+  collect: boolean;
+  /* The references outside the custom layers and rules this save writes */
+  draftRefs: Pick<LayoutRefs, "defaultLayers" | "layerOffset" | "combos">;
+  saved: SuperkeySavedState;
+}
+
+export interface PerKeySaveInput {
+  list: PerKeyOverride[];
+  /* The serialized overrides on the keyboard, null when unknown */
+  saved: string | null;
+}
 
 /** What the keyboard holds as far as the editor knows. A null baseline forces the next save to write. */
 export interface HoldSavedState {
@@ -110,6 +174,10 @@ export interface LayoutSaveIO {
   writeHoldMods: (list: HoldModsEntry[]) => Promise<void>;
   writeKeymap: (serialized: string, onlyCustom: boolean) => Promise<void>;
   writeRules: (rules: AltRepeatRule[]) => Promise<void>;
+  /* Required with a ready Superkey input. Return the stored row count as writeSuperkeyTable does */
+  writeSuperkeys?: (table: number[][], format: SuperkeyWriteFormat, storedRows: number | null) => Promise<number | null>;
+  /* Required with a per-key input */
+  writePerKey?: (list: PerKeyOverride[]) => Promise<void>;
 }
 
 export interface LayoutSaveInput {
@@ -123,6 +191,8 @@ export interface LayoutSaveInput {
   saved: HoldSavedState;
   /* The serialized rules on the keyboard, null when unknown */
   savedRules: string | null;
+  superkeys?: SuperkeySaveInput;
+  perKey?: PerKeySaveInput;
 }
 
 export interface LayoutSaveOutcome {
@@ -136,23 +206,75 @@ export interface LayoutSaveOutcome {
   table: HoldModsEntry[];
   saved: HoldSavedState;
   savedRules: string | null;
+  /* Only with a Superkey input. The table as the keyboard holds it after the save, and the saved state */
+  superkeys?: { table: number[][]; saved: SuperkeySavedState };
+  /* Only with a per-key input */
+  perKeySaved?: string | null;
 }
 
 const canonicalDraft = (input: LayoutSaveInput): { layers: number[][]; rules: AltRepeatRule[] } => {
+  const draftLayers = input.superkeys?.mode === "ready" ? input.superkeys.prepared.layers : input.layers;
+
   if (input.mode === "settled") {
-    return canonicalHoldSave(input.layers, input.rules, input.table);
+    return canonicalHoldSave(draftLayers, input.rules, input.table);
   }
 
   /* Firmware without the table would play partial codes as plain shortcuts anyway, but history and CapsWord skip them */
   if (input.mode === "unsupported") {
-    return { layers: plainPartialHoldLayers(input.layers), rules: plainHoldOutputs(input.rules) };
+    return { layers: plainPartialHoldLayers(draftLayers), rules: plainHoldOutputs(input.rules) };
   }
 
-  return { layers: input.layers, rules: input.rules };
+  return { layers: draftLayers, rules: input.rules };
 };
 
-/** Write what changed in the order table, keymap, rules, unused entries. Stop at the first failed step and report the progress. */
+const sortedUnion = (into: number[], slots: number[]): number[] => Array.from(new Set(into.concat(slots))).sort((a, b) => a - b);
+
+const slotsOf = (refs: Pick<LayoutRefs, "customLayers" | "defaultLayers" | "layerOffset" | "rules">): number[] =>
+  [...superkeyRefs({ ...refs, combos: [] }).keys()].sort((a, b) => a - b);
+
+const keymapSlots = (layers: number[][], draftRefs: SuperkeySaveInput["draftRefs"]): number[] =>
+  slotsOf({ customLayers: layers, defaultLayers: draftRefs.defaultLayers, layerOffset: draftRefs.layerOffset, rules: [] });
+
+const ruleSlots = (rules: AltRepeatRule[]): number[] => slotsOf({ customLayers: [], defaultLayers: [], layerOffset: 0, rules });
+
+/* True when the saved superkeys.map data holds exactly `table` */
+const holdsTable = (saved: string | null, table: number[][]): boolean => {
+  const parsed = saved === null ? null : parseSuperkeysTable(saved);
+  return (
+    parsed !== null &&
+    parsed.table.length === table.length &&
+    parsed.table.every((row, i) => normalizeActions(row).join(" ") === normalizeActions(table[i]).join(" "))
+  );
+};
+
+/* A padded write also clears stale rows behind the table. With an unknown row count it runs once per editor session */
+const needsSuperkeyWrite = (sk: SuperkeySaveInput, saved: SuperkeySavedState, table: number[][]): boolean => {
+  if (!holdsTable(saved.table, table)) {
+    return true;
+  }
+
+  if (sk.format !== "padded") {
+    return false;
+  }
+
+  return saved.storedRows === null ? !saved.cleanupDone : saved.storedRows !== table.length;
+};
+
+/** Write what changed in the order table, Superkeys, keymap, rules, per-key options, unused entries, unused Superkeys. Stop at the first
+ * failed step and report the progress. */
 export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): Promise<LayoutSaveOutcome> => {
+  const sk = input.superkeys;
+  const skReady = sk?.mode === "ready";
+  const { writeSuperkeys: sendSuperkeys, writePerKey: sendPerKey } = io;
+
+  if (skReady && !sendSuperkeys) {
+    throw new Error("A Superkey save needs writeSuperkeys");
+  }
+
+  if (input.perKey && !sendPerKey) {
+    throw new Error("A per-key save needs writePerKey");
+  }
+
   const { layers, rules } = canonicalDraft(input);
   const codes = layers.flat();
   const keymap = keymapSaveKey(codes, input.onlyCustom);
@@ -160,6 +282,9 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
   const settled = input.mode === "settled";
   const done: LayoutSaveStep[] = [];
   let { saved, savedRules, table } = input;
+  let skSaved = sk?.saved;
+  let skTable = sk?.prepared.table;
+  let perKeySaved = input.perKey?.saved;
 
   const outcome = (failed?: LayoutSaveStep, error?: unknown): LayoutSaveOutcome => ({
     done,
@@ -170,7 +295,50 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
     table,
     saved,
     savedRules,
+    ...(sk && skSaved && skTable ? { superkeys: { table: skTable, saved: skSaved } } : {}),
+    ...(input.perKey ? { perKeySaved } : {}),
   });
+
+  /* Write the Superkey table and mark the keymap for a rewrite. On failure the keyboard may hold any part of it */
+  const writeSuperkeys = async (
+    next: number[][],
+    state: SuperkeySavedState,
+    format: SuperkeyWriteFormat,
+  ): Promise<SuperkeySavedState> => {
+    try {
+      if (!sendSuperkeys) {
+        throw new Error("A Superkey save needs writeSuperkeys");
+      }
+
+      const data = serializeSuperkeyTable(next, format, state.storedRows);
+      const storedRows = await sendSuperkeys(next, format, state.storedRows);
+      return { ...state, table: data, storedRows, keymapStale: true, cleanupDone: true };
+    } catch (error) {
+      skSaved = { ...state, table: null, storedRows: null, keymapStale: true, cleanupDone: true };
+      throw error;
+    }
+  };
+
+  /* Write the keymap. On failure its codes and Superkeys become uncertain */
+  const writeKeymap = async (): Promise<void> => {
+    try {
+      await io.writeKeymap(codes.join(" "), input.onlyCustom);
+    } catch (error) {
+      saved = { ...saved, keymap: null, uncertainKeymap: addPartials(saved.uncertainKeymap, codes) };
+
+      if (sk && skSaved) {
+        skSaved = { ...skSaved, uncertainKeymap: sortedUnion(skSaved.uncertainKeymap, keymapSlots(layers, sk.draftRefs)) };
+      }
+
+      throw error;
+    }
+
+    saved = { ...saved, keymap, keymapCodes: codes, uncertainKeymap: [] };
+
+    if (sk && skSaved) {
+      skSaved = { ...skSaved, keymapStale: false, keymapRefs: keymapSlots(layers, sk.draftRefs), uncertainKeymap: [] };
+    }
+  };
 
   /* The table never drops an entry a protected code uses, so the keyboard's keys keep their meaning */
   if (settled && serializeHoldMods(table) !== saved.holdMods) {
@@ -185,15 +353,24 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
     done.push("table");
   }
 
-  if (keymap !== saved.keymap) {
+  /* Superkeys go before the keymap, so every Superkey a key sends is defined */
+  if (skReady && skSaved && skTable && needsSuperkeyWrite(sk, skSaved, skTable)) {
     try {
-      await io.writeKeymap(codes.join(" "), input.onlyCustom);
+      skSaved = await writeSuperkeys(skTable, skSaved, sk.format);
     } catch (error) {
-      saved = { ...saved, keymap: null, uncertainKeymap: addPartials(saved.uncertainKeymap, codes) };
+      return outcome("superkeys", error);
+    }
+
+    done.push("superkeys");
+  }
+
+  if (keymap !== saved.keymap || skSaved?.keymapStale) {
+    try {
+      await writeKeymap();
+    } catch (error) {
       return outcome("keymap", error);
     }
 
-    saved = { ...saved, keymap, keymapCodes: codes, uncertainKeymap: [] };
     done.push("keymap");
   }
 
@@ -210,12 +387,39 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
           rules.map(rule => rule.output),
         ),
       };
+
+      if (skSaved) {
+        skSaved = { ...skSaved, uncertainRules: sortedUnion(skSaved.uncertainRules, ruleSlots(rules)) };
+      }
+
       return outcome("rules", error);
     }
 
     savedRules = serializedRules;
     saved = { ...saved, ruleRefs: rules, uncertainRules: [] };
+
+    if (skSaved) {
+      skSaved = { ...skSaved, ruleRefs: ruleSlots(rules), uncertainRules: [] };
+    }
+
     done.push("rules");
+  }
+
+  if (input.perKey && sendPerKey) {
+    const serializedPerKey = serializePerKeyOverrides(input.perKey.list);
+
+    if (serializedPerKey !== perKeySaved) {
+      try {
+        await sendPerKey(input.perKey.list);
+      } catch (error) {
+        /* Rewrite the overrides on the next save, whatever the draft is then */
+        perKeySaved = null;
+        return outcome("perKey", error);
+      }
+
+      perKeySaved = serializedPerKey;
+      done.push("perKey");
+    }
   }
 
   if (settled) {
@@ -233,6 +437,31 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
       table = collected;
       saved = { ...saved, holdMods: serializeHoldMods(collected) };
       done.push("gc");
+    }
+  }
+
+  /* Keep what the draft references and what the keyboard may still hold, now that the keymap and rules are saved */
+  if (skReady && sk.collect && skSaved && skTable) {
+    const keep = new Set([...superkeyRefs({ customLayers: layers, rules, ...sk.draftRefs }).keys(), ...protectedSlots(skSaved)]);
+    const collected = collectSuperkeys(skTable, keep, collectModeFor(sk.format));
+
+    if (collected !== skTable) {
+      try {
+        skSaved = await writeSuperkeys(collected, skSaved, sk.format);
+      } catch (error) {
+        return outcome("skgc", error);
+      }
+
+      skTable = collected;
+      done.push("skgc");
+
+      try {
+        await writeKeymap();
+      } catch (error) {
+        return outcome("keymapAfterGc", error);
+      }
+
+      done.push("keymapAfterGc");
     }
   }
 
