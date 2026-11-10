@@ -85,6 +85,19 @@ describe("Lens superkeys", () => {
     expect(parseSuperkeys("")).toEqual([]);
   });
 
+  test("reads the padded rows with interior idle rows and the erased end", () => {
+    const erased = new Array<string>(6).fill("65535").join(" ");
+    expect(parseSuperkeys(`4 224 1 1 1 0 1 1 1 1 1 0 5 1 1 1 1 0 ${erased} ${erased}`)).toEqual([
+      [4, 224, 1, 1, 1],
+      [1, 1, 1, 1, 1],
+      [5, 1, 1, 1, 1],
+    ]);
+  });
+
+  test("stops at the row the old serializer's trailing 0 started", () => {
+    expect(parseSuperkeys("4 224 1 1 1 0 0 65535 65535 65535 65535 65535 65535 65535")).toEqual([[4, 224, 1, 1, 1]]);
+  });
+
   test("stops at 128 Superkeys", () => {
     const raw = `${new Array<string>(130).fill("4 1 1 1 1 0").join(" ")} 0`;
 

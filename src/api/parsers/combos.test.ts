@@ -12,6 +12,7 @@ import {
   isLegacyCombosReply,
   overlappingComboIndexes,
   parseCombosRaw,
+  parseCombosStrict,
   serializeCombos,
   upgradeLegacyCombosReply,
 } from "./combos";
@@ -196,5 +197,40 @@ describe("combo member blocking", () => {
 
   test("a swap hands key is blocked as a member", () => {
     expect(blockedComboPositions([4, 54372, 5])).toEqual(new Set([1]));
+  });
+});
+
+describe("parseCombosStrict", () => {
+  const record = [48, 49, 255, 255, 255, 255, 2, 1, 29];
+
+  test("reads the firmware's fixed-size reply", () => {
+    expect(parseCombosStrict(reply(1, [record], 9), [combo(0, [], 0)])).toEqual([
+      { id: 0, name: "c0", positions: [48, 49, 255, 255, 255, 255], layer: 2, flags: 1, action: 29 },
+    ]);
+  });
+
+  test("reads a reply of exactly the count's records", () => {
+    expect(parseCombosStrict(`1 ${record.join(" ")}`)).toHaveLength(1);
+    expect(parseCombosStrict("0")).toEqual([]);
+  });
+
+  test("ignores the unused records of a fixed-size reply", () => {
+    const values = reply(1, [record], 9).split(" ");
+    values[values.length - 1] = "65535";
+
+    expect(parseCombosStrict(values.join(" "))).toHaveLength(1);
+  });
+
+  test.each([
+    ["an Error", new Error("timeout")],
+    ["an empty reply", ""],
+    ["a truncated reply", reply(1, [record], 9).split(" ").slice(0, 100).join(" ")],
+    ["a non-numeric token", `1 ${record.slice(0, 8).join(" ")} x`],
+    ["a count past 32", `33 ${record.join(" ")}`],
+    ["a position past 255", `1 256 ${record.slice(1).join(" ")}`],
+    ["an action past 65535", `1 ${record.slice(0, 8).join(" ")} 65536`],
+    ["a legacy reply", reply(1, [[48, 49, 255, 255, 255, 1, 29]], 7)],
+  ])("returns null for %s", (_, raw) => {
+    expect(parseCombosStrict(raw)).toBeNull();
   });
 });

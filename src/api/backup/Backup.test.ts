@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { ipcRenderer } from "electron";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import Backup from "./Backup";
+import Backup, { fitCommandToDevice } from "./Backup";
 import Device from "../comms/Device";
 import { MACROS_NOT_RESTORED } from "../parsers/macros";
 import { HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED } from "../parsers/holdMods";
@@ -474,5 +474,29 @@ describe("Backup.SaveFirstBackup", () => {
     expect(saved).toBe(false);
     expect(fs.readdirSync(keyboardFolder)).toEqual(["20261105120000-NoName.json"]);
     expect(keyboard.command).not.toHaveBeenCalled();
+  });
+});
+
+describe("fitCommandToDevice", () => {
+  const SEPARATED = "4 224 1 1 1 0 5 1 1 1 1 0 0";
+
+  test("writes a Superkey table as all 129 padded rows for a Sonsei", () => {
+    const fitted = fitCommandToDevice("superkeys.map", SEPARATED, "Sonsei");
+
+    expect(fitted.split(" ")).toHaveLength(129 * 6);
+    expect(fitted.startsWith("4 224 1 1 1 0 5 1 1 1 1 0 65535")).toBe(true);
+  });
+
+  test("writes a padded Superkey table in the old shape for other keyboards", () => {
+    const padded = fitCommandToDevice("superkeys.map", SEPARATED, "Sonsei");
+
+    expect(fitCommandToDevice("superkeys.map", padded, "Defy")).toBe(SEPARATED);
+    expect(fitCommandToDevice("superkeys.map", padded, "Raise2")).toBe(SEPARATED);
+  });
+
+  test("leaves unparsable Superkey data, other commands and an unknown target unchanged", () => {
+    expect(fitCommandToDevice("superkeys.map", "4 x 0", "Sonsei")).toBe("4 x 0");
+    expect(fitCommandToDevice("keymap.custom", SEPARATED, "Sonsei")).toBe(SEPARATED);
+    expect(fitCommandToDevice("superkeys.map", SEPARATED, undefined)).toBe(SEPARATED);
   });
 });

@@ -47,6 +47,7 @@ import {
 import { HOLD_MODS_COMMAND, holdModsTargetOf, restoreHoldMods, writeHoldMods } from "../parsers/holdMods";
 import restoreCommand from "./restoreCommand";
 import { fitPaletteToFormat } from "../parsers/palette";
+import { SUPERKEYS_COMMAND, fitSuperkeysForTarget } from "../parsers/superkeys";
 import { rgb2w } from "../color";
 import { isSupportedLensProduct } from "../../lens/shared/constants";
 
@@ -62,9 +63,22 @@ const UNLISTED_BACKUP_COMMANDS = ["led.brightnessUG"];
 // Keyboards whose palette is RGBW; the rest (Sonsei, Raise) take plain RGB.
 const RGBW_PALETTE_PRODUCTS = ["Defy", "Raise2"];
 
-/** `data` as the target keyboard expects it: only `palette` can arrive in the wrong format. */
-const fitCommandToDevice = (command: string, data: string, product: string | undefined): string =>
-  command === "palette" && product ? fitPaletteToFormat(data, RGBW_PALETTE_PRODUCTS.includes(product)) : data;
+/** `data` as the target keyboard expects it: the palette's colour format and the Superkey table's write shape. */
+export const fitCommandToDevice = (command: string, data: string, product: string | undefined): string => {
+  if (!product) {
+    return data;
+  }
+
+  if (command === "palette") {
+    return fitPaletteToFormat(data, RGBW_PALETTE_PRODUCTS.includes(product));
+  }
+
+  if (command === SUPERKEYS_COMMAND) {
+    return fitSuperkeysForTarget(data, product);
+  }
+
+  return data;
+};
 
 type ConversionSpec = {
   from: string;

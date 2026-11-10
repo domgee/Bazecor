@@ -9,6 +9,8 @@ import {
   basePrevious,
   clearLayerRules,
   copyLayerRules,
+  decodeDualUse,
+  dualUseCodeFor,
   findKeyType,
   hasAltRepeatCommand,
   hasRepeat,
@@ -565,5 +567,52 @@ describe("restoreAltRepeat", () => {
     const { device } = fakeDevice("0", true);
 
     await expect(restoreAltRepeat(device, "1 0 23 6 14", 60)).rejects.toThrow();
+  });
+});
+
+describe("native dual-use codes", () => {
+  test.each([
+    [0x04, 0xe0, 49169 + 4],
+    [0x7f, 0xe0, 49169 + 0x7f],
+    [0x04, 0xe1, 49425 + 4],
+    [0x04, 0xe2, 49681 + 4],
+    [0x04, 0xe3, 49937 + 4],
+    [0x04, 0xe6, 50705 + 4],
+    [0x04, 17450, 51218 + 4],
+    [0x04, 17457, 51218 + 7 * 256 + 4],
+  ])("dualUseCodeFor(%i, %i) is %i", (tap, hold, expected) => {
+    expect(dualUseCodeFor(tap, hold)).toBe(expected);
+  });
+
+  test.each([
+    [0x03, 0xe0], // Below the first typing key
+    [0x80, 0xe0], // Past the taps a DU code carries
+    [0x104, 0xe0], // A tap with a modifier flag
+    [0x04, 0xe4], // Right Ctrl
+    [0x04, 0xe5], // Right Shift
+    [0x04, 0xe7], // Right GUI
+    [0x04, 0x1e0], // A hold with the right-side flag
+    [0x04, 17458], // Layer Shift 8
+    [0x04, 17492], // Lock layer
+    [0x04, 0x05], // Not a modifier
+  ])("dualUseCodeFor(%i, %i) is null", (tap, hold) => {
+    expect(dualUseCodeFor(tap, hold)).toBeNull();
+  });
+
+  test.each([
+    [0x04, 0xe0],
+    [0x7f, 0xe3],
+    [0x2c, 0xe6],
+    [0x04, 17450],
+    [0x7f, 17457],
+  ])("decodeDualUse inverts dualUseCodeFor(%i, %i) and agrees with superkeyQukeyCode", (tap, hold) => {
+    const code = dualUseCodeFor(tap, hold) as number;
+
+    expect(decodeDualUse(code)).toEqual({ tap, hold });
+    expect(superkeyQukeyCode(tap, hold)).toBe(code);
+  });
+
+  test.each([[49168], [53267], [49169], [51217], [51218], [53266]])("decodeDualUse(%i) is null", code => {
+    expect(decodeDualUse(code)).toBeNull();
   });
 });

@@ -339,6 +339,50 @@ export const superkeyQukeyCode = (tap: number, hold: number): number => {
   return layer < 0 ? 0 : DUL_FIRST + layer * 256 + offset;
 };
 
+/* The holds a native dual-use keycode carries that Bazecor and Lens label: left Ctrl, Shift, Alt, GUI and right Alt */
+const DU_MODIFIER_HOLDS = [0xe0, 0xe1, 0xe2, 0xe3, 0xe6];
+const DU_LAYERS = 8;
+const DU_TAP_LAST = 0x7f;
+const DU_KEYS_PER_HOLD = 256;
+
+/** The native dual-use keycode for a tap and a hold, or null when no DUM or DUL code carries them. */
+export const dualUseCodeFor = (tap: number, hold: number): number | null => {
+  if (!Number.isInteger(tap) || tap < FIRST_TYPING_KEY || tap > DU_TAP_LAST) {
+    return null;
+  }
+
+  if (DU_MODIFIER_HOLDS.includes(hold)) {
+    return DUM_FIRST + hidModToDumIndex(hold) * DU_KEYS_PER_HOLD + tap;
+  }
+
+  if (Number.isInteger(hold) && hold >= LAYER_SHIFT_FIRST && hold < LAYER_SHIFT_FIRST + DU_LAYERS) {
+    return DUL_FIRST + (hold - LAYER_SHIFT_FIRST) * DU_KEYS_PER_HOLD + tap;
+  }
+
+  return null;
+};
+
+/** The tap and hold of a native dual-use keycode, or null when the code is not one. */
+export const decodeDualUse = (code: number): { tap: number; hold: number } | null => {
+  if (!Number.isInteger(code) || code < DU_FIRST || code > DU_LAST) {
+    return null;
+  }
+
+  const base = code < DUL_FIRST ? DUM_FIRST : DUL_FIRST;
+  const tap = (code - base) % DU_KEYS_PER_HOLD;
+  const index = Math.floor((code - base) / DU_KEYS_PER_HOLD);
+
+  if (tap === 0) {
+    return null;
+  }
+
+  if (base === DUM_FIRST) {
+    return { tap, hold: 0xe0 + index };
+  }
+
+  return { tap, hold: LAYER_SHIFT_FIRST + index };
+};
+
 /** KeyRoleManager::search_and_replace. True when the firmware stores this Superkey as a dual-function key. */
 export const isDualFunctionSuperkey = (superkey: SuperkeysType | undefined): boolean => {
   if (!superkey) {

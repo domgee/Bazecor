@@ -190,6 +190,48 @@ export const parseCombosRaw = (raw: string, stored: ComboType[] = []): ComboType
   return combos;
 };
 
+const MAX_POSITION = 255;
+const MAX_LAYER = 255;
+const MAX_ACTION = 65535;
+
+/** The combos in a current-format `combos.map` reply, or null for anything else: an error, a truncated, legacy or out-of-range reply. */
+export const parseCombosStrict = (raw: unknown, stored: ComboType[] = []): ComboType[] | null => {
+  if (typeof raw !== "string" || raw.trim().length === 0 || isLegacyCombosReply(raw)) {
+    return null;
+  }
+
+  const tokens = raw.trim().split(/\s+/);
+
+  if (!tokens.every(token => /^\d+$/.test(token))) {
+    return null;
+  }
+
+  const values = tokens.map(token => parseInt(token, 10));
+  const count = values[0];
+
+  if (count > MAX_COMBOS || (values.length !== 1 + MAX_COMBOS * FIELDS_PER_COMBO && values.length !== 1 + count * FIELDS_PER_COMBO)) {
+    return null;
+  }
+
+  const combos: ComboType[] = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const base = 1 + i * FIELDS_PER_COMBO;
+    const positions = values.slice(base, base + MAX_COMBO_MEMBERS);
+    const layer = values[base + MAX_COMBO_MEMBERS];
+    const flags = values[base + MAX_COMBO_MEMBERS + 1];
+    const action = values[base + MAX_COMBO_MEMBERS + 2];
+
+    if (positions.some(position => position > MAX_POSITION) || layer > MAX_LAYER || flags > MAX_ACTION || action > MAX_ACTION) {
+      return null;
+    }
+
+    combos.push({ id: i, name: stored[i]?.name ?? "", positions, layer, flags, action });
+  }
+
+  return combos;
+};
+
 export const serializeCombos = (combos: ComboType[]): string => {
   const values: number[] = [Math.min(combos.length, MAX_COMBOS)];
 
