@@ -169,6 +169,14 @@ describe("KeyPickerKeyboard Multi-action tab", () => {
     expect(tabNames(container)).not.toContain("Multi-action");
   });
 
+  test("the previous-key tab picker gets the tab in place of Superkeys and opens it on a Superkey output", () => {
+    const { container } = renderWith({ keyCode: SUPERKEY_1, actTab: "combo", withMultiAction: true });
+
+    expect(tabNames(container)).toContain("Multi-action");
+    expect(tabNames(container)).not.toContain("Superkeys");
+    expect(screen.getAllByRole("tab", { selected: true })[0].textContent?.trim()).toBe("Multi-action");
+  });
+
   test("a Superkey picker shows neither", () => {
     const { container } = renderWith({ keyCode: 4, actTab: "super", withMultiAction: true });
 

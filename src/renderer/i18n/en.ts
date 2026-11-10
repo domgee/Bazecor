@@ -640,6 +640,17 @@ const English = {
       rulesUnknown: "The previous-key rules could not be read. Reload to edit multi-action keys.",
       capacity: "All 70 Superkey slots are in use. Clear a multi-action key and save first. Nothing was changed.",
       emptyRule: "A previous-key tab needs an output. Use Delete to remove this tab.",
+      copyCapacity:
+        "The copied layer needs more Superkey slots than are free, since every copied multi-action key gets its own. Nothing was changed.",
+      copyMissing:
+        "Some copied keys used a Superkey that is not defined. They were set to No Key, and previous-key tabs with one were left out.",
+      importCapacity:
+        "The imported keys need more Superkey slots than are free, since every multi-action key gets its own. Nothing was changed.",
+      importMissing:
+        "Some imported keys use a Superkey the file does not define. They were set to No Key, and previous-key tabs with one were left out.",
+      ruleFromTap: "No Superkey slot is free for a copy of this key, so the new tab starts from its Tap.",
+      ruleFromTapBlocked:
+        "This key's Superkey can't be copied until the keyboard is read again, so the new tab starts from its Tap.",
       conflictTitle: "Multi-action keys clash",
       conflictWarning: "These keys already clashed on the keyboard and still play the same tap and hold:",
       saveFailed: "The keyboard did not store the Superkeys.",

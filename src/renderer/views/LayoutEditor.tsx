@@ -134,6 +134,15 @@ import {
   tapSeedRefused,
 } from "../../api/parsers/multiAction";
 import {
+  cloneLayerSuperkeys,
+  exportSuperkeys,
+  hasSuperkeyRef,
+  layerFileSource,
+  remapLayoutSuperkeys,
+  ruleOutputFromDefault,
+  transferUsed,
+} from "../../api/parsers/layerTransfer";
+import {
   MAX_ALT_REPEAT_RULES,
   altRepeatDefaultBlock,
   basePrevious,
@@ -1142,6 +1151,18 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     return onlyThisCell && !uncertain ? slot : undefined;
   };
 
+  /* The slots a copy into a draft with these layers and rules may not take */
+  const transferUsedFor = (custom: number[][], rules: AltRepeatRule[]): Set<number> =>
+    transferUsed(draftRefs(custom, rules), skSaved.current, heldSlots());
+
+  /* Why the Superkeys in a copy can't get their own slots now. Keyboards without Superkeys copy the codes as they are */
+  const transferBlock = (codes: number[]): string | undefined =>
+    superkeysState === "unsupported" || !hasSuperkeyRef(codes) ? undefined : multiActionBlock();
+
+  /* The capacity meter counts slots the keyboard still holds as used, since a new Superkey never takes one */
+  const superkeysInUse = (refs: Map<number, SkRef[]>): number =>
+    new Set([...refs.keys(), ...protectedSlots(skSaved.current), ...heldSlots()].filter(s => s < MAX_ACTIVE_SUPERKEYS)).size;
+
   /* Set the five actions of the selected cell, as a plain key, a dual-function key or a Superkey */
   const onMultiActionChange = (actions: number[]) => {
     const customIdx = keymap.onlyCustom ? currentLayer : currentLayer - keymap.default.length;
@@ -1210,6 +1231,61 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
     if (nextCode !== currentCode) {
       assignKey(currentLayer, currentKeyIndex, nextCode);
+    }
+
+    showBreaks(breaks.comboReason, breaks.comboIndexes, breaks.ruleReason, breaks.ruleCount, undo);
+  };
+
+  /* Set the five actions of a previous-key tab. Its output is a plain key or a Superkey, never a dual-function key */
+  const onRuleMultiActionChange = (ruleIndex: number, actions: number[]) => {
+    const rule = altRepeatRules[ruleIndex];
+
+    if (rule === undefined || superkeysState !== "ready" || multiActionBlock() !== undefined) {
+      return;
+    }
+
+    const custom = draftCodes(keymap.custom);
+    const table = draftTable();
+    const result = applyMultiAction(
+      {
+        table,
+        refs: superkeyRefs(draftRefs(custom, altRepeatRules)),
+        protectedSlots: protectedSlots(skSaved.current),
+        currentCode: rule.output,
+        heldSlots: heldSlots(),
+      },
+      { kind: "rule", index: ruleIndex },
+      actions,
+    );
+
+    if ("error" in result) {
+      showMultiActionToast(result.error === "capacity" ? i18n.editor.multiAction.capacity : i18n.editor.multiAction.emptyRule);
+      return;
+    }
+
+    const { table: nextTable, code: nextCode } = result;
+
+    if (nextCode === rule.output && nextTable === table) {
+      return;
+    }
+
+    const undo = editSnapshot();
+    /* Check the cells that share an edited Superkey */
+    const breaks = multiActionBreaks(
+      { customLayers: custom, table, layerOffset },
+      { customLayers: custom, table: nextTable, layerOffset },
+      combos,
+      altRepeatRules,
+    );
+
+    if (nextTable !== table) {
+      setSuperkeys(withGeneratedNames(nextTable, labelCtx));
+      setModified(true);
+      startContext();
+    }
+
+    if (nextCode !== rule.output) {
+      editRules(altRepeatRules.map((each, index) => (index === ruleIndex ? { ...each, output: nextCode } : each)));
     }
 
     showBreaks(breaks.comboReason, breaks.comboIndexes, breaks.ruleReason, breaks.ruleCount, undo);
@@ -1556,16 +1632,72 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       nextRules = copied.rules;
     }
 
-    let newKeymap: KeyType[][];
+    const defaultCount = keymap.default.length;
+    const sourceIsDefault = keymap.onlyCustom ? layer < 0 : layer < defaultCount;
+    let sourceKeys: KeyType[];
 
     if (keymap.onlyCustom) {
-      newKeymap = layer < 0 ? keymap.default.slice() : keymap.custom.slice();
-      newKeymap[currentLayer] = layer < 0 ? keymap.default[layer + keymap.default.length].slice() : keymap.custom[layer].slice();
+      sourceKeys = sourceIsDefault ? keymap.default[layer + defaultCount] : keymap.custom[layer];
     } else {
-      newKeymap = layer < keymap.default.length ? keymap.default.slice() : keymap.custom.slice();
-      newKeymap[currentLayer] =
-        layer < keymap.default.length ? keymap.default[layer].slice() : keymap.custom[layer - keymap.default.length].slice();
+      sourceKeys = sourceIsDefault ? keymap.default[layer] : keymap.custom[layer - defaultCount];
     }
+
+    const targetIdx = keymap.onlyCustom ? currentLayer : currentLayer - defaultCount;
+
+    if (sourceKeys === undefined || keymap.custom[targetIdx] === undefined) {
+      setCopyFromOpen(false);
+      return;
+    }
+
+    let targetKeys = sourceKeys.slice();
+    const targetRules = (nextRules ?? []).filter(rule => rule.layer === currentLayer);
+    const blocked = transferBlock(targetKeys.map(key => key.keyCode).concat(targetRules.map(rule => rule.output)));
+
+    if (blocked !== undefined) {
+      showMultiActionToast(blocked);
+      setCopyFromOpen(false);
+      return;
+    }
+
+    /* Give each copied Superkey its own slot, so the copy and its source never share one */
+    if (superkeysState === "ready") {
+      const custom = draftCodes(keymap.custom);
+      const table = draftTable();
+      const otherRules = nextRules === null ? altRepeatRules : nextRules.filter(rule => rule.layer !== currentLayer);
+      const cloned = cloneLayerSuperkeys({
+        cells: [targetKeys.map(key => key.keyCode)],
+        rules: targetRules,
+        sourceTable: table,
+        table,
+        used: transferUsedFor(
+          custom.map((codes, idx) => (idx === targetIdx ? [] : codes)),
+          otherRules,
+        ),
+      });
+
+      if ("error" in cloned) {
+        showMultiActionToast(i18n.editor.multiAction.copyCapacity);
+        setCopyFromOpen(false);
+        return;
+      }
+
+      targetKeys = targetKeys.map((key, i) => (cloned.cells[0][i] === key.keyCode ? key : keymapDB.parse(cloned.cells[0][i])));
+
+      if (nextRules !== null) {
+        nextRules = otherRules.concat(cloned.rules);
+      }
+
+      if (cloned.missing > 0) {
+        showMultiActionToast(i18n.editor.multiAction.copyMissing);
+      }
+
+      if (cloned.table !== table) {
+        setSuperkeys(withGeneratedNames(cloned.table, labelCtx));
+      }
+    }
+
+    const newKeymap = keymap.custom.slice();
+    newKeymap[targetIdx] = targetKeys;
     const newColormap = colorMap.slice();
     if (newColormap.length > 0) newColormap[currentLayer] = colorMap[layer >= 0 ? layer : currentLayer].slice();
 
@@ -1808,6 +1940,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     palette: PaletteType[];
     altRepeat?: AltRepeatLayerEntry[];
     holdMods?: unknown;
+    superkeys?: unknown;
   }): boolean => {
     const { currentDevice } = state;
     const replacesLayer =
@@ -1914,6 +2047,54 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       nextHoldMods = fitted.table;
     }
 
+    let nextSuperkeys: number[][] | null = null;
+
+    /* Give each imported Superkey its own slot, with the file's definition or, for an old file, the keyboard's */
+    if (replacesLayer) {
+      const customIdx = keymap.onlyCustom ? currentLayer : currentLayer - keymap.default.length;
+      const importedRules = (nextRules ?? []).filter(rule => rule.layer === currentLayer);
+      const blocked = transferBlock(cleanKeymap.map(key => key.keyCode).concat(importedRules.map(rule => rule.output)));
+
+      if (blocked !== undefined) {
+        showMultiActionToast(blocked);
+        return false;
+      }
+
+      if (superkeysState === "ready") {
+        const table = draftTable();
+        const otherRules = nextRules === null ? altRepeatRules : nextRules.filter(rule => rule.layer !== currentLayer);
+        const cloned = cloneLayerSuperkeys({
+          cells: [cleanKeymap.map(key => key.keyCode)],
+          rules: importedRules,
+          sourceTable: layerFileSource(data.superkeys, data.device?.product === currentDevice?.device.info.product, table),
+          table,
+          used: transferUsedFor(
+            draftCodes(keymap.custom).map((codes, idx) => (idx === customIdx ? [] : codes)),
+            otherRules,
+          ),
+        });
+
+        if ("error" in cloned) {
+          showMultiActionToast(i18n.editor.multiAction.importCapacity);
+          return false;
+        }
+
+        cleanKeymap = cleanKeymap.map((key, i) =>
+          cloned.cells[0][i] === key.keyCode ? key : keymapDB.parse(cloned.cells[0][i]),
+        );
+
+        if (nextRules !== null) {
+          nextRules = otherRules.concat(cloned.rules);
+        }
+
+        if (cloned.missing > 0) {
+          showMultiActionToast(i18n.editor.multiAction.importMissing);
+        }
+
+        nextSuperkeys = cloned.table === table ? null : cloned.table;
+      }
+    }
+
     const lNames = layerNames.slice();
     if (data.layerNames !== null) {
       if (data.layerName && currentLayer) {
@@ -1957,6 +2138,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
     if (nextHoldMods !== null) {
       editHoldMods(nextHoldMods);
+    }
+
+    if (nextSuperkeys !== null) {
+      setSuperkeys(withGeneratedNames(nextSuperkeys, labelCtx));
     }
 
     setModified(true);
@@ -2086,6 +2271,52 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             );
           }
 
+          const importedCodes = draftCodes(importedKeymap.custom);
+          const blocked = transferBlock(importedCodes.flat().concat((nextRules ?? []).map(rule => rule.output)));
+
+          if (blocked !== undefined) {
+            showMultiActionToast(blocked);
+            return;
+          }
+
+          let nextSuperkeys: number[][] | null = null;
+
+          /* Give each file Superkey one new slot, so keys that share one in the file keep sharing it and nothing else does */
+          if (superkeysState === "ready") {
+            const table = draftTable();
+            const keptRules = nextRules === null ? altRepeatRules : [];
+            const remapped = remapLayoutSuperkeys({
+              cells: importedCodes,
+              rules: nextRules ?? [],
+              fileTable: layerFileSource(
+                layers.superkeys,
+                layers.device?.product === state.currentDevice?.device.info.product,
+                table,
+              ),
+              table,
+              used: transferUsedFor([], keptRules),
+            });
+
+            if ("error" in remapped) {
+              showMultiActionToast(i18n.editor.multiAction.importCapacity);
+              return;
+            }
+
+            importedKeymap.custom = importedKeymap.custom.map((layer, l) =>
+              layer.map((key, i) => (remapped.cells[l][i] === key.keyCode ? key : keymapDB.parse(remapped.cells[l][i]))),
+            );
+
+            if (nextRules !== null) {
+              nextRules = remapped.rules;
+            }
+
+            if (remapped.missing > 0) {
+              showMultiActionToast(i18n.editor.multiAction.importMissing);
+            }
+
+            nextSuperkeys = remapped.table === table ? null : remapped.table;
+          }
+
           if (fitted.normalized) {
             showHoldModsToast(i18n.editor.holdMods.importNormalized);
           }
@@ -2094,7 +2325,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           setKeymap(importedKeymap);
           setColorMap(layers.colormap);
           setPalette(layers.palette);
-          /* Keep the keyboard's Superkeys, which the imported keys play until the file's own are copied in */
+
+          if (nextSuperkeys !== null) {
+            setSuperkeys(withGeneratedNames(nextSuperkeys, labelCtx));
+          }
 
           if (nextRules !== null) {
             replaceRules(nextRules);
@@ -2150,6 +2384,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     }
     const { currentDevice } = state;
     const info = currentDevice?.device.info;
+    const layerRuleOutputs =
+      altRepeatState === "ready" ? altRepeatRules.filter(rule => rule.layer === currentLayer).map(rule => rule.output) : [];
     const data = JSON.stringify(
       {
         device: info,
@@ -2172,6 +2408,15 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                 (localLayerData ?? [])
                   .map((key: KeyType) => key.keyCode)
                   .concat(altRepeatRules.filter(rule => rule.layer === currentLayer).map(rule => rule.output)),
+              ),
+            }
+          : {}),
+        /* Carry the Superkey definitions, so an import gives the keys their own copies */
+        ...(superkeysState === "ready"
+          ? {
+              superkeys: exportSuperkeys(
+                (localLayerData ?? []).map((key: KeyType) => key.keyCode).concat(layerRuleOutputs),
+                draftTable(),
               ),
             }
           : {}),
@@ -2546,9 +2791,23 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       return;
     }
 
-    /* Start from the default so the new tab only needs the change */
-    const output = isAllowedOutput(defaultKeyCode) ? defaultKeyCode : 4;
-    editRules(altRepeatRules.concat([{ layer: currentLayer, position: currentKeyIndex, previous, output }]));
+    /* Start from the default so the new tab only needs the change. A Superkey default gets its own copy */
+    const table = draftTable();
+    const canClone = superkeysState === "ready" && multiActionBlock() === undefined;
+    const used = canClone ? transferUsedFor(draftCodes(keymap.custom), altRepeatRules) : null;
+    const started = ruleOutputFromDefault(defaultKeyCode, table, used);
+
+    if (started.fallback !== null) {
+      showMultiActionToast(
+        started.fallback === "capacity" ? i18n.editor.multiAction.ruleFromTap : i18n.editor.multiAction.ruleFromTapBlocked,
+      );
+    }
+
+    if (started.table !== table) {
+      setSuperkeys(withGeneratedNames(started.table, labelCtx));
+    }
+
+    editRules(altRepeatRules.concat([{ layer: currentLayer, position: currentKeyIndex, previous, output: started.output }]));
     setAltRepeatTab(keyRules.length);
   };
 
@@ -2624,22 +2883,16 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     onHoldChange: onRuleHoldChange,
   });
 
-  /* The Multi-action tab for the selected cell. Default layers are read-only and keep the Superkeys tab */
-  const cellMultiAction = (): MultiActionProps | undefined => {
-    const cellCode = keymap.custom[customLayerIdx]?.[currentKeyIndex]?.keyCode;
-
-    if (isReadOnly || currentKeyIndex === -1 || currentKeyIndex >= ledIndexStart || cellCode === undefined) {
-      return undefined;
-    }
-
+  /* The Multi-action tab for a key whose code is `keyCode` */
+  const multiActionFor = (keyCode: number, context: "cell" | "rule", onChange: (actions: number[]) => void): MultiActionProps => {
     const table = draftTable();
     const refs = superkeyRefs(draftRefs(draftCodes(keymap.custom), altRepeatRules));
-    const slot = superkeySlot(cellCode);
-    const dualUse = decodeDualUse(cellCode);
-    const tapSeed = superkeyTapSeed(cellCode);
+    const slot = superkeySlot(keyCode);
+    const dualUse = decodeDualUse(keyCode);
+    const tapSeed = superkeyTapSeed(keyCode);
     let actions = normalizeActions([tapSeed ?? IDLE_ACTION]);
     let storage: MultiActionStorage = "plain";
-    let notice: string | undefined = tapSeedRefused(cellCode) ? i18n.editor.multiAction.tapNotSeeded : undefined;
+    let notice: string | undefined = tapSeedRefused(keyCode) ? i18n.editor.multiAction.tapNotSeeded : undefined;
 
     if (slot !== null) {
       storage = "superkey";
@@ -2661,24 +2914,40 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     }
 
     const users = slot === null ? [] : (refs.get(slot) ?? []).map(ref => refName(ref, altRepeatRules, defaultCellName));
-    /* Count slots the keyboard still holds as used, since a new Superkey never takes one */
-    const used = new Set(
-      [...refs.keys(), ...protectedSlots(skSaved.current), ...heldSlots()].filter(s => s < MAX_ACTIVE_SUPERKEYS),
-    ).size;
 
     return {
       mode: superkeysState === "unsupported" ? "dualUseOnly" : "full",
-      context: "cell",
+      context,
       actions,
       storage,
       slot: slot !== null && slot < MAX_ACTIVE_SUPERKEYS ? slot : null,
       users,
-      capacity: { used, max: MAX_ACTIVE_SUPERKEYS },
+      capacity: { used: superkeysInUse(refs), max: MAX_ACTIVE_SUPERKEYS },
       disabledReason: multiActionBlock(),
       notice,
       actionLabel: action => actionText(action, labelCtx),
-      onChange: onMultiActionChange,
+      onChange,
     };
+  };
+
+  /* The Multi-action tab for the selected cell. Default layers are read-only and keep the Superkeys tab */
+  const cellMultiAction = (): MultiActionProps | undefined => {
+    const cellCode = keymap.custom[customLayerIdx]?.[currentKeyIndex]?.keyCode;
+
+    if (isReadOnly || currentKeyIndex === -1 || currentKeyIndex >= ledIndexStart || cellCode === undefined) {
+      return undefined;
+    }
+
+    return multiActionFor(cellCode, "cell", onMultiActionChange);
+  };
+
+  /* The Multi-action tab for the selected previous-key tab. Keyboards without Superkeys have none, since a tab can't hold a dual-function key */
+  const ruleMultiAction = (): MultiActionProps | undefined => {
+    if (selectedRule === null || superkeysState === "unsupported") {
+      return undefined;
+    }
+
+    return multiActionFor(selectedRule.output, "rule", actions => onRuleMultiActionChange(selectedRuleIdx, actions));
   };
 
   const takenPreviousCodes = keyRules
@@ -2839,6 +3108,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     allowLayerHold={ruleHoldProps.allowLayerHold}
                     keepHold={ruleHoldProps.keepHold}
                     holdMods={ruleHoldProps.holdMods}
+                    multiAction={ruleMultiAction()}
                     fullMouse
                   />
                 )}
