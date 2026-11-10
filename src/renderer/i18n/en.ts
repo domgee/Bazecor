@@ -633,6 +633,7 @@ const English = {
         "This keyboard has no Superkeys, so a key can only have a plain Tap and a Hold of left Ctrl, Shift, Alt, GUI, AltGr or Layer shift 1 to 8. Nothing was changed.",
       shared: "Shared by {count}: {names}. Changes apply to all.",
       beyondLimit: "Superkey {slot} is beyond the keyboard's limit of {max}. Editing gives this key its own Superkey.",
+      tapNotSeeded: "This key's own action can't be a Superkey Tap, so Tap starts empty.",
       undefinedSlot: "Superkey {slot} is not defined. Setting an action defines it for this key.",
       unreadable: "The Superkeys could not be read. Reload to edit multi-action keys.",
       combosUnknown: "The combos could not be read. Reload to edit multi-action keys.",

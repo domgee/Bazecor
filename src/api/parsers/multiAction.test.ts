@@ -12,6 +12,7 @@ import {
   cloneSuperkeyRefs,
   collectSuperkeys,
   conflictMessage,
+  definedSlots,
   dualUseOnlyCode,
   finalGcTable,
   freeSlot,
@@ -23,6 +24,7 @@ import {
   recoveryNeeded,
   remapFileSuperkeys,
   superkeyRefs,
+  superkeyTapSeed,
 } from "./multiAction";
 
 vi.mock("electron-log/renderer", () => ({
@@ -587,5 +589,50 @@ describe("dualUseOnlyCode", () => {
     [[A, 1, B, 1, 1], null], // Tap & hold needs a Superkey
   ])("actions %j give %s", (actions, expected) => {
     expect(dualUseOnlyCode(actions)).toBe(expected);
+  });
+});
+
+describe("superkeyTapSeed", () => {
+  test.each([
+    [A, A], // A plain key stays
+    [0x2000 | 0x1000 | A, 0x1000 | A], // Shift+A held until layer change becomes Shift+A
+    [0x8000 | 0x1100 | A, 0x1100 | A], // Ctrl+Shift+A holding only some modifiers becomes Ctrl+Shift+A
+    [54115 + A, A], // Autoshift A becomes A, since the firmware ignores Autoshift a Superkey sends
+    [17492, 17492], // Layer lock 1 stays
+    [0, 1], // No key leaves Tap empty
+    [65535, 1], // Transparent leaves Tap empty
+  ])("code %i seeds Tap %i", (code, expected) => {
+    expect(superkeyTapSeed(code)).toBe(expected);
+  });
+
+  test.each([
+    [17450], // Layer shift 1
+    [49161], // OneShot layer 1
+    [49153], // OneShot left Ctrl
+    [54372], // Swap hands while held
+    [54112], // Layer Lens key
+    [54114], // Hold Layer Lens
+  ])("code %i is no Superkey Tap", code => {
+    expect(superkeyTapSeed(code)).toBeNull();
+  });
+});
+
+describe("applyMultiAction with slots the keyboard holds", () => {
+  test("a new Superkey skips a defined slot no key references and takes an idle one", () => {
+    const table = [full(A), IDLE, full(B)];
+    const state = stateOf(table, layout([[A]]), A, { heldSlots: new Set(definedSlots(table)) });
+
+    const result = applyMultiAction(state, cell(0, 0), full(A));
+
+    expect(result).toEqual({ table: [full(A), full(A), full(B)], code: SK(1) });
+  });
+
+  test("with every idle slot taken a new Superkey goes past the table end", () => {
+    const table = [full(A), full(B)];
+    const state = stateOf(table, layout([[A]]), A, { heldSlots: new Set(definedSlots(table)) });
+
+    const result = applyMultiAction(state, cell(0, 0), full(A));
+
+    expect(result).toEqual({ table: [full(A), full(B), full(A)], code: SK(2) });
   });
 });

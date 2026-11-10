@@ -31,6 +31,10 @@ import {
   superkeyQukeyCode,
 } from "./altRepeat";
 import { ComboBreakReason, comboBreakReason, combosAtPosition } from "./combos";
+import { autoshiftBaseCode, isAutoshift } from "../../hw/autoshift";
+import { holdShortcut, isHoldCode } from "../../hw/layerhold";
+import { OverlayCodes } from "../../hw/overlay";
+import { isSwapHandsCode } from "../../hw/swaphands";
 import {
   IDLE_ACTIONS,
   MAX_ACTIVE_SUPERKEYS,
@@ -198,6 +202,8 @@ export interface MultiActionState {
   currentCode: number;
   /** The slot the target's own cell held when the layout was loaded */
   ownBaselineSlot?: number;
+  /** Slots the keyboard holds a definition in, referenced or not. A new Superkey never takes one */
+  heldSlots?: Set<number>;
 }
 
 export type MultiActionResult = { table: number[][]; code: number } | { error: "capacity" | "emptyRule" };
@@ -248,7 +254,7 @@ export const applyMultiAction = (
   if (own !== undefined && own >= 0 && own < MAX_ACTIVE_SUPERKEYS && !hasOtherRef(state.refs, own, target)) {
     slot = own;
   } else {
-    slot = freeSlot(new Set([...refSlots(state.refs), ...state.protectedSlots]));
+    slot = freeSlot(new Set([...refSlots(state.refs), ...state.protectedSlots, ...(state.heldSlots ?? [])]));
   }
 
   if (slot === null) {
@@ -257,6 +263,43 @@ export const applyMultiAction = (
 
   return { table: withRow(state.table, slot, normalized), code: SUPERKEY_FIRST + slot };
 };
+
+const ONESHOT_FIRST = 49153;
+const ONESHOT_LAST = 49168;
+const LAYER_SHIFT_FIRST = 17450;
+const LAYER_SHIFT_LAST = 17459;
+
+/** The Tap a key's own code starts its Multi-action with. 1 when there is nothing to keep, null when the code can't be a Superkey Tap. */
+export const superkeyTapSeed = (code: number): number | null => {
+  if (code === 0 || code === 65535) {
+    return 1;
+  }
+
+  /* A Superkey sends the plain shortcut, and the firmware ignores an Autoshift key that a Superkey sends */
+  if (isHoldCode(code)) {
+    return holdShortcut(code);
+  }
+
+  if (isAutoshift(code)) {
+    return autoshiftBaseCode(code);
+  }
+
+  /* Leave out what the Superkey Tap picker does not offer */
+  const notOffered =
+    (code >= DU_FIRST && code <= DU_LAST) ||
+    isSuperkeyCode(code) ||
+    isSwapHandsCode(code) ||
+    (code >= ONESHOT_FIRST && code <= ONESHOT_LAST) ||
+    (code >= LAYER_SHIFT_FIRST && code <= LAYER_SHIFT_LAST) ||
+    code === OverlayCodes.OVERLAY_KEY ||
+    code === OverlayCodes.OVERLAY_HOLD;
+
+  return notOffered ? null : code;
+};
+
+/** The slots with a definition in a table. */
+export const definedSlots = (table: ReadonlyArray<ReadonlyArray<number>>): number[] =>
+  table.reduce<number[]>((slots, actions, slot) => (isIdleSuperkey(actions) ? slots : [...slots, slot]), []);
 
 /** The code a keyboard without Superkeys stores for these actions, which is nothing, a plain tap or a dual-function key. Null when none fits. */
 export const dualUseOnlyCode = (actions: ReadonlyArray<number | undefined | null>): number | null => {

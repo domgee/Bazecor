@@ -59,6 +59,19 @@ interface MultiActionTabProps extends MultiActionProps {
 
 const IDLE = 1;
 
+/* Marks the open action picker, so wheel events inside it never switch the outer picker's tab */
+export const MULTI_ACTION_POPOVER_ATTR = "data-multiaction-popover";
+
+/** False for wheel events the outer picker must ignore, which come from a select list or arrive while an action picker is open. */
+export const wheelSwitchesTab = (target: Element | null, doc: Document): boolean => {
+  /* Keep the old check for a select list, whose own markup holds its options */
+  if (target?.outerHTML?.includes('<div role="option"') || target?.closest?.('[role="option"]')) {
+    return false;
+  }
+
+  return doc.querySelector(`[${MULTI_ACTION_POPOVER_ATTR}]`) === null;
+};
+
 const TILES = [
   { id: 0, icon: <IconKeysPress />, title: () => i18n.editor.superkeys.actions.tapLabel },
   { id: 1, icon: <IconKeysHold />, title: () => i18n.editor.superkeys.actions.holdLabel },
@@ -161,7 +174,12 @@ const MultiActionTab = ({
                     {!isSet && <IconPlus size="xs" />}
                   </button>
                 </PopoverTrigger>
-                <PopoverContent side="top" sideOffset={6} className="w-[min(960px,92vw)] max-w-full">
+                <PopoverContent
+                  side="top"
+                  sideOffset={6}
+                  className="w-[min(960px,92vw)] max-w-full"
+                  {...{ [MULTI_ACTION_POPOVER_ATTR]: "" }}
+                >
                   {openSlot === tile.id && renderPicker(tile.id, code => select(tile.id, code))}
                 </PopoverContent>
               </Popover>

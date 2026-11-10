@@ -67,7 +67,7 @@ import {
   usedHoldCodes,
   withHoldBaseline,
 } from "@Renderer/modules/HoldMods/layoutSave";
-import { MultiActionProps, MultiActionStorage } from "@Renderer/modules/MultiAction/MultiActionTab";
+import { MultiActionProps, MultiActionStorage, wheelSwitchesTab } from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 
 // Components
@@ -121,6 +121,7 @@ import {
   applyMultiAction,
   conflictMessage,
   defaultCellName,
+  definedSlots,
   dualUseOnlyCode,
   multiActionBreaks,
   prepareSuperkeyWrite,
@@ -129,6 +130,7 @@ import {
   refName,
   superkeyRefs,
   superkeySlot,
+  superkeyTapSeed,
 } from "../../api/parsers/multiAction";
 import {
   MAX_ALT_REPEAT_RULES,
@@ -236,7 +238,6 @@ type AltRepeatBreakType = {
 type CombosState = "ready" | "unsupported" | "failed";
 
 const IDLE_ACTION = 1;
-const TRANSPARENT_KEY = 65535;
 
 /* The Superkey slots that the given layers, rules and combos reference */
 const refSlotsOf = (refs: Partial<LayoutRefs>): number[] =>
@@ -1109,6 +1110,17 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     return altRepeatState === "failed" ? i18n.editor.multiAction.rulesUnknown : undefined;
   };
 
+  /* The slots the keyboard holds a definition in. After a failed write it may hold the loaded table or the draft */
+  const heldSlots = (): Set<number> => {
+    const persisted = skSaved.current.table === null ? null : parseSuperkeysTable(skSaved.current.table);
+
+    if (persisted !== null) {
+      return new Set(definedSlots(persisted.table));
+    }
+
+    return new Set([...definedSlots(skBaseline.current?.table ?? []), ...definedSlots(draftTable())]);
+  };
+
   /* The slot this cell held on the keyboard, when only this cell used it there and its save is certain, so an edit can take it back */
   const ownBaselineSlot = (customIdx: number, position: number): number | undefined => {
     const baseline = skBaseline.current;
@@ -1151,6 +1163,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           protectedSlots: protectedSlots(skSaved.current),
           currentCode,
           ownBaselineSlot: ownBaselineSlot(customIdx, currentKeyIndex),
+          heldSlots: heldSlots(),
         },
         target,
         actions,
@@ -2282,7 +2295,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const updateScroll = useCallback((e: WheelEvent) => {
     // log.info("Scroll WHEEL event!", e);
     const direction = e.deltaY > 0 ? 1 : -1;
-    if (!(e.target as HTMLElement).outerHTML.includes('<div role="option"')) setMouseWheel(direction);
+    if (wheelSwitchesTab(e.target as Element | null, document)) setMouseWheel(direction);
   }, []);
 
   useEffect(() => {
@@ -2622,9 +2635,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     const refs = superkeyRefs(draftRefs(draftCodes(keymap.custom), altRepeatRules));
     const slot = superkeySlot(cellCode);
     const dualUse = decodeDualUse(cellCode);
-    let actions = normalizeActions([cellCode === 0 || cellCode === TRANSPARENT_KEY ? IDLE_ACTION : cellCode]);
+    const tapSeed = superkeyTapSeed(cellCode);
+    let actions = normalizeActions([tapSeed ?? IDLE_ACTION]);
     let storage: MultiActionStorage = "plain";
-    let notice: string | undefined;
+    let notice: string | undefined = tapSeed === null ? i18n.editor.multiAction.tapNotSeeded : undefined;
 
     if (slot !== null) {
       storage = "superkey";
@@ -2646,7 +2660,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     }
 
     const users = slot === null ? [] : (refs.get(slot) ?? []).map(ref => refName(ref, altRepeatRules, defaultCellName));
-    const used = new Set([...refs.keys(), ...protectedSlots(skSaved.current)].filter(s => s < MAX_ACTIVE_SUPERKEYS)).size;
+    /* Count slots the keyboard still holds as used, since a new Superkey never takes one */
+    const used = new Set(
+      [...refs.keys(), ...protectedSlots(skSaved.current), ...heldSlots()].filter(s => s < MAX_ACTIVE_SUPERKEYS),
+    ).size;
 
     return {
       mode: superkeysState === "unsupported" ? "dualUseOnly" : "full",

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { ThemeProvider } from "styled-components";
 import Light from "@Renderer/theme/LightTheme";
-import MultiActionTab, { MultiActionProps, multiActionStatus } from "./MultiActionTab";
+import MultiActionTab, { MultiActionProps, multiActionStatus, wheelSwitchesTab } from "./MultiActionTab";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -170,5 +170,36 @@ describe("MultiActionTab", () => {
     expect(
       screen.getByText("Superkey 76 is beyond the keyboard's limit of 70. Editing gives this key its own Superkey."),
     ).not.toBeNull();
+  });
+});
+
+describe("wheelSwitchesTab", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  test("a wheel event switches the tab while no action picker is open", () => {
+    renderTab();
+
+    expect(wheelSwitchesTab(tile(0), document)).toBe(true);
+  });
+
+  test("a wheel event leaves the tab while an action picker is open", () => {
+    renderTab();
+
+    fireEvent.click(within(tile(2)).getByRole("button"));
+    const picked = screen.getByRole("button", { name: "pick B for action 2" });
+
+    expect(wheelSwitchesTab(picked, document)).toBe(false);
+    expect(wheelSwitchesTab(tile(0), document)).toBe(false);
+  });
+
+  test("a wheel event in a select list leaves the tab", () => {
+    const list = document.createElement("div");
+    list.innerHTML = '<div role="option">A</div>';
+    document.body.appendChild(list);
+
+    expect(wheelSwitchesTab(list.firstElementChild, document)).toBe(false);
+    list.remove();
   });
 });

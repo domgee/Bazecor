@@ -377,12 +377,16 @@ function KeyPickerKeyboard(props: Props) {
     if (keynumOld !== keynum || distinctKeyIndex) {
       const localdisable = keyIndex === -1;
       // log.info("This kenumOld : ", keynumOld, keynum, localdisable, keyIndex);
-      const lstate = { ...state };
-      lstate.disable = actTab === "super" ? false : localdisable;
-      /* Stay on Multi-action while its edits change how the same key is saved */
-      const keepMultiAction = hasMultiAction && !distinctKeyIndex && state.currentTab === "tabMultiAction";
-      lstate.currentTab = keepMultiAction ? "tabMultiAction" : detectTab(keynum, state.currentTab, hasMultiAction);
-      setState(lstate);
+      /* Update from the latest state, so a tab list set in the same commit stays */
+      setState(previous => {
+        /* Stay on Multi-action while its edits change how the same key is saved */
+        const keepMultiAction = hasMultiAction && !distinctKeyIndex && previous.currentTab === "tabMultiAction";
+        return {
+          ...previous,
+          disable: actTab === "super" ? false : localdisable,
+          currentTab: keepMultiAction ? "tabMultiAction" : detectTab(keynum, previous.currentTab, hasMultiAction),
+        };
+      });
       prevState.current = state;
     }
     prevProps.current = props;
@@ -393,21 +397,14 @@ function KeyPickerKeyboard(props: Props) {
     const elem = overflowRef.current;
     const overflow = elem.scrollHeight > elem.offsetHeight;
     if (!disable && mouseWheel !== 0 && !overflow) {
-      if (mouseWheel === 1) {
-        const lstate = { ...state };
-        const indexTab = tabs.indexOf(lstate.currentTab);
-        const futureTab = indexTab === tabs.length ? 0 : indexTab + 1;
-        lstate.currentTab = tabs[futureTab];
-        resetScroll();
-        setState(lstate);
-      } else {
-        const lstate = { ...state };
-        const indexTab = tabs.indexOf(lstate.currentTab);
-        const futureTab = indexTab === 0 ? tabs.length - 1 : indexTab - 1;
-        lstate.currentTab = tabs[futureTab];
-        resetScroll();
-        setState(lstate);
-      }
+      const step = mouseWheel === 1 ? 1 : -1;
+      resetScroll();
+      /* Step through the latest tab list, which an effect in the same commit may have changed */
+      setState(previous => {
+        const indexTab = previous.tabs.indexOf(previous.currentTab);
+        const futureTab = (indexTab + step + previous.tabs.length) % previous.tabs.length;
+        return { ...previous, currentTab: previous.tabs[futureTab] };
+      });
     }
   }, [state, mouseWheel, tabs, resetScroll, disable, overflowRef]);
 
@@ -585,6 +582,7 @@ function KeyPickerKeyboard(props: Props) {
                           actTab="super"
                           selectedlanguage={selectedlanguage}
                           isWireless={false}
+                          allowAutoshift={false}
                         />
                       );
                     }}

@@ -175,6 +175,38 @@ describe("KeyPickerKeyboard Multi-action tab", () => {
     expect(tabNames(container).filter(name => name === "Superkeys" || name === "Multi-action")).toEqual([]);
   });
 
+  test("the wheel steps to the tab once it comes with a newly picked key", () => {
+    /* Hold the wheel like the Layout editor, which sets it back to 0 through resetScroll */
+    const Harness = ({ withMultiAction, keyIndex, wheel }: { withMultiAction: boolean; keyIndex: number; wheel: number }) => {
+      const [mouseWheel, setMouseWheel] = React.useState(wheel);
+      React.useEffect(() => setMouseWheel(wheel), [wheel]);
+      return (
+        <ThemeProvider theme={Light}>
+          <KeyPickerKeyboard
+            mouseWheel={mouseWheel}
+            resetScroll={() => setMouseWheel(0)}
+            onKeySelect={vi.fn()}
+            code={{ base: 4, modified: 0 }}
+            macros={[]}
+            superkeys={[]}
+            keyIndex={keyIndex}
+            actTab="editor"
+            selectedlanguage="en-US"
+            isWireless={false}
+            multiAction={withMultiAction ? multiAction : undefined}
+          />
+        </ThemeProvider>
+      );
+    };
+    const { rerender } = render(<Harness withMultiAction={false} keyIndex={0} wheel={0} />);
+
+    rerender(<Harness withMultiAction keyIndex={1} wheel={0} />);
+    rerender(<Harness withMultiAction keyIndex={1} wheel={1} />);
+
+    // The first selected tab is the outer picker's. The open tab also shows the nested picker
+    expect(screen.getAllByRole("tab", { selected: true })[0].textContent?.trim()).toBe("Multi-action");
+  });
+
   test("a Superkey opens the tab, whose nested picker edits one action without the tab", () => {
     renderWith({ keyCode: SUPERKEY_1, withMultiAction: true });
 
