@@ -27,6 +27,7 @@ import MediaAndLightTab from "@Renderer/modules/KeysTabs/MediaAndLightTab";
 import MouseTab from "@Renderer/modules/KeysTabs/MouseTab";
 import WirelessTab from "@Renderer/modules/KeysTabs/WirelessTab";
 import LayerLensTab from "@Renderer/modules/KeysTabs/LayerLensTab";
+import MultiActionTab, { MultiActionProps } from "@Renderer/modules/MultiAction/MultiActionTab";
 import CustomKeyCodeModal from "@Renderer/components/molecules/CustomModal/ModalCustomKeycode";
 import { Separator } from "@Renderer/components/atoms/Separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@Renderer/components/atoms/Tooltip";
@@ -266,6 +267,8 @@ interface Props {
   /* Show mouse movement and wheel keys, which the Mouse tab otherwise keeps to
    * the Layout Editor. */
   fullMouse?: boolean;
+  /* Show the Multi-action tab after Keys & Shortcuts in place of the Superkeys tab */
+  multiAction?: MultiActionProps;
 }
 
 interface State {
@@ -293,6 +296,7 @@ function KeyPickerKeyboard(props: Props) {
     keepHold = false,
     holdMods,
     fullMouse = false,
+    multiAction,
   } = props;
   const prevProps = useRef(props);
   const overflowRef = React.createRef<HTMLElement>();
@@ -320,28 +324,50 @@ function KeyPickerKeyboard(props: Props) {
   log.info(`[Lens] KeyPickerKeyboard render -> capabilities.lens: ${lensCapabilityRaw}, showLayerLensTab: ${isLensAvailable}`);
 
   const { tabs, disable, currentTab, customModal } = state;
+  /* A nested picker edits one Superkey action, so it never offers Multi-action itself */
+  const hasMultiAction = multiAction !== undefined && actTab !== "super";
 
-  useEffect(() => {
+  const tabListFor = (withMultiAction: boolean) => {
     const tabList = [];
     tabList.push("tabKeys");
+    if (withMultiAction) tabList.push("tabMultiAction");
     tabList.push("tabLayers");
     tabList.push("tabMacro");
-    if (actTab !== "super") tabList.push("tabSuperKeys");
+    if (actTab !== "super" && !withMultiAction) tabList.push("tabSuperKeys");
     tabList.push("tabMedia");
     tabList.push("tabMouse");
     if (isWireless) tabList.push("tabWireless");
     if (isLensAvailable) tabList.push("tabLayerLens");
+    return tabList;
+  };
 
+  useEffect(() => {
     const lstate = { ...state };
-    lstate.tabs = tabList;
+    lstate.tabs = tabListFor(hasMultiAction);
     // Enable editing by default in Superkeys context; otherwise depend on keyIndex
     lstate.disable = actTab === "super" ? false : keyIndex === -1;
     // Initialize current tab based on the initial key
     const initialKeyNum = code != null ? code.modified + code.base : -1;
-    lstate.currentTab = detectTab(initialKeyNum, state.currentTab);
+    lstate.currentTab = detectTab(initialKeyNum, state.currentTab, hasMultiAction);
     setState(lstate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* Keep the wheel's tab order in step when the Multi-action tab comes or goes */
+  useEffect(() => {
+    setState(previous => {
+      let tab = previous.currentTab;
+
+      if (hasMultiAction && tab === "tabSuperKeys") {
+        tab = "tabMultiAction";
+      } else if (!hasMultiAction && tab === "tabMultiAction") {
+        tab = detectTab(code != null ? code.modified + code.base : -1, undefined, false);
+      }
+
+      return { ...previous, tabs: tabListFor(hasMultiAction), currentTab: tab };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMultiAction]);
 
   useEffect(() => {
     const distinctKeyIndex = prevProps.current.keyIndex !== keyIndex;
@@ -353,7 +379,9 @@ function KeyPickerKeyboard(props: Props) {
       // log.info("This kenumOld : ", keynumOld, keynum, localdisable, keyIndex);
       const lstate = { ...state };
       lstate.disable = actTab === "super" ? false : localdisable;
-      lstate.currentTab = detectTab(keynum, state.currentTab);
+      /* Stay on Multi-action while its edits change how the same key is saved */
+      const keepMultiAction = hasMultiAction && !distinctKeyIndex && state.currentTab === "tabMultiAction";
+      lstate.currentTab = keepMultiAction ? "tabMultiAction" : detectTab(keynum, state.currentTab, hasMultiAction);
       setState(lstate);
       prevState.current = state;
     }
@@ -416,13 +444,22 @@ function KeyPickerKeyboard(props: Props) {
                 <TabsTrigger value="tabKeys" variant="tab" className="text-sm [&_svg]:w-[20px] py-2" disabled={disable}>
                   <IconKeyboard /> Keys & Shortcuts
                 </TabsTrigger>
+                {hasMultiAction && multiAction && (
+                  <TabsTrigger value="tabMultiAction" variant="tab" className="text-sm [&_svg]:w-[20px] py-2" disabled={disable}>
+                    <IconThunder size="sm" /> {i18n.editor.multiAction.title}
+                    {!sk20 && <div className="badge badge-primary leading-none ml-1 font-bold text-[9px] text-white">BETA</div>}
+                    {(multiAction.storage === "superkey" || multiAction.storage === "dualUse") && (
+                      <span className="multiActionDot ml-1 inline-block w-1.5 h-1.5 rounded-full bg-primary/100" />
+                    )}
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="tabLayers" variant="tab" className="text-sm [&_svg]:w-[20px] py-2" disabled={disable}>
                   <IconLayers size="sm" /> Layers and Modifiers
                 </TabsTrigger>
                 <TabsTrigger value="tabMacro" variant="tab" className="text-sm [&_svg]:w-[20px] py-2" disabled={disable}>
                   <IconRobot size="sm" /> Macros
                 </TabsTrigger>
-                {actTab !== "super" ? (
+                {actTab !== "super" && !hasMultiAction ? (
                   <>
                     <TabsTrigger value="tabSuperKeys" variant="tab" className="text-sm [&_svg]:w-[20px] py-2" disabled={disable}>
                       <>
@@ -527,6 +564,34 @@ function KeyPickerKeyboard(props: Props) {
                 </>
               </motion.div>
             </TabsContent>
+            {hasMultiAction && multiAction && (
+              <TabsContent value="tabMultiAction" key="tabMultiAction">
+                <motion.div initial="hidden" animate="visible" key="tabMultiAction" variants={tabVariants}>
+                  <MultiActionTab
+                    {...multiAction}
+                    disabled={disable}
+                    renderPicker={(slot, onSelect) => {
+                      const slotCode = multiAction.actions[slot] === 1 ? 0 : multiAction.actions[slot];
+                      return (
+                        <KeyPickerKeyboard
+                          mouseWheel={0}
+                          resetScroll={() => {}}
+                          onKeySelect={onSelect}
+                          code={keymapDB.keySegmentor(slotCode)}
+                          macros={macros}
+                          superkeys={superkeys}
+                          action={slot}
+                          keyIndex={slotCode}
+                          actTab="super"
+                          selectedlanguage={selectedlanguage}
+                          isWireless={false}
+                        />
+                      );
+                    }}
+                  />
+                </motion.div>
+              </TabsContent>
+            )}
             <TabsContent value="tabLayers" key="tabLayers">
               <motion.div initial="hidden" animate="visible" key="tabKeys" variants={tabVariants}>
                 <LayersTab
@@ -580,7 +645,7 @@ function KeyPickerKeyboard(props: Props) {
                 </>
               </motion.div>
             </TabsContent>
-            {actTab !== "super" && (
+            {actTab !== "super" && !hasMultiAction && (
               <>
                 <TabsContent value="tabSuperKeys" key="tabSuperKeys">
                   <motion.div initial="hidden" animate="visible" key="tabKeys" variants={tabVariants}>

@@ -3,9 +3,19 @@ import { AutoshiftCodes } from "../../../hw/autoshift";
 import { CapsWordCodes } from "../../../hw/capsword";
 import { isHoldCode } from "../../../hw/layerhold";
 import { isSwapHandsCode } from "../../../hw/swaphands";
+import { decodeDualUse } from "../../../api/parsers/altRepeat";
+import { SUPERKEY_CODES, SUPERKEY_FIRST } from "../../../api/parsers/superkeys";
 
-/** The picker tab that edits this keycode, given the tab that is open now. */
-export const detectTab = (keyCode: number, currentTab: string | undefined): string => {
+const isSuperkeyKeyCode = (keyCode: number) => keyCode >= SUPERKEY_FIRST && keyCode < SUPERKEY_FIRST + SUPERKEY_CODES;
+
+/** The picker tab that edits this keycode, given the tab that is open now. With the Multi-action tab, Superkeys and dual-function keys
+ * open it. */
+export const detectTab = (keyCode: number, currentTab: string | undefined, hasMultiAction = false): string => {
+  if (hasMultiAction && (isSuperkeyKeyCode(keyCode) || decodeDualUse(keyCode) !== null)) {
+    log.info("detectedTab", keyCode, "tabMultiAction");
+    return "tabMultiAction";
+  }
+
   /* A hold key is a shortcut, so open the Keys tab even right after a layer key */
   if (isHoldCode(keyCode)) {
     log.info("detectedTab", keyCode, "tabKeys");
@@ -73,7 +83,7 @@ export const detectTab = (keyCode: number, currentTab: string | undefined): stri
     tab = "tabMacro";
   }
 
-  if (keyCode >= 53980 && keyCode <= 54109) {
+  if (isSuperkeyKeyCode(keyCode)) {
     tab = "tabSuperKeys";
   }
 

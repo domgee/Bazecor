@@ -82,3 +82,6 @@ export const superkeyFace = (actions: ReadonlyArray<number> | undefined, slot: n
 /** The table as the store and old readers hold it, with generated names. */
 export const withGeneratedNames = (table: ReadonlyArray<ReadonlyArray<number>>, ctx: LabelContext): SuperkeysType[] =>
   table.map((actions, id) => ({ actions: normalizeActions(actions), name: superkeyName(actions, ctx), id }));
+
+/** The short text for one action, or its keycode when Lens has no label for it. */
+export const actionText = (code: number, ctx: LabelContext): string => compactActionText(code, ctx) || String(code);

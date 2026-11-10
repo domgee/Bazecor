@@ -206,7 +206,7 @@ export interface LayoutSaveOutcome {
   table: HoldModsEntry[];
   saved: HoldSavedState;
   savedRules: string | null;
-  /* Only with a Superkey input. The table as the keyboard holds it after the save, and the saved state */
+  /* Only with a Superkey input. The table the save ends with, which the keyboard holds only when nothing failed, and the saved state */
   superkeys?: { table: number[][]; saved: SuperkeySavedState };
   /* Only with a per-key input */
   perKeySaved?: string | null;
@@ -301,17 +301,14 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
 
   /* Write the Superkey table and mark the keymap for a rewrite. On failure the keyboard may hold any part of it */
   const writeSuperkeys = async (
+    send: NonNullable<LayoutSaveIO["writeSuperkeys"]>,
     next: number[][],
     state: SuperkeySavedState,
     format: SuperkeyWriteFormat,
   ): Promise<SuperkeySavedState> => {
     try {
-      if (!sendSuperkeys) {
-        throw new Error("A Superkey save needs writeSuperkeys");
-      }
-
       const data = serializeSuperkeyTable(next, format, state.storedRows);
-      const storedRows = await sendSuperkeys(next, format, state.storedRows);
+      const storedRows = await send(next, format, state.storedRows);
       return { ...state, table: data, storedRows, keymapStale: true, cleanupDone: true };
     } catch (error) {
       skSaved = { ...state, table: null, storedRows: null, keymapStale: true, cleanupDone: true };
@@ -354,9 +351,9 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
   }
 
   /* Superkeys go before the keymap, so every Superkey a key sends is defined */
-  if (skReady && skSaved && skTable && needsSuperkeyWrite(sk, skSaved, skTable)) {
+  if (skReady && sendSuperkeys && skSaved && skTable && needsSuperkeyWrite(sk, skSaved, skTable)) {
     try {
-      skSaved = await writeSuperkeys(skTable, skSaved, sk.format);
+      skSaved = await writeSuperkeys(sendSuperkeys, skTable, skSaved, sk.format);
     } catch (error) {
       return outcome("superkeys", error);
     }
@@ -441,13 +438,13 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
   }
 
   /* Keep what the draft references and what the keyboard may still hold, now that the keymap and rules are saved */
-  if (skReady && sk.collect && skSaved && skTable) {
+  if (skReady && sendSuperkeys && sk.collect && skSaved && skTable) {
     const keep = new Set([...superkeyRefs({ customLayers: layers, rules, ...sk.draftRefs }).keys(), ...protectedSlots(skSaved)]);
     const collected = collectSuperkeys(skTable, keep, collectModeFor(sk.format));
 
     if (collected !== skTable) {
       try {
-        skSaved = await writeSuperkeys(collected, skSaved, sk.format);
+        skSaved = await writeSuperkeys(sendSuperkeys, collected, skSaved, sk.format);
       } catch (error) {
         return outcome("skgc", error);
       }

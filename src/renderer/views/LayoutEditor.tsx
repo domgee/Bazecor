@@ -55,13 +55,20 @@ import { loadHoldModsForEditor } from "@Renderer/modules/HoldMods/layoutLoad";
 import { altRepeatMissed, createHoldModsSync, holdModsRetryWanted } from "@Renderer/modules/HoldMods/holdModsSync";
 import {
   EMPTY_HOLD_SAVED,
+  EMPTY_SUPERKEY_SAVED,
   HoldSavedState,
   LayoutSaveInput,
   LayoutSaveMode,
+  LayoutSaveStep,
+  SuperkeyMode,
+  SuperkeySaveInput,
+  SuperkeySavedState,
   runLayoutSave,
   usedHoldCodes,
   withHoldBaseline,
 } from "@Renderer/modules/HoldMods/layoutSave";
+import { MultiActionProps, MultiActionStorage } from "@Renderer/modules/MultiAction/MultiActionTab";
+import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 
 // Components
 import LayerSelector from "@Renderer/components/organisms/Select/LayerSelector";
@@ -90,15 +97,46 @@ import {
   parseCombosRaw,
   parseMacrosRaw,
   parsePaletteRaw,
-  parseSuperkeysRaw,
 } from "../../api/parsers";
-import { ComboBreakReason, comboBreakReason, combosAtPosition, isLegacyCombosReply } from "../../api/parsers/combos";
+import {
+  ComboBreakReason,
+  comboBreakReason,
+  combosAtPosition,
+  isLegacyCombosReply,
+  parseCombosStrict,
+} from "../../api/parsers/combos";
+import {
+  MAX_ACTIVE_SUPERKEYS,
+  SUPERKEY_FIRST,
+  normalizeActions,
+  parseSuperkeysTable,
+  superkeyWriteFormat,
+  writeSuperkeyTable,
+} from "../../api/parsers/superkeys";
+import {
+  LayoutRefs,
+  MultiActionResult,
+  SkRef,
+  SuperkeyDraft,
+  applyMultiAction,
+  conflictMessage,
+  defaultCellName,
+  dualUseOnlyCode,
+  multiActionBreaks,
+  prepareSuperkeyWrite,
+  protectedSlots,
+  reconcileDraft,
+  refName,
+  superkeyRefs,
+  superkeySlot,
+} from "../../api/parsers/multiAction";
 import {
   MAX_ALT_REPEAT_RULES,
   altRepeatDefaultBlock,
   basePrevious,
   clearLayerRules,
   copyLayerRules,
+  decodeDualUse,
   firmwareLayerCount,
   hasRepeat,
   isAllowedOutput,
@@ -181,14 +219,36 @@ ${keyboardCanvasStyles}
 
 type ModeType = "keyboard" | "color";
 
+/* The draft before an edit, which "Undo" on a break warning puts back */
+type EditSnapshot = {
+  superkeys: SuperkeysType[] | undefined;
+  custom: KeyType[][];
+  rules: AltRepeatRule[];
+};
+
 /* Hold what "Undo" puts back when a new default turns off a key's previous-key tabs */
 type AltRepeatBreakType = {
-  layer: number;
-  keyIndex: number;
-  previousKeyCode: number;
   reason: AltRepeatBlock;
   ruleCount: number;
+  undo: EditSnapshot;
 };
+
+type CombosState = "ready" | "unsupported" | "failed";
+
+const IDLE_ACTION = 1;
+const TRANSPARENT_KEY = 65535;
+
+/* The Superkey slots that the given layers, rules and combos reference */
+const refSlotsOf = (refs: Partial<LayoutRefs>): number[] =>
+  [
+    ...superkeyRefs({
+      customLayers: refs.customLayers ?? [],
+      defaultLayers: refs.defaultLayers ?? [],
+      layerOffset: refs.layerOffset ?? 0,
+      rules: refs.rules ?? [],
+      combos: refs.combos ?? [],
+    }).keys(),
+  ].sort((a, b) => a - b);
 
 const LayoutEditor = (props: LayoutEditorProps) => {
   const defaultLayerNames = useMemo(
@@ -260,10 +320,19 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const [comboBreak, setComboBreak] = useState<{
     reason: ComboBreakReason;
     comboIndexes: number[];
-    layer: number;
-    keyIndex: number;
-    previousKeyCode: number;
+    undo: EditSnapshot;
   } | null>(null);
+  /* "ready" once superkeys.map is read uncached and parsed */
+  const [superkeysState, setSuperkeysState] = useState<SuperkeyMode>("unsupported");
+  /* Rows at or above 70 from the load, kept to show what such a key held */
+  const [superkeysBeyond, setSuperkeysBeyond] = useState<Map<number, number[]>>(new Map());
+  /* The combos as the strict parser reads them. Allocation needs them, since their outputs use Superkey slots */
+  const [combosState, setCombosState] = useState<CombosState>("unsupported");
+  const [strictCombos, setStrictCombos] = useState<ComboType[]>([]);
+  /* Remember what the keyboard holds of the Superkeys, so Save writes only changes and an edit never reuses a slot it may play */
+  const skSaved = useRef<SuperkeySavedState>(EMPTY_SUPERKEY_SAVED);
+  /* The layout as the keyboard holds it, to tell clashes already on the keyboard from new ones */
+  const skBaseline = useRef<SuperkeyDraft | null>(null);
   const [altRepeatRules, setAltRepeatRules] = useState<AltRepeatRule[]>([]);
   const [altRepeatState, setAltRepeatState] = useState<AltRepeatState>("unsupported");
   /* Remember the table the keyboard holds so Save only writes a changed table. Null after a failed write */
@@ -329,6 +398,17 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   } = props;
 
   const layoutEditorContainerRef = useRef(null);
+
+  /* Label Superkeys from their actions, so key faces and names follow every edit */
+  const labelCtx = useMemo(
+    () =>
+      labelContext(
+        currentLanguageLayout,
+        (layerNames ?? []).map((layer: LayerType) => layer?.name ?? ""),
+        (macros ?? []).map(macro => macro.name ?? ""),
+      ),
+    [currentLanguageLayout, layerNames, macros],
+  );
 
   const onLayerNameChange = (newName: string) => {
     const slicedLayerNames = layerNames.slice();
@@ -517,9 +597,19 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     const load = altRepeatLoads.current;
     const edits = altRepeatEdits.current;
 
+    /* The keyboard holds these rules, so their Superkey slots stay protected and count for clashes already on the keyboard */
+    const keepSavedRules = (rules: AltRepeatRule[]) => {
+      skSaved.current = { ...skSaved.current, ruleRefs: refSlotsOf({ rules }), uncertainRules: [] };
+
+      if (skBaseline.current) {
+        skBaseline.current = { ...skBaseline.current, rules };
+      }
+    };
+
     if (!store.get("capabilities.altRepeat")) {
       setAltRepeatState("unsupported");
       setAltRepeatRules([]);
+      keepSavedRules([]);
       return;
     }
 
@@ -538,6 +628,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       setAltRepeatState("ready");
       setAltRepeatRules(rules);
       savedAltRepeat.current = serializeAltRepeat(rules);
+      keepSavedRules(rules);
     }
   }, []);
 
@@ -633,9 +724,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         // defLayer = parseInt(defLayer, 10) || 0;
 
         setScanningStep(4);
-        const defaults = (await currentDevice?.command("keymap.default")) as string;
+        /* Read uncached, since the Superkey slots the keyboard holds are protected from reuse */
+        const defaults = (await currentDevice?.noCacheCommand("keymap.default")) as string;
         setScanningStep(5);
-        const custom = (await currentDevice?.command("keymap.custom")) as string;
+        const custom = (await currentDevice?.noCacheCommand("keymap.custom")) as string;
         const onlycstm = (await currentDevice?.command("keymap.onlyCustom")) as string;
         const onlyCustom = Boolean(parseInt(onlycstm, 10));
         const KeyMap: KeymapType = {
@@ -680,10 +772,27 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         const rawMacros = (await currentDevice?.command("macros.map")) as string;
         const parsedMacros = parseMacrosRaw(rawMacros, neuronData.storedMacros);
 
-        // Loading Superkeys
+        // Loading Superkeys, uncached so the editor knows exactly what the keyboard holds
         setScanningStep(8);
-        const rawSuper = (await currentDevice?.command("superkeys.map")) as string;
-        const parsedSuper = parseSuperkeysRaw(rawSuper, neuronData.storedSuper);
+        let nextSuperkeysState: SuperkeyMode = "unsupported";
+        let rawSuper: string | null = null;
+        let skParsed: ReturnType<typeof parseSuperkeysTable> = null;
+
+        if (store.get("capabilities.superkeys")) {
+          const reply = await currentDevice?.noCacheCommand("superkeys.map");
+          skParsed = parseSuperkeysTable(reply);
+
+          if (skParsed === null) {
+            log.error("[LayoutEditor] superkeys.map could not be read", reply);
+            nextSuperkeysState = "failed";
+          } else {
+            nextSuperkeysState = "ready";
+            rawSuper = reply as string;
+          }
+        }
+
+        const skTable = skParsed?.table ?? [];
+        const parsedSuper = withGeneratedNames(skTable, labelContext(lang));
 
         // Loading Combos, to badge the keys that belong to one. Firmware that
         // predates the feature answers with nothing, and that is not an error
@@ -691,18 +800,47 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         // format of the first combos firmware: it is not badged at all rather
         // than misread.
         // Firmware older than the one that ships combos is not asked at all (see capabilities.combos).
+        let nextCombosState: CombosState = "unsupported";
+        let nextStrictCombos: ComboType[] = [];
+
         if (!store.get("capabilities.combos")) {
           setCombos([]);
         } else {
           try {
-            const rawCombos = (await currentDevice?.command("combos.map")) as string;
+            const rawCombos = (await currentDevice?.noCacheCommand("combos.map")) as string;
             const usable = rawCombos && rawCombos.trim().length > 0 && !isLegacyCombosReply(rawCombos);
             setCombos(usable ? parseCombosRaw(rawCombos, neuronData.storedCombos) : []);
+            /* Allocate Superkeys only with combos read in full, since their outputs use slots too */
+            const strict = parseCombosStrict(rawCombos);
+            nextCombosState = strict === null ? "failed" : "ready";
+            nextStrictCombos = strict ?? [];
           } catch (error) {
             log.info("[LayoutEditor] combos.map unavailable; no combo badges will be shown");
             setCombos([]);
+            nextCombosState = "failed";
           }
         }
+
+        /* The keyboard's Superkey references. Loading the rules adds theirs */
+        const scanRefs: LayoutRefs = {
+          customLayers: KeyMap.custom.map(layer => layer.map((key: KeyType) => key.keyCode)),
+          defaultLayers: KeyMap.onlyCustom ? [] : KeyMap.default.map(layer => layer.map((key: KeyType) => key.keyCode)),
+          layerOffset: KeyMap.onlyCustom ? 0 : KeyMap.default.length,
+          rules: [],
+          combos: nextStrictCombos,
+        };
+        skSaved.current = {
+          ...EMPTY_SUPERKEY_SAVED,
+          table: rawSuper,
+          storedRows: skParsed?.storedRows ?? null,
+          keymapRefs: refSlotsOf({ ...scanRefs, combos: [] }),
+          comboRefs: refSlotsOf({ combos: nextStrictCombos }),
+        };
+        skBaseline.current = nextSuperkeysState === "ready" ? { ...scanRefs, table: skTable } : null;
+        setSuperkeysState(nextSuperkeysState);
+        setSuperkeysBeyond(skParsed?.beyond ?? new Map());
+        setCombosState(nextCombosState);
+        setStrictCombos(nextStrictCombos);
 
         await loadAltRepeatRules(currentDevice);
         await loadHoldMods(currentDevice, device);
@@ -790,6 +928,49 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     }
   };
 
+  /* Copy the layers, since assignKey changes a layer array in place */
+  const editSnapshot = (): EditSnapshot => ({
+    superkeys,
+    custom: keymap.custom.map(layer => layer.slice()),
+    rules: altRepeatRules,
+  });
+
+  const restoreSnapshot = (snapshot: EditSnapshot) => {
+    setSuperkeys(snapshot.superkeys);
+    setKeymap({
+      default: keymap.default,
+      onlyCustom: keymap.onlyCustom,
+      custom: snapshot.custom,
+    });
+
+    if (snapshot.rules !== altRepeatRules) {
+      altRepeatEdits.current += 1;
+      setAltRepeatRules(snapshot.rules);
+    }
+
+    setModified(true);
+    startContext();
+  };
+
+  /* Show one warning at a time. The combo warning goes first */
+  const showBreaks = (
+    comboReason: ComboBreakReason | null,
+    comboIndexes: number[],
+    ruleReason: AltRepeatBlock | null,
+    ruleCount: number,
+    undo: EditSnapshot,
+  ) => {
+    const rulesBreak =
+      altRepeatState === "ready" && ruleReason !== null && ruleCount > 0 ? { reason: ruleReason, ruleCount, undo } : null;
+
+    if (comboReason && comboIndexes.length > 0) {
+      setComboBreak({ reason: comboReason, comboIndexes, undo });
+      setPendingAltRepeatBreak(rulesBreak);
+    } else if (rulesBreak) {
+      setAltRepeatBreak(rulesBreak);
+    }
+  };
+
   const onKeyChange = (keyCode: number) => {
     // Keys can only change on the custom layers
     const layer = currentLayer;
@@ -801,6 +982,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
     const l = keymap.onlyCustom ? layer : layer - keymap.default.length;
     const previousKeyCode = keymap.custom[l]?.[keyIndex]?.keyCode;
+    const undo = editSnapshot();
 
     assignKey(layer, keyIndex, keyCode);
 
@@ -813,30 +995,17 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     const reason = comboBreakReason(keyCode, superkeys);
     /* A key can be in several combos on this layer; every one of them breaks. */
     const comboIndexes = reason ? combosAtPosition(combos, keyIndex, layer) : [];
-
-    if (reason && comboIndexes.length > 0) {
-      setComboBreak({ reason, comboIndexes, layer, keyIndex, previousKeyCode });
-    }
-
     const block = altRepeatDefaultBlock(keyCode, superkeys);
     const ruleCount = rulesAt(altRepeatRules, layer, keyIndex).length;
 
-    if (altRepeatState !== "ready" || block === null || ruleCount === 0) {
-      return;
-    }
-
-    const rulesBreak = { layer, keyIndex, previousKeyCode, reason: block, ruleCount };
-
-    /* Show one warning at a time. The combo warning goes first */
-    if (reason && comboIndexes.length > 0) {
-      setPendingAltRepeatBreak(rulesBreak);
-    } else {
-      setAltRepeatBreak(rulesBreak);
-    }
+    showBreaks(reason, comboIndexes, block, ruleCount, undo);
   };
 
   const undoComboBreak = () => {
-    if (comboBreak) assignKey(comboBreak.layer, comboBreak.keyIndex, comboBreak.previousKeyCode);
+    if (comboBreak) {
+      restoreSnapshot(comboBreak.undo);
+    }
+
     setComboBreak(null);
     setPendingAltRepeatBreak(null);
   };
@@ -849,7 +1018,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
   const undoAltRepeatBreak = () => {
     if (altRepeatBreak) {
-      assignKey(altRepeatBreak.layer, altRepeatBreak.keyIndex, altRepeatBreak.previousKeyCode);
+      restoreSnapshot(altRepeatBreak.undo);
     }
 
     setAltRepeatBreak(null);
@@ -901,6 +1070,136 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   };
 
   const draftCodes = (layers: KeyType[][]): number[][] => layers.map(layer => layer.map(key => key.keyCode));
+
+  const layerOffset = keymap.onlyCustom ? 0 : keymap.default.length;
+
+  /* Everything in the draft that can reference a Superkey */
+  const draftRefs = (custom: number[][], rules: AltRepeatRule[]): LayoutRefs => ({
+    customLayers: custom,
+    defaultLayers: keymap.onlyCustom ? [] : draftCodes(keymap.default),
+    layerOffset,
+    rules,
+    combos: combosState === "ready" ? strictCombos : [],
+  });
+
+  const draftTable = (): number[][] =>
+    (superkeys ?? []).slice(0, MAX_ACTIVE_SUPERKEYS).map(superkey => normalizeActions(superkey.actions));
+
+  const showMultiActionToast = (content: string) => {
+    toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={content} icon={<IconArrowDownWithLine />} />, {
+      autoClose: 4000,
+      icon: "",
+    });
+  };
+
+  /* Why Multi-action edits are off, or undefined. A new slot is safe only when every reference to the slots is known */
+  const multiActionBlock = (): string | undefined => {
+    if (superkeysState === "failed") {
+      return i18n.editor.multiAction.unreadable;
+    }
+
+    if (superkeysState !== "ready") {
+      return undefined;
+    }
+
+    if (combosState === "failed") {
+      return i18n.editor.multiAction.combosUnknown;
+    }
+
+    return altRepeatState === "failed" ? i18n.editor.multiAction.rulesUnknown : undefined;
+  };
+
+  /* The slot this cell held on the keyboard, when only this cell used it there and its save is certain, so an edit can take it back */
+  const ownBaselineSlot = (customIdx: number, position: number): number | undefined => {
+    const baseline = skBaseline.current;
+    const code = baseline?.customLayers[customIdx]?.[position];
+    const slot = code === undefined ? null : superkeySlot(code);
+
+    if (baseline === null || slot === null) {
+      return undefined;
+    }
+
+    const refs = superkeyRefs(baseline).get(slot) ?? [];
+    const [only] = refs;
+    const onlyThisCell =
+      refs.length === 1 && only.kind === "cell" && only.layer === customIdx + baseline.layerOffset && only.position === position;
+    const { uncertainKeymap, uncertainRules, uncertainCombos } = skSaved.current;
+    const uncertain = [...uncertainKeymap, ...uncertainRules, ...uncertainCombos].includes(slot);
+
+    return onlyThisCell && !uncertain ? slot : undefined;
+  };
+
+  /* Set the five actions of the selected cell, as a plain key, a dual-function key or a Superkey */
+  const onMultiActionChange = (actions: number[]) => {
+    const customIdx = keymap.onlyCustom ? currentLayer : currentLayer - keymap.default.length;
+    const custom = draftCodes(keymap.custom);
+    const currentCode = custom[customIdx]?.[currentKeyIndex];
+
+    if (currentKeyIndex === -1 || currentCode === undefined || multiActionBlock() !== undefined) {
+      return;
+    }
+
+    const table = draftTable();
+    let result: MultiActionResult;
+
+    if (superkeysState === "ready") {
+      const target: SkRef = { kind: "cell", layer: currentLayer, position: currentKeyIndex, custom: true };
+      result = applyMultiAction(
+        {
+          table,
+          refs: superkeyRefs(draftRefs(custom, altRepeatRules)),
+          protectedSlots: protectedSlots(skSaved.current),
+          currentCode,
+          ownBaselineSlot: ownBaselineSlot(customIdx, currentKeyIndex),
+        },
+        target,
+        actions,
+      );
+    } else {
+      const code = dualUseOnlyCode(actions);
+
+      if (code === null) {
+        showMultiActionToast(i18n.editor.multiAction.dualUseOnlyRefused);
+        return;
+      }
+
+      result = { table, code };
+    }
+
+    if ("error" in result) {
+      showMultiActionToast(result.error === "capacity" ? i18n.editor.multiAction.capacity : i18n.editor.multiAction.emptyRule);
+      return;
+    }
+
+    const { table: nextTable, code: nextCode } = result;
+
+    if (nextCode === currentCode && nextTable === table) {
+      return;
+    }
+
+    const undo = editSnapshot();
+    const after = custom.map((codes, l) =>
+      l === customIdx ? codes.map((code, p) => (p === currentKeyIndex ? nextCode : code)) : codes,
+    );
+    const breaks = multiActionBreaks(
+      { customLayers: custom, table, layerOffset },
+      { customLayers: after, table: nextTable, layerOffset },
+      combos,
+      altRepeatRules,
+    );
+
+    if (nextTable !== table) {
+      setSuperkeys(withGeneratedNames(nextTable, labelCtx));
+      setModified(true);
+      startContext();
+    }
+
+    if (nextCode !== currentCode) {
+      assignKey(currentLayer, currentKeyIndex, nextCode);
+    }
+
+    showBreaks(breaks.comboReason, breaks.comboIndexes, breaks.ruleReason, breaks.ruleCount, undo);
+  };
 
   /* The code for a shortcut with the modifiers in `held` held, or null when the table has no room. Never touch a code still in use */
   const allocateHold = (shortcut: number, held: number, skip: HoldRefSkip): number | null => {
@@ -995,6 +1294,29 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     setCurrentLayer(id);
   };
 
+  const saveFailedMessage = (step: LayoutSaveStep): string => {
+    const messages: Partial<Record<LayoutSaveStep, string>> = {
+      rules: i18n.editor.altRepeat.saveFailed,
+      superkeys: i18n.editor.multiAction.saveFailed,
+      skgc: i18n.editor.multiAction.gcFailed,
+      perKey: i18n.editor.multiAction.perKeyFailed,
+    };
+
+    return messages[step] ?? i18n.editor.holdMods.saveFailed;
+  };
+
+  const storeSuperkeyNames = (named: SuperkeysType[]) => {
+    const neurons = store.get("neurons") as Neuron[];
+    const index = Array.isArray(neurons) ? neurons.findIndex(neuron => neuron.id === neuronID) : -1;
+
+    if (index < 0) {
+      return;
+    }
+
+    neurons[index].superkeys = named;
+    store.set("neurons", neurons);
+  };
+
   const onApply = async () => {
     const { currentDevice } = state;
 
@@ -1007,6 +1329,58 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       return;
     }
 
+    const custom = draftCodes(keymap.custom);
+    const refs = draftRefs(custom, altRepeatRules);
+    let superkeysInput: SuperkeySaveInput | undefined;
+
+    if (superkeysState === "ready") {
+      const format = superkeyWriteFormat(currentDevice?.device.info.product);
+      /* Keep unused Superkeys until the Superkeys page is gone, since it still names slots no key uses */
+      const collect = false;
+      const prepared = prepareSuperkeyWrite({
+        draft: { ...refs, table: draftTable() },
+        saved: skSaved.current,
+        baseline: skBaseline.current,
+        collect,
+        format,
+      });
+
+      /* Refuse before any write, since the keyboard would play one of the clashing definitions on every key of a group */
+      if (prepared.conflicts.length > 0) {
+        const content = prepared.conflicts.map(conflict => conflictMessage(conflict, altRepeatRules)).join(" ");
+        toast.error(
+          <ToastMessage title={i18n.editor.multiAction.conflictTitle} content={content} icon={<IconArrowDownWithLine />} />,
+          {
+            autoClose: false,
+            icon: "",
+          },
+        );
+        return;
+      }
+
+      if (prepared.warnings.length > 0) {
+        const content = [i18n.editor.multiAction.conflictWarning]
+          .concat(prepared.warnings.map(conflict => conflictMessage(conflict, altRepeatRules)))
+          .join(" ");
+        toast.warn(
+          <ToastMessage title={i18n.editor.multiAction.conflictTitle} content={content} icon={<IconArrowDownWithLine />} />,
+          {
+            autoClose: 8000,
+            icon: "",
+          },
+        );
+      }
+
+      superkeysInput = {
+        mode: "ready",
+        format,
+        prepared: { table: prepared.table, layers: prepared.layers },
+        collect,
+        draftRefs: { defaultLayers: refs.defaultLayers, layerOffset: refs.layerOffset, combos: refs.combos },
+        saved: skSaved.current,
+      };
+    }
+
     const saveStart = holdSync.beginSave();
     let reloadHoldMods = false;
 
@@ -1015,13 +1389,14 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       setIsSaving(true);
       const saveInput: LayoutSaveInput = {
         mode: holdSaveMode(),
-        layers: draftCodes(keymap.custom),
+        layers: custom,
         rules: altRepeatRules,
         rulesReady: altRepeatState === "ready",
         onlyCustom: keymap.onlyCustom,
         table: holdModsTable,
         saved: holdSaved.current,
         savedRules: savedAltRepeat.current,
+        superkeys: superkeysInput,
       };
       const saved = await runLayoutSave(
         {
@@ -1032,9 +1407,16 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             await writeUncached(currentDevice, "keymap.onlyCustom", onlyCustom ? "1" : "0");
           },
           writeRules: rules => writeAltRepeatRules(currentDevice, rules, firmwareLayerCount(keymap), keysPerLayer()),
+          writeSuperkeys: (table, format, storedRows) => writeSuperkeyTable(currentDevice, table, format, storedRows),
         },
         saveInput,
       );
+
+      /* Keep what the keyboard may hold of the Superkeys also after a failed step */
+      if (saved.superkeys) {
+        skSaved.current = saved.superkeys.saved;
+      }
+
       /* Keep a baseline a load read during the save, and read the keyboard again before allocating */
       if (holdSync.loadAppliedSince(saveStart)) {
         reloadHoldMods = true;
@@ -1048,15 +1430,15 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       if (saved.failed !== undefined) {
         log.error(`[LayoutEditor] save stopped at the ${saved.failed} step`, saved.error);
 
-        if (saved.failed === "keymap") {
+        if (saved.failed === "keymap" || saved.failed === "keymapAfterGc") {
           throw saved.error instanceof Error ? saved.error : new Error(String(saved.error));
         }
 
-        throw new Error(saved.failed === "rules" ? i18n.editor.altRepeat.saveFailed : i18n.editor.holdMods.saveFailed);
+        throw new Error(saveFailedMessage(saved.failed));
       }
 
-      /* Show the draft as saved, with orphan or unsupported partial codes made plain and unused entries dropped */
-      if (saved.layers !== saveInput.layers) {
+      /* Show the draft as saved, with orphan or unsupported partial codes made plain, merged Superkeys and unused entries dropped */
+      if (reconcileDraft(custom, saved.layers).length > 0) {
         setKeymap({
           default: keymap.default,
           onlyCustom: keymap.onlyCustom,
@@ -1072,6 +1454,21 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
       if (saved.table !== holdModsTable) {
         setHoldModsTable(saved.table);
+      }
+
+      /* Name the Superkeys from their actions before the backup, which takes the names from the store */
+      if (saved.superkeys) {
+        const named = withGeneratedNames(saved.superkeys.table, labelCtx);
+        setSuperkeys(named);
+        storeSuperkeyNames(named);
+        skBaseline.current = {
+          customLayers: saved.layers,
+          defaultLayers: refs.defaultLayers,
+          layerOffset: refs.layerOffset,
+          rules: altRepeatState === "ready" ? saved.rules : (skBaseline.current?.rules ?? []),
+          combos: refs.combos,
+          table: saved.superkeys.table,
+        };
       }
 
       await updateColormap(currentDevice, colorMap);
@@ -1683,7 +2080,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           setKeymap(importedKeymap);
           setColorMap(layers.colormap);
           setPalette(layers.palette);
-          setSuperkeys(layers.superkeys ? layers.superkeys : []);
+          /* Keep the keyboard's Superkeys, which the imported keys play until the file's own are copied in */
 
           if (nextRules !== null) {
             replaceRules(nextRules);
@@ -1979,23 +2376,15 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       });
     }
 
-    if (localLayerData !== undefined && superkeys.length > 0) {
+    /* Label Superkeys from the draft's actions, on copies so the label follows every edit */
+    if (localLayerData !== undefined) {
       localLayerData = localLayerData.map(key => {
-        const newSKey = key;
-        if (key.extraLabel === "SUPER") {
-          const SKNumber = key.keyCode - 53980;
-          if (
-            superkeys.length > SKNumber &&
-            superkeys[SKNumber] !== undefined &&
-            superkeys[SKNumber].name !== undefined &&
-            superkeys[SKNumber].name !== "" &&
-            typeof key.label === "string" &&
-            !/\p{L}/u.test(key.label)
-          ) {
-            newSKey.label = superkeys[SKNumber].name.substring(0, 5);
-          }
+        if (key.extraLabel !== "SUPER") {
+          return key;
         }
-        return newSKey;
+
+        const slot = key.keyCode - SUPERKEY_FIRST;
+        return { ...key, label: superkeyFace(superkeys?.[slot]?.actions, slot, labelCtx) };
       });
     }
     // log.info("SAVING USEFFECT!!:", localLayerData, localIsReadOnly, localShowDefaults, cLayer);
@@ -2003,7 +2392,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     setIsReadOnly(localIsReadOnly);
     setShowDefaults(localShowDefaults);
     setCurrentLayer(cLayer);
-  }, [keymap, currentLayer, macros, superkeys]);
+  }, [keymap, currentLayer, macros, superkeys, labelCtx]);
 
   useEffect(() => {
     setAltRepeatTab(-1);
@@ -2221,6 +2610,59 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     onHoldChange: onRuleHoldChange,
   });
 
+  /* The Multi-action tab for the selected cell. Default layers are read-only and keep the Superkeys tab */
+  const cellMultiAction = (): MultiActionProps | undefined => {
+    const cellCode = keymap.custom[customLayerIdx]?.[currentKeyIndex]?.keyCode;
+
+    if (isReadOnly || currentKeyIndex === -1 || currentKeyIndex >= ledIndexStart || cellCode === undefined) {
+      return undefined;
+    }
+
+    const table = draftTable();
+    const refs = superkeyRefs(draftRefs(draftCodes(keymap.custom), altRepeatRules));
+    const slot = superkeySlot(cellCode);
+    const dualUse = decodeDualUse(cellCode);
+    let actions = normalizeActions([cellCode === 0 || cellCode === TRANSPARENT_KEY ? IDLE_ACTION : cellCode]);
+    let storage: MultiActionStorage = "plain";
+    let notice: string | undefined;
+
+    if (slot !== null) {
+      storage = "superkey";
+
+      if (slot >= MAX_ACTIVE_SUPERKEYS) {
+        actions = normalizeActions(superkeysBeyond.get(slot));
+        notice = i18n.editor.multiAction.beyondLimit
+          .replace("{slot}", String(slot + 1))
+          .replace("{max}", String(MAX_ACTIVE_SUPERKEYS));
+      } else if (slot >= table.length) {
+        actions = normalizeActions([]);
+        notice = i18n.editor.multiAction.undefinedSlot.replace("{slot}", String(slot + 1));
+      } else {
+        actions = table[slot];
+      }
+    } else if (dualUse !== null) {
+      storage = "dualUse";
+      actions = normalizeActions([dualUse.tap, dualUse.hold]);
+    }
+
+    const users = slot === null ? [] : (refs.get(slot) ?? []).map(ref => refName(ref, altRepeatRules, defaultCellName));
+    const used = new Set([...refs.keys(), ...protectedSlots(skSaved.current)].filter(s => s < MAX_ACTIVE_SUPERKEYS)).size;
+
+    return {
+      mode: superkeysState === "unsupported" ? "dualUseOnly" : "full",
+      context: "cell",
+      actions,
+      storage,
+      slot: slot !== null && slot < MAX_ACTIVE_SUPERKEYS ? slot : null,
+      users,
+      capacity: { used, max: MAX_ACTIVE_SUPERKEYS },
+      disabledReason: multiActionBlock(),
+      notice,
+      actionLabel: action => actionText(action, labelCtx),
+      onChange: onMultiActionChange,
+    };
+  };
+
   const takenPreviousCodes = keyRules
     .filter(index => index !== previousDialog.ruleIndex)
     .map(index => basePrevious(altRepeatRules[index].previous));
@@ -2357,6 +2799,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     allowLayerHold={cellHoldProps.allowLayerHold}
                     keepHold={cellHoldProps.keepHold}
                     holdMods={cellHoldProps.holdMods}
+                    multiAction={cellMultiAction()}
                   />
                 )}
                 {/* Offer the combo picker without Autoshift, since a rule output runs like a combo action. Layer hold needs v1.2.3 */}

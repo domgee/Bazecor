@@ -21,3 +21,21 @@ describe("detectTab", () => {
     expect(detectTab(keyCode, currentTab)).toBe(expected);
   });
 });
+
+describe("detectTab with the Multi-action tab", () => {
+  test.each([
+    [53980, true, "tabMultiAction"], // Superkey 1
+    [54107, true, "tabMultiAction"], // Superkey 128
+    [53980, false, "tabSuperKeys"], // Superkey 1 without the tab
+    [54107, false, "tabSuperKeys"], // Superkey 128 without the tab
+    [49169 + 4, true, "tabMultiAction"], // A with left Ctrl on hold
+    [49169 + 4, false, "tabLayers"], // A with left Ctrl on hold without the tab
+    [51218 + 0x2c, true, "tabMultiAction"], // Space with layer 1 on hold
+    [49169, true, "tabLayers"], // Left Ctrl on hold with no tap key
+    [54108, true, "tabWireless"], // First wireless key
+    [54111, false, "tabWireless"], // Last wireless key
+    [4, true, "tabKeys"], // A
+  ])("keycode %i with the tab %s gives %s", (keyCode, hasMultiAction, expected) => {
+    expect(detectTab(keyCode, undefined, hasMultiAction)).toBe(expected);
+  });
+});

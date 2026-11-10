@@ -12,6 +12,7 @@ import {
   cloneSuperkeyRefs,
   collectSuperkeys,
   conflictMessage,
+  dualUseOnlyCode,
   finalGcTable,
   freeSlot,
   gcRemovals,
@@ -569,5 +570,22 @@ describe("reconcileDraft", () => {
       { layer: 0, position: 0, code: SK(0) },
       { layer: 1, position: 0, code: SK(0) },
     ]);
+  });
+});
+
+describe("dualUseOnlyCode", () => {
+  const LAYER_SHIFT_2 = 17451;
+  const RIGHT_CTRL = 228;
+
+  test.each([
+    [IDLE, 0], // Nothing set
+    [[A, 1, 1, 1, 1], A], // Only a tap
+    [tapHold(A, CTRL), dualUseCodeFor(A, CTRL)], // Tap and left Ctrl hold
+    [tapHold(A, LAYER_SHIFT_2), dualUseCodeFor(A, LAYER_SHIFT_2)], // Tap and layer 2 hold
+    [tapHold(A, RIGHT_CTRL), null], // A hold no dual-function code carries
+    [[1, CTRL, 1, 1, 1], null], // A hold without a tap
+    [[A, 1, B, 1, 1], null], // Tap & hold needs a Superkey
+  ])("actions %j give %s", (actions, expected) => {
+    expect(dualUseOnlyCode(actions)).toBe(expected);
   });
 });

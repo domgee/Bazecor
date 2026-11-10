@@ -258,6 +258,21 @@ export const applyMultiAction = (
   return { table: withRow(state.table, slot, normalized), code: SUPERKEY_FIRST + slot };
 };
 
+/** The code a keyboard without Superkeys stores for these actions, which is nothing, a plain tap or a dual-function key. Null when none fits. */
+export const dualUseOnlyCode = (actions: ReadonlyArray<number | undefined | null>): number | null => {
+  const [tap, hold, ...rest] = normalizeActions(actions);
+
+  if (rest.some(action => action !== 1)) {
+    return null;
+  }
+
+  if (hold === 1) {
+    return tap === 1 ? 0 : tap;
+  }
+
+  return tap === 1 ? null : dualUseCodeFor(tap, hold);
+};
+
 /* ------------------------------------------------------------------------ */
 /* Garbage collection                                                       */
 /* ------------------------------------------------------------------------ */
@@ -509,9 +524,10 @@ export const prepareSuperkeyWrite = ({
   return { table, layers, merges, conflicts, warnings };
 };
 
-const defaultCellName = (layer: number, position: number) => `Layer ${layer + 1} key ${position}`;
+export const defaultCellName = (layer: number, position: number) => `Layer ${layer + 1} key ${position}`;
 
-const refName = (ref: SkRef, rules: AltRepeatRule[], cellName: (layer: number, position: number) => string): string => {
+/** A reference by name, such as "Layer 2 key 14", "Combo 4" or "Previous-key tab on Layer 1 key 20". */
+export const refName = (ref: SkRef, rules: AltRepeatRule[], cellName: (layer: number, position: number) => string): string => {
   if (ref.kind === "cell") {
     return cellName(ref.layer, ref.position);
   }

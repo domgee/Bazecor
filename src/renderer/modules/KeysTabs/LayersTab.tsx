@@ -1,13 +1,12 @@
 /* eslint-disable import/no-cycle */
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "react-toastify";
 import log from "electron-log/renderer";
 
 import { Button } from "@Renderer/components/atoms/Button";
 import Heading from "@Renderer/components/atoms/Heading";
 import findLayerType from "@Renderer/utils/findLayerType";
-import { IconWarning, IconPlus, IconPen } from "@Renderer/components/atoms/icons";
+import { IconWarning, IconPen } from "@Renderer/components/atoms/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@Renderer/components/atoms/Popover";
 import ToastMessage from "@Renderer/components/atoms/ToastMessage";
 import CustomRadioCheckBox from "@Renderer/components/molecules/Form/CustomRadioCheckBox";
@@ -56,7 +55,6 @@ const LayersTab = ({
   triggerDeleteLastItem,
 }: LayersTabProps) => {
   const [disableOneShotButtons, setDisableOneShotButtons] = useState<boolean>(false);
-  const [openKeysPopover, setOpenKeysPopover] = useState<boolean>(false);
   const [activeLayerNumber, setActiveLayerNumber] = useState<number>(
     findLayerType(keyCode ? keyCode.base + keyCode.modified : 17492)?.layer,
   );
@@ -65,7 +63,6 @@ const LayersTab = ({
   );
   const [KC, setKC] = useState<number>(0);
   const store = Store.getStore();
-  const sk20 = Boolean(store.get("capabilities.sk20"));
   const swapHands = Boolean(store.get("capabilities.swapHands"));
   const swapHandsSuperHold = Boolean(store.get("capabilities.swapHandsSuperHold"));
   /* Offer every swap key in the Layout editor, and only Hold on a Superkey's hold action, which older firmware ignores */
@@ -132,19 +129,11 @@ const LayersTab = ({
     keyNumInternal = 0;
   }
 
-  const handleDual = (keyBase: number, layer?: number) => {
-    const layerItem = layer
-      ? findLayerType(undefined, activeLayerTab, layer)
-      : findLayerType(undefined, activeLayerTab, activeLayerNumber);
-    // log.info("checking layer item", layerItem, layerItem.keynum + keyBase);
-    if (layerItem && layerItem.type === "layerDual") {
-      onKeySelect(layerItem.keynum + keyBase);
-      setOpenKeysPopover(false);
-    }
-  };
-
   const handleLayer = (layerNumber: number) => {
-    const layerItem = findLayerType(undefined, activeLayerTab, layerNumber);
+    /* Dual-function keys are set up in the Multi-action tab, so a layer picked here on one becomes a plain layer shift */
+    const layerTab = activeLayerTab === "layerDual" ? "layerShift" : activeLayerTab;
+    const layerItem = findLayerType(undefined, layerTab, layerNumber);
+    setActiveLayerTab(layerTab);
     // console.log("Layer inside handle: ", layerItem);
     setActiveLayerNumber(layerNumber);
     if (layerNumber > 8) {
@@ -154,14 +143,12 @@ const LayersTab = ({
       // setDisableOneShot(false);
       setDisableOneShotButtons(false);
     }
-    if (layerItem && layerItem.type !== "layerDual") {
+    if (layerItem) {
       onKeySelect(layerItem.keynum);
-    } else {
-      handleDual(keyCode.base, layerNumber);
     }
   };
 
-  const handleSetActiveLayerTab = (value: "layerLock" | "layerShift" | "layerShot" | "layerDual") => {
+  const handleSetActiveLayerTab = (value: "layerLock" | "layerShift" | "layerShot") => {
     log.info("handleSetActiveLayerTab", value, activeTab, action);
     const localSKcheck = activeTab === "super" && (action === 0 || action === 3) ? "layerLock" : value;
     setActiveLayerTab(localSKcheck);
@@ -268,10 +255,7 @@ const LayersTab = ({
                       handleLayer(index + 1);
                     }}
                     selected={index + 1 === activeLayerNumber}
-                    disabled={
-                      (index > 7 && disableOneShotButtons && activeLayerTab === "layerShot") ||
-                      (activeLayerTab === "layerDual" && index > 7)
-                    }
+                    disabled={index > 7 && disableOneShotButtons && activeLayerTab === "layerShot"}
                     key={`buttonLayerID-${button.layer}`}
                     className="h-9 aspect-square"
                   >
@@ -280,66 +264,6 @@ const LayersTab = ({
                 ))}
               </div>
             </div>
-            <AnimatePresence>
-              <motion.div className="flex flex-col gap-2">
-                {!sk20 && activeLayerTab === "layerDual" && (
-                  <>
-                    <Heading renderAs="h4" headingLevel={3} className="text-base flex leading-6 gap-1">
-                      Key <span className="text-gray-400 dark:text-gray-300"> on tap</span>
-                    </Heading>
-                    <Popover open={openKeysPopover} onOpenChange={setOpenKeysPopover}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="config"
-                          selected={!!(labelKey(keyCode.base) && labelKey(keyCode.base) !== "KEY")}
-                          size="sm"
-                          className="min-w-20 h-9 flex gap-2 justify-between"
-                        >
-                          {labelKey(keyCode.base) && labelKey(keyCode.base) !== "KEY" ? (
-                            labelKey(keyCode.base)
-                          ) : (
-                            <IconPlus size="xs" />
-                          )}
-                          <div className="flex gap-2">
-                            <Separator orientation="vertical" className="bg-gray-50 dark:bg-gray-50 h-[auto] opacity-20" />
-                            <IconPen size="xs" />
-                          </div>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        sideOffset={5}
-                        align="center"
-                        side="top"
-                        className="md:w-[720px] lg:w-[820px] xl:w-[920px] max-w-full"
-                      >
-                        <div className="w-full p-2 rounded-sm bg-gray-25/40 dark:bg-gray-800">
-                          <div className="dropdown-group">
-                            <Heading
-                              headingLevel={5}
-                              renderAs="h5"
-                              className="my-1 flex gap-2 items-center text-gray-200 dark:text-gray-300"
-                            >
-                              <span>
-                                Select <span className="text-gray-400 dark:text-gray-50">key</span>
-                              </span>
-                            </Heading>
-                            <Picker
-                              disable={disabled}
-                              baseCode={keyCode.base}
-                              modCode={keyCode.modified}
-                              onKeySelect={handleDual}
-                              selectedlanguage={selectedlanguage}
-                              disableMods
-                              disableMove={false}
-                            />
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  </>
-                )}
-              </motion.div>
-            </AnimatePresence>
           </div>
           <div className="flex flex-col gap-2 mt-1 mb-1">
             <div className="flex flex-wrap gap-6">
@@ -376,45 +300,6 @@ const LayersTab = ({
               />
               {(activeTab === "editor" || activeTab === "combo") && (
                 <>
-                  {!sk20 && activeTab === "editor" && (
-                    <CustomRadioCheckBox
-                      label={<div className="pl-0.5">Add a key on tap</div>}
-                      disabled={activeLayerNumber >= 9}
-                      onClick={value => {
-                        if (activeLayerNumber > 0 && activeLayerNumber <= 8) {
-                          handleSetActiveLayerTab(value ? "layerDual" : "layerShift");
-                          setOpenKeysPopover(true);
-                        } else if (activeLayerNumber >= 9) {
-                          triggerToastOneShot();
-                        } else {
-                          triggerToast();
-                        }
-                      }}
-                      checked={activeLayerTab === "layerDual"}
-                      type="radio"
-                      name="addDualFunctionLayer"
-                      id="addDualFunctionLayer"
-                      tooltip={
-                        <>
-                          <Heading
-                            headingLevel={4}
-                            renderAs="h4"
-                            className="text-gray-600 dark:text-gray-25 mt-2 mb-1 leading-6 text-base"
-                          >
-                            Add a key on tap (Dual-Function)
-                          </Heading>
-                          <p className="description text-ssm font-medium text-gray-400 dark:text-gray-200">
-                            Tap the key to perform a normal keypress (like space or enter) or hold it to shift to the selected
-                            layer. This allows for efficient layer access without sacrificing key real estate.
-                            <br />
-                            <br />
-                            Add key on tap only works for layers 1 to 8.
-                          </p>
-                        </>
-                      }
-                      className=""
-                    />
-                  )}
                   <CustomRadioCheckBox
                     label={<div className="pl-0.5">Turn into OneShot layer</div>}
                     disabled={activeLayerNumber >= 9}

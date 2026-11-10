@@ -60,6 +60,7 @@ import { hasKeyOverridesCommand } from "../api/parsers/keyOverrides";
 import { hasConditionalLayersCommand } from "../api/parsers/conditionalLayers";
 import { hasQuickTapCommand } from "../api/parsers/quickTap";
 import { hasDualFunctionCommands } from "../api/parsers/dualFunction";
+import { superkeysAvailable } from "../api/parsers/superkeys";
 import { MACRO_STEP_LIMIT_CLASSIC, hasMacroUpgradeMarker, readMacroStepLimit } from "../api/parsers/macros";
 import { version } from "../../package.json";
 import "../api/keymap";
@@ -73,7 +74,8 @@ import HID from "../api/hid/hid";
 const store = Store.getStore();
 
 // Reads the FW version and stores, as capabilities.<feature>, every capability that depends on it
-// (SK 2.0, Layer Lens, Combos, Autoshift, CapsWord, layer hold and key repeat on previous-key rules, swap hands Hold on Superkeys).
+// (SK 2.0, Layer Lens, Combos, Autoshift, CapsWord, layer hold and key repeat on previous-key rules, swap hands Hold on Superkeys),
+// and capabilities.superkeys, which only the first Raise gates on a beta firmware.
 // Runs on connect and again after a firmware update, since the keyboard stays connected through it.
 // The minimum FW per product for each capability lives in src/versionRules.json.
 // Also reads help for capabilities.layerHold, capabilities.holdMods, capabilities.altRepeat, capabilities.keyOverrides, capabilities.quickTap,
@@ -89,9 +91,13 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
       store.set(`capabilities.${feature}`, available);
       log.info(`[Capabilities] ${feature} -> product: ${product}, firmware: ${versionStr}, available: ${available}`);
     });
+    const superkeys = superkeysAvailable(product, versionStr);
+    store.set("capabilities.superkeys", superkeys);
+    log.info(`[Capabilities] superkeys -> available: ${superkeys}`);
   } catch (e) {
     log.warn("Error reading or parsing firmware version", e);
     VERSION_FEATURES.forEach(feature => store.set(`capabilities.${feature}`, false));
+    store.set("capabilities.superkeys", false);
     log.info("[Capabilities] all disabled due to firmware version read/parse error");
   }
 

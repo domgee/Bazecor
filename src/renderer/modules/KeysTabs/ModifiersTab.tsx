@@ -1,5 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import React, { useMemo, useState, useEffect } from "react";
 import { toast } from "react-toastify";
 import log from "electron-log/renderer";
 
@@ -7,15 +6,10 @@ import { Button } from "@Renderer/components/atoms/Button";
 import Heading from "@Renderer/components/atoms/Heading";
 import findModifierType from "@Renderer/utils/findModifierType";
 import OSKey from "@Renderer/components/molecules/KeyTags/OSKey";
-import { IconWarning, IconPen, IconPlus } from "@Renderer/components/atoms/icons";
-import { Popover, PopoverContent, PopoverTrigger } from "@Renderer/components/atoms/Popover";
+import { IconWarning } from "@Renderer/components/atoms/icons";
 import ToastMessage from "@Renderer/components/atoms/ToastMessage";
 import CustomRadioCheckBox from "@Renderer/components/molecules/Form/CustomRadioCheckBox";
-import { Separator } from "@Renderer/components/atoms/Separator";
 import { SegmentedKeyType } from "@Renderer/types/layout";
-import { KeymapDB } from "../../../api/keymap";
-// eslint-disable-next-line
-import { Picker } from "../KeyPickerKeyboard";
 import Store from "@Renderer/utils/Store";
 import { CapsWordCodes } from "../../../hw/capsword";
 
@@ -35,9 +29,6 @@ const ModifiersTab = ({
 
   onKeySelect,
   disabled,
-  baseCode,
-  modCode,
-  selectedlanguage,
   activeTab,
   action,
 }: ModifiersTabProps) => {
@@ -46,10 +37,7 @@ const ModifiersTab = ({
   const isSuperkeyTap = activeTab === "super" && action === 0;
   const [activeModifier, setActiveModifier] = useState<string>("");
   const [activeModifierTab, setActiveModifierTab] = useState<string>("None");
-  const [internalKeyBase, setInternalKeyBase] = useState<number>(keyCode.base);
-  const [openKeysPopover, setOpenKeysPopover] = useState<boolean>(false);
   const store = Store.getStore();
-  const sk20 = Boolean(store.get("capabilities.sk20"));
   const capsword = Boolean(store.get("capabilities.capsword"));
 
   const KC = useMemo(() => {
@@ -94,24 +82,15 @@ const ModifiersTab = ({
     );
   };
 
-  const handleDual = (keyBase: number, modifier?: string) => {
-    const modifierItem = findModifierType(undefined, activeModifierTab, modifier || activeModifier);
-    setInternalKeyBase(keyBase);
-    if (modifierItem && modifierItem.type === "dualModifier") {
-      onKeySelect(modifierItem.keynum + keyBase);
-      setOpenKeysPopover(false);
-    }
-  };
-
   const handleModifier = (modifier: string) => {
-    const modifierItem = findModifierType(undefined, activeModifierTab, modifier);
+    /* Dual-function keys are set up in the Multi-action tab, so a modifier picked here on one becomes a plain modifier */
+    const modifierTab = activeModifierTab === "dualModifier" ? "None" : activeModifierTab;
+    const modifierItem = findModifierType(undefined, modifierTab, modifier);
     setActiveModifier(modifier);
-    log.info(modifier, modifierItem, internalKeyBase);
-    if (modifierItem && modifierItem.type !== "dualModifier") {
+    setActiveModifierTab(modifierTab);
+    log.info(modifier, modifierItem);
+    if (modifierItem) {
       onKeySelect(modifierItem.keynum);
-    }
-    if (modifierItem && modifierItem.type === "dualModifier" && internalKeyBase > 0) {
-      handleDual(internalKeyBase, modifier);
     }
   };
 
@@ -119,9 +98,6 @@ const ModifiersTab = ({
     const modifierItem = findModifierType(undefined, activeModifierTab, activeModifier);
     if (modifierItem && modifierItem.type !== "dualModifier") {
       onKeySelect(modifierItem.keynum);
-    }
-    if (modifierItem && modifierItem.type === "dualModifier") {
-      onKeySelect(keyCode.base + modifierItem.keynum);
     }
     // eslint-disable-next-line
   }, [activeModifierTab]);
@@ -147,7 +123,6 @@ const ModifiersTab = ({
         label: "Shift",
         identifier: "shift",
         renderElement: <OSKey renderKey="shift" size="sm" />,
-        dualDisabled: false,
         keyNumMod: 225,
       },
       {
@@ -155,7 +130,6 @@ const ModifiersTab = ({
         label: "Control",
         identifier: "control",
         renderElement: <OSKey renderKey="control" size="sm" />,
-        dualDisabled: false,
         keyNumMod: 224,
       },
       {
@@ -163,7 +137,6 @@ const ModifiersTab = ({
         label: "OS",
         identifier: "os",
         renderElement: <OSKey renderKey="os" size="sm" />,
-        dualDisabled: false,
         keyNumMod: 227,
       },
       {
@@ -171,7 +144,6 @@ const ModifiersTab = ({
         label: "Alt",
         identifier: "alt",
         renderElement: <OSKey renderKey="alt" size="sm" />,
-        dualDisabled: false,
         keyNumMod: 226,
       },
       {
@@ -179,7 +151,6 @@ const ModifiersTab = ({
         label: "Right Shift",
         identifier: "rshift",
         renderElement: <OSKey renderKey="shift" size="sm" />,
-        dualDisabled: true,
         keyNumMod: 229,
       },
       {
@@ -187,7 +158,6 @@ const ModifiersTab = ({
         label: "Right Control",
         identifier: "rcontrol",
         renderElement: <OSKey renderKey="control" size="sm" />,
-        dualDisabled: true,
         keyNumMod: 228,
       },
       {
@@ -195,7 +165,6 @@ const ModifiersTab = ({
         label: "Right OS",
         identifier: "ros",
         renderElement: <OSKey renderKey="os" size="sm" />,
-        dualDisabled: true,
         keyNumMod: 231,
       },
       {
@@ -203,21 +172,10 @@ const ModifiersTab = ({
         label: "Alt Gr.",
         identifier: "altGr",
         renderElement: <OSKey renderKey="altGr" size="sm" />,
-        dualDisabled: false,
         keyNumMod: 230,
       },
     ],
     [],
-  );
-
-  const keymapDB = useMemo(() => new KeymapDB(), []);
-
-  const labelKey = useCallback(
-    (id: number): string => {
-      const aux = keymapDB.parse(id);
-      return String(aux.label);
-    },
-    [keymapDB],
   );
 
   return (
@@ -253,7 +211,6 @@ const ModifiersTab = ({
                         handleModifier(button.identifier);
                       }}
                       selected={activeModifier === button.identifier}
-                      disabled={activeModifierTab === "dualModifier" && button.dualDisabled}
                       size="sm"
                       className="min-w-16 text-ssm h-9"
                       key={`button-key-${button.identifier}`}
@@ -283,115 +240,15 @@ const ModifiersTab = ({
                     CapsWord
                   </Button>
                   <p className="description text-ssm font-medium text-gray-400 dark:text-gray-300 max-w-md">
-                    After you press this key, the next word will be capitalized. You can also deactivate it by pressing the key again.
+                    After you press this key, the next word will be capitalized. You can also deactivate it by pressing the key
+                    again.
                   </p>
                 </div>
               </div>
             )}
-            <AnimatePresence>
-              <motion.div className="flex flex-col gap-2">
-                {!sk20 && activeModifierTab === "dualModifier" && (
-                  <>
-                    <Heading renderAs="h4" headingLevel={3} className="text-base flex leading-6 gap-1">
-                      Key <span className="text-gray-400 dark:text-gray-300"> on tap</span>
-                    </Heading>
-                    <Popover open={openKeysPopover} onOpenChange={setOpenKeysPopover}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="config"
-                          selected={!!(labelKey(keyCode.base) && labelKey(keyCode.base) !== "KEY")}
-                          size="sm"
-                          className="min-w-20 h-9 flex gap-2 justify-between"
-                        >
-                          {labelKey(keyCode.base) && labelKey(keyCode.base) !== "KEY" ? (
-                            labelKey(keyCode.base)
-                          ) : (
-                            <IconPlus size="xs" />
-                          )}
-                          <div className="flex gap-2">
-                            <Separator orientation="vertical" className="bg-gray-50 dark:bg-gray-50 h-[auto] opacity-20" />
-                            <IconPen size="xs" />
-                          </div>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        sideOffset={5}
-                        align="center"
-                        side="top"
-                        className="md:w-[720px] lg:w-[820px] xl:w-[920px] max-w-full"
-                      >
-                        <div className="w-full p-2 rounded-sm bg-gray-25/40 dark:bg-gray-800">
-                          <div className="dropdown-group">
-                            <Heading
-                              headingLevel={5}
-                              renderAs="h5"
-                              className="my-1 flex gap-2 items-center text-gray-200 dark:text-gray-300"
-                            >
-                              <span>
-                                Select <span className="text-gray-400 dark:text-gray-50">key</span>
-                              </span>
-                            </Heading>
-                            <Picker
-                              disable={disabled}
-                              disableMods
-                              disableMove={false}
-                              baseCode={baseCode}
-                              modCode={modCode}
-                              onKeySelect={handleDual}
-                              selectedlanguage={selectedlanguage}
-                            />
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  </>
-                )}
-              </motion.div>
-            </AnimatePresence>
           </div>
           <div className="flex flex-col gap-2 mt-1">
             <div className="flex flex-wrap gap-6">
-              {!sk20 && activeTab !== "combo" && (
-                <CustomRadioCheckBox
-                  label={<div className="pl-0.5">Add a key on tap</div>}
-                  checked={activeModifierTab === "dualModifier"}
-                  onClick={() => {
-                    if (activeModifier === "") {
-                      triggerToast();
-                    } else if (activeModifier === "ros" || activeModifier === "rcontrol" || activeModifier === "rshift") {
-                      // triggerToastDisabledDual();
-                      log.info("Action disabled!");
-                    } else {
-                      setActiveModifierTab(previous => (previous === "dualModifier" ? "None" : "dualModifier"));
-                      // setActiveModifierTab("dualModifier");
-                      setOpenKeysPopover(true);
-                    }
-                  }}
-                  type="radio"
-                  name="addDualFuncionModifier"
-                  id="addDualFuncionModifier"
-                  tooltip={
-                    <>
-                      <Heading
-                        headingLevel={4}
-                        renderAs="h4"
-                        className="text-gray-600 dark:text-gray-25 mb-1 leading-6 text-base"
-                      >
-                        Add key on tap (Dual-function)
-                      </Heading>
-                      <p className="description text-ssm font-medium text-gray-400 dark:text-gray-200">
-                        Tap the key to perform a normal keypress (like space or enter) or hold it to use the selected modifier as
-                        usual. This allows you to easily access your modifiers without sacrificing key real estate.
-                      </p>
-                      <p className="description text-ssm font-medium text-gray-400 dark:text-gray-200">
-                        Right modifiers can&apos;t be used in combination with Add a Key on Tap, except Right ALT.
-                      </p>
-                    </>
-                  }
-                  className="self-start mt-0"
-                  disabled={activeModifier === "ros" || activeModifier === "rcontrol" || activeModifier === "rshift"}
-                />
-              )}
               {!isSuperkeyTap && (
                 <CustomRadioCheckBox
                   label={<div className="pl-0.5">Turn into a OneShot modifier</div>}

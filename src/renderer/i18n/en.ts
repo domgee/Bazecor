@@ -618,6 +618,33 @@ const English = {
       saveFailed: "The keyboard did not store the previous-key tabs.",
       deleteBlockedFailedLoad: "Previous-key rules could not be read, so deleting is off. Open this page again to retry.",
     },
+    multiAction: {
+      title: "Multi-action",
+      empty: "Empty",
+      clear: "Clear",
+      statusDualUse: "Saved as a dual-function key. Uses no Superkey slot.",
+      statusSuperkey: "Saved as Superkey {slot} (uses 1 of {max} slots).",
+      statusPlain: "Only a tap: saved as a normal key.",
+      statusAlwaysSuperkey: "Combo results and previous-key tabs always use a Superkey slot.",
+      emptyHint: "Add a Hold, Tap & hold, Double tap or Double tap & hold action to make this key do more.",
+      dualUseOnlyHint:
+        "This keyboard has no Superkeys. Use a plain key as Tap and left Ctrl, Shift, Alt, GUI, AltGr or Layer shift 1 to 8 as Hold.",
+      dualUseOnlyRefused:
+        "This keyboard has no Superkeys, so a key can only have a plain Tap and a Hold of left Ctrl, Shift, Alt, GUI, AltGr or Layer shift 1 to 8. Nothing was changed.",
+      shared: "Shared by {count}: {names}. Changes apply to all.",
+      beyondLimit: "Superkey {slot} is beyond the keyboard's limit of {max}. Editing gives this key its own Superkey.",
+      undefinedSlot: "Superkey {slot} is not defined. Setting an action defines it for this key.",
+      unreadable: "The Superkeys could not be read. Reload to edit multi-action keys.",
+      combosUnknown: "The combos could not be read. Reload to edit multi-action keys.",
+      rulesUnknown: "The previous-key rules could not be read. Reload to edit multi-action keys.",
+      capacity: "All 70 Superkey slots are in use. Clear a multi-action key and save first. Nothing was changed.",
+      emptyRule: "A previous-key tab needs an output. Use Delete to remove this tab.",
+      conflictTitle: "Multi-action keys clash",
+      conflictWarning: "These keys already clashed on the keyboard and still play the same tap and hold:",
+      saveFailed: "The keyboard did not store the Superkeys.",
+      gcFailed: "The keyboard did not store the cleaned-up Superkeys.",
+      perKeyFailed: "The keyboard did not store the dual-function options for the key positions.",
+    },
     keyOverrides: {
       title: "Key Overrides",
       intro:

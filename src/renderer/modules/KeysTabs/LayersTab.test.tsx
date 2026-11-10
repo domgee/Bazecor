@@ -188,3 +188,31 @@ describe("LayersTab swap hands on a Superkey", () => {
     expect(screen.queryByText("Swap hands")).toBeNull();
   });
 });
+
+describe("LayersTab dual-function keys", () => {
+  beforeEach(() => {
+    // Turn off sk20, where the tab used to offer a key on tap
+    storeValues["capabilities.sk20"] = false;
+    storeValues["capabilities.swapHands"] = false;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  test("the tab offers no key on tap, which the Multi-action tab sets up", () => {
+    // Shift to layer 2
+    renderTab(1, 17450);
+
+    expect(screen.queryByText("Add a key on tap")).toBeNull();
+  });
+
+  test("a layer picked on a dual-function key becomes a plain layer shift", () => {
+    // Space with layer 2 on hold
+    const { onKeySelect } = renderTab(0x2c, 51474);
+
+    fireEvent.click(button("3"));
+
+    expect(onKeySelect).toHaveBeenLastCalledWith(17452);
+  });
+});
