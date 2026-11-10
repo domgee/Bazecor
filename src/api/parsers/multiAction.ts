@@ -669,15 +669,16 @@ export const cloneSuperkeyRefs = (
   return { codes: cloned, table: next, missing };
 };
 
-/** Give every file slot that `lists` reference one new slot, so a full-layout import keeps the file's sharing. */
+/** Give every file slot that `lists` reference one new slot, so a full-layout import keeps the file's sharing. `keep` presets slots to reuse. */
 export const remapFileSuperkeys = (
   lists: number[][],
   fileTable: SuperkeySource,
   table: number[][],
   used: Set<number>,
+  keep: ReadonlyMap<number, number> = new Map(),
 ): { lists: number[][]; table: number[][]; missing: { list: number; index: number }[] } | { error: "capacity" } => {
   const taken = new Set(used);
-  const mapping = new Map<number, number | null>();
+  const mapping = new Map<number, number | null>(keep);
   const missing: { list: number; index: number }[] = [];
   let next = table;
   const remapped: number[][] = [];

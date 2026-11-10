@@ -7,6 +7,7 @@ import {
   hasSuperkeyRef,
   layerFileSource,
   remapLayoutSuperkeys,
+  resolveLayerCopy,
   ruleOutputFromDefault,
   transferUsed,
 } from "./layerTransfer";
@@ -206,6 +207,7 @@ describe("remapLayoutSuperkeys", () => {
       rules: [rule(0, 1, SK(1))],
       table: [DOUBLE, DOUBLE, IDLE, TAP_HOLD],
       missing: 1,
+      defaultSplit: 0,
     });
   });
 
@@ -216,6 +218,80 @@ describe("remapLayoutSuperkeys", () => {
     expect(remapLayoutSuperkeys({ cells: [[SK(0), SK(1)]], rules: [], fileTable, table: [], used })).toEqual({
       error: "capacity",
     });
+  });
+});
+
+describe("remapLayoutSuperkeys with default layers", () => {
+  // Default layers are never written, so the keyboard's default layers keep their own Superkeys
+  test("File default shares a slot whose definition the keyboard holds there_Custom key keeps that slot", () => {
+    const fileTable = [TAP_HOLD, DOUBLE];
+    const table = [TAP_HOLD];
+
+    const result = remapLayoutSuperkeys({
+      cells: [[SK(0), SK(1)]],
+      rules: [],
+      fileTable,
+      table,
+      used: new Set([0]),
+      fileDefaults: [[SK(0)]],
+      keyboardDefaults: [[SK(0)]],
+    });
+
+    expect(result).toEqual({ cells: [[SK(0), SK(1)]], rules: [], table: [TAP_HOLD, DOUBLE], missing: 0, defaultSplit: 0 });
+  });
+
+  test("File default shares a slot the keyboard defines differently_Custom key gets its own slot with a warning", () => {
+    const fileTable = [DOUBLE];
+    const table = [TAP_HOLD];
+
+    const result = remapLayoutSuperkeys({
+      cells: [[SK(0)]],
+      rules: [rule(0, 1, SK(0))],
+      fileTable,
+      table,
+      used: new Set(),
+      fileDefaults: [[SK(0)]],
+      keyboardDefaults: [[SK(0)]],
+    });
+
+    expect(result).toEqual({
+      cells: [[SK(1)]],
+      rules: [rule(0, 1, SK(1))],
+      table: [TAP_HOLD, DOUBLE],
+      missing: 0,
+      defaultSplit: 1,
+    });
+  });
+
+  test("Keyboard default slot not in the used set_Never taken", () => {
+    const result = remapLayoutSuperkeys({
+      cells: [[SK(0)]],
+      rules: [],
+      fileTable: [DOUBLE],
+      table: [],
+      used: new Set(),
+      keyboardDefaults: [[A, SK(0)]],
+    });
+
+    expect(result).toEqual({ cells: [[SK(1)]], rules: [], table: [IDLE, DOUBLE], missing: 0, defaultSplit: 0 });
+  });
+});
+
+describe("resolveLayerCopy", () => {
+  // Two default and two custom layers. The dialog ids and the current layer count the default layers first
+  test.each([
+    [0, 3, { source: { kind: "default", index: 0 }, target: 1, sourceColors: 1 }], // default 1 onto custom 2
+    [2, 3, { source: { kind: "custom", index: 0 }, target: 1, sourceColors: 0 }], // custom 1 onto custom 2
+    [3, 2, { source: { kind: "custom", index: 1 }, target: 0, sourceColors: 1 }], // custom 2 onto custom 1
+  ])("Without only custom, id %i onto layer %i_Custom-relative indexes", (layer, currentLayer, expected) => {
+    expect(resolveLayerCopy({ layer, currentLayer, onlyCustom: false, defaultCount: 2 })).toEqual(expected);
+  });
+
+  test.each([
+    [-2, 1, { source: { kind: "default", index: 0 }, target: 1, sourceColors: 1 }], // default 1 onto custom 2
+    [0, 1, { source: { kind: "custom", index: 0 }, target: 1, sourceColors: 0 }], // custom 1 onto custom 2
+  ])("Only custom, id %i onto layer %i_Custom-relative indexes", (layer, currentLayer, expected) => {
+    expect(resolveLayerCopy({ layer, currentLayer, onlyCustom: true, defaultCount: 2 })).toEqual(expected);
   });
 });
 
@@ -259,6 +335,11 @@ describe("ruleOutputFromDefault", () => {
     const table = [[B, 1, 1, A, 1]];
 
     expect(ruleOutputFromDefault(SK(0), table, null)).toEqual({ output: B, table, fallback: "blocked" });
+  });
+
+  test("Superkeys unreadable_Starts from A with the blocked notice", () => {
+    // A failed read leaves the table empty, so the default's definition is unknown
+    expect(ruleOutputFromDefault(SK(0), [], null)).toEqual({ output: A, table: [], fallback: "blocked" });
   });
 
   test("Undefined Superkey default_Starts from A without a notice", () => {

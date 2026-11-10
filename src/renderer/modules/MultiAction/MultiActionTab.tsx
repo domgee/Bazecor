@@ -90,7 +90,8 @@ export const multiActionStatus = (
   const { context, storage, slot, capacity, actions } = props;
   const superkeyText = slot === null ? "" : fill(i18n.editor.multiAction.statusSuperkey, { slot: slot + 1, max: capacity.max });
 
-  if (context !== "cell") {
+  /* A tap-only combo result or previous-key tab is stored as a plain key */
+  if (context !== "cell" && storage !== "plain") {
     return [i18n.editor.multiAction.statusAlwaysSuperkey, superkeyText].filter(Boolean).join(" ");
   }
 

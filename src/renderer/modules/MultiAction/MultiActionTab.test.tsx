@@ -69,6 +69,10 @@ describe("multiActionStatus", () => {
       "Combo results and previous-key tabs always use a Superkey slot. Saved as Superkey 4 (uses 1 of 70 slots).",
     );
   });
+
+  test("a tap-only previous-key tab says it is saved as a normal key", () => {
+    expect(multiActionStatus({ ...base, context: "rule", storage: "plain" })).toBe("Only a tap: saved as a normal key.");
+  });
 });
 
 describe("MultiActionTab", () => {

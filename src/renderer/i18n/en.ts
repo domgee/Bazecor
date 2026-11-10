@@ -648,6 +648,8 @@ const English = {
         "The imported keys need more Superkey slots than are free, since every multi-action key gets its own. Nothing was changed.",
       importMissing:
         "Some imported keys use a Superkey the file does not define. They were set to No Key, and previous-key tabs with one were left out.",
+      importDefaultSplit:
+        "Some imported keys shared a Superkey with a default layer, which is never saved and keeps the keyboard's. They got their own copy.",
       ruleFromTap: "No Superkey slot is free for a copy of this key, so the new tab starts from its Tap.",
       ruleFromTapBlocked:
         "This key's Superkey can't be copied until the keyboard is read again, so the new tab starts from its Tap.",

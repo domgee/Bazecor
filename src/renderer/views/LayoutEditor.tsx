@@ -139,6 +139,7 @@ import {
   hasSuperkeyRef,
   layerFileSource,
   remapLayoutSuperkeys,
+  resolveLayerCopy,
   ruleOutputFromDefault,
   transferUsed,
 } from "../../api/parsers/layerTransfer";
@@ -1632,17 +1633,9 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       nextRules = copied.rules;
     }
 
-    const defaultCount = keymap.default.length;
-    const sourceIsDefault = keymap.onlyCustom ? layer < 0 : layer < defaultCount;
-    let sourceKeys: KeyType[];
-
-    if (keymap.onlyCustom) {
-      sourceKeys = sourceIsDefault ? keymap.default[layer + defaultCount] : keymap.custom[layer];
-    } else {
-      sourceKeys = sourceIsDefault ? keymap.default[layer] : keymap.custom[layer - defaultCount];
-    }
-
-    const targetIdx = keymap.onlyCustom ? currentLayer : currentLayer - defaultCount;
+    const indexes = resolveLayerCopy({ layer, currentLayer, onlyCustom: keymap.onlyCustom, defaultCount: keymap.default.length });
+    const sourceKeys = (indexes.source.kind === "default" ? keymap.default : keymap.custom)[indexes.source.index];
+    const targetIdx = indexes.target;
 
     if (sourceKeys === undefined || keymap.custom[targetIdx] === undefined) {
       setCopyFromOpen(false);
@@ -1658,6 +1651,9 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       setCopyFromOpen(false);
       return;
     }
+
+    let nextSuperkeys: number[][] | null = null;
+    let missing = false;
 
     /* Give each copied Superkey its own slot, so the copy and its source never share one */
     if (superkeysState === "ready") {
@@ -1687,19 +1683,27 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         nextRules = otherRules.concat(cloned.rules);
       }
 
-      if (cloned.missing > 0) {
-        showMultiActionToast(i18n.editor.multiAction.copyMissing);
-      }
-
-      if (cloned.table !== table) {
-        setSuperkeys(withGeneratedNames(cloned.table, labelCtx));
-      }
+      missing = cloned.missing > 0;
+      nextSuperkeys = cloned.table === table ? null : cloned.table;
     }
 
     const newKeymap = keymap.custom.slice();
     newKeymap[targetIdx] = targetKeys;
     const newColormap = colorMap.slice();
-    if (newColormap.length > 0) newColormap[currentLayer] = colorMap[layer >= 0 ? layer : currentLayer].slice();
+    const sourceColors = colorMap[indexes.sourceColors];
+
+    if (newColormap.length > 0 && sourceColors !== undefined) {
+      newColormap[targetIdx] = sourceColors.slice();
+    }
+
+    /* Apply every change only now, so a refused copy changes nothing */
+    if (missing) {
+      showMultiActionToast(i18n.editor.multiAction.copyMissing);
+    }
+
+    if (nextSuperkeys !== null) {
+      setSuperkeys(withGeneratedNames(nextSuperkeys, labelCtx));
+    }
 
     setColorMap(newColormap);
     setCopyFromOpen(false);
@@ -2295,6 +2299,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
               ),
               table,
               used: transferUsedFor([], keptRules),
+              fileDefaults: importedKeymap.onlyCustom ? [] : draftCodes(importedKeymap.default ?? []),
+              keyboardDefaults: draftCodes(keymap.default),
             });
 
             if ("error" in remapped) {
@@ -2314,8 +2320,15 @@ const LayoutEditor = (props: LayoutEditorProps) => {
               showMultiActionToast(i18n.editor.multiAction.importMissing);
             }
 
+            if (remapped.defaultSplit > 0) {
+              showMultiActionToast(i18n.editor.multiAction.importDefaultSplit);
+            }
+
             nextSuperkeys = remapped.table === table ? null : remapped.table;
           }
+
+          /* Show the keyboard's default layers, since a save never writes them */
+          importedKeymap.default = keymap.default;
 
           if (fitted.normalized) {
             showHoldModsToast(i18n.editor.holdMods.importNormalized);
@@ -2794,7 +2807,15 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     /* Start from the default so the new tab only needs the change. A Superkey default gets its own copy */
     const table = draftTable();
     const canClone = superkeysState === "ready" && multiActionBlock() === undefined;
-    const used = canClone ? transferUsedFor(draftCodes(keymap.custom), altRepeatRules) : null;
+    let used: Set<number> | null = null;
+
+    /* Keyboards without Superkeys have nothing to copy, so only a failed read starts the tab from the Tap with a notice */
+    if (canClone) {
+      used = transferUsedFor(draftCodes(keymap.custom), altRepeatRules);
+    } else if (superkeysState === "unsupported") {
+      used = new Set();
+    }
+
     const started = ruleOutputFromDefault(defaultKeyCode, table, used);
 
     if (started.fallback !== null) {

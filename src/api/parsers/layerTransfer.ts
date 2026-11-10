@@ -19,6 +19,7 @@ import { isAllowedOutput } from "./altRepeat";
 import {
   LayoutRefs,
   SuperkeyProtection,
+  actionsKey,
   SuperkeySource,
   cloneSuperkeyRefs,
   protectedSlots,
@@ -137,28 +138,123 @@ export const cloneLayerSuperkeys = ({
   return { ...split(lists, cells, rules, missingRules), table: cloned.table, missing: cloned.missing.length };
 };
 
-/** Give every file slot that a full-layout import references one new slot, so the file's own sharing stays. */
+const slotsOf = (layers: number[][]): Set<number> =>
+  new Set(layers.flatMap(codes => codes.map(superkeySlot).filter((slot): slot is number => slot !== null)));
+
+/* Keep a file slot that the file's default layers share when the keyboard's default layers use the same slot with the same definition.
+ * Default layers are never written, so any other such slot is split from them
+ */
+const defaultShared = (
+  fileDefaults: number[][],
+  keyboardDefaults: number[][],
+  fileTable: SuperkeySource,
+  table: ReadonlyArray<ReadonlyArray<number>>,
+) => {
+  const keyboardSlots = slotsOf(keyboardDefaults);
+  const keep = new Map<number, number>();
+  const split = new Set<number>();
+
+  slotsOf(fileDefaults).forEach(slot => {
+    const fileActions = slot < MAX_ACTIVE_SUPERKEYS ? fileTable[slot] : undefined;
+    const same =
+      keyboardSlots.has(slot) &&
+      fileActions !== undefined &&
+      !isIdleSuperkey(fileActions) &&
+      slot < table.length &&
+      actionsKey(table[slot]) === actionsKey(fileActions);
+
+    if (same) {
+      keep.set(slot, slot);
+    } else {
+      split.add(slot);
+    }
+  });
+
+  return { keep, split };
+};
+
+export type RemapResult =
+  | { cells: number[][]; rules: AltRepeatRule[]; table: number[][]; missing: number; defaultSplit: number }
+  | { error: "capacity" };
+
+/** Give every file slot that a full-layout import references one new slot, so the file's own sharing stays.
+ * A slot the file's default layers share keeps the keyboard's slot when the keyboard's default layers hold the same definition there.
+ * `defaultSplit` counts the other slots the imported keys share with the file's default layers, which keep the keyboard's definitions.
+ */
 export const remapLayoutSuperkeys = ({
   cells,
   rules,
   fileTable,
   table,
   used,
+  fileDefaults = [],
+  keyboardDefaults = [],
 }: {
   cells: number[][];
   rules: AltRepeatRule[];
   fileTable: SuperkeySource;
   table: number[][];
   used: Set<number>;
-}): TransferResult => {
-  const remapped = remapFileSuperkeys([...cells, rules.map(rule => rule.output)], fileTable, table, used);
+  fileDefaults?: number[][];
+  keyboardDefaults?: number[][];
+}): RemapResult => {
+  const lists = [...cells, rules.map(rule => rule.output)];
+  const { keep, split: splitSlots } = defaultShared(fileDefaults, keyboardDefaults, fileTable, table);
+  /* Never take a slot the keyboard's default layers use, since they are never written */
+  const taken = new Set([...used, ...slotsOf(keyboardDefaults)]);
+  const remapped = remapFileSuperkeys(lists, fileTable, table, taken, keep);
 
   if ("error" in remapped) {
     return remapped;
   }
 
+  const imported = slotsOf(lists);
+  const defaultSplit = [...splitSlots].filter(slot => imported.has(slot)).length;
   const missingRules = new Set(remapped.missing.filter(({ list }) => list === cells.length).map(({ index }) => index));
-  return { ...split(remapped.lists, cells, rules, missingRules), table: remapped.table, missing: remapped.missing.length };
+  return {
+    ...split(remapped.lists, cells, rules, missingRules),
+    table: remapped.table,
+    missing: remapped.missing.length,
+    defaultSplit,
+  };
+};
+
+export interface LayerCopyIndexes {
+  source: { kind: "default" | "custom"; index: number };
+  /** The custom layer the copy replaces */
+  target: number;
+  /** The custom layer whose colours the copy takes */
+  sourceColors: number;
+}
+
+/** Resolve the Copy from dialog's layer id and the current layer to keymap indexes. Colour maps are indexed like custom layers. */
+export const resolveLayerCopy = ({
+  layer,
+  currentLayer,
+  onlyCustom,
+  defaultCount,
+}: {
+  layer: number;
+  currentLayer: number;
+  onlyCustom: boolean;
+  defaultCount: number;
+}): LayerCopyIndexes => {
+  const sourceIsDefault = onlyCustom ? layer < 0 : layer < defaultCount;
+  let index: number;
+
+  if (onlyCustom) {
+    index = sourceIsDefault ? layer + defaultCount : layer;
+  } else {
+    index = sourceIsDefault ? layer : layer - defaultCount;
+  }
+
+  const target = onlyCustom ? currentLayer : currentLayer - defaultCount;
+  /* Default layers have no colours, so the target keeps its own */
+  return {
+    source: { kind: sourceIsDefault ? "default" : "custom", index },
+    target,
+    sourceColors: sourceIsDefault ? target : index,
+  };
 };
 
 export type RuleOutputFallback = "capacity" | "blocked" | null;
@@ -177,7 +273,7 @@ export const ruleOutputFromDefault = (
 
   const defined = slot < MAX_ACTIVE_SUPERKEYS && slot < table.length && !isIdleSuperkey(table[slot]);
 
-  if (!defined) {
+  if (!defined && used !== null) {
     return { output: FALLBACK_OUTPUT, table, fallback: null };
   }
 
@@ -190,7 +286,7 @@ export const ruleOutputFromDefault = (
   }
 
   /* Start from the Tap when no copy can be made */
-  const [tap] = normalizeActions(table[slot]);
+  const [tap] = normalizeActions(defined ? table[slot] : []);
   const output = tap !== 1 && isAllowedOutput(tap) ? tap : FALLBACK_OUTPUT;
   return { output, table, fallback: used === null ? "blocked" : "capacity" };
 };
