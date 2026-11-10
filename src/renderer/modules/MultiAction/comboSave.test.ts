@@ -4,7 +4,7 @@ import { SuperkeyDraft } from "../../../api/parsers/multiAction";
 import { serializeCombos } from "../../../api/parsers/combos";
 import { SuperkeyWriteFormat, serializeSuperkeyTable } from "../../../api/parsers/superkeys";
 import { EMPTY_SUPERKEY_SAVED, SuperkeySavedState } from "../HoldMods/layoutSave";
-import { ComboSaveInput, ComboSuperkeyInput, refSlotsOf, runComboSave } from "./comboSave";
+import { ComboSaveInput, ComboSuperkeyInput, readKeymapReplies, refSlotsOf, runComboSave } from "./comboSave";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -268,6 +268,96 @@ describe("runComboSave conflicts", () => {
     expect(steps).toEqual(["combos 2", "names 2 2", "backup"]);
     expect(outcome.kind).toBe("saved");
     expect(outcome.kind !== "blocked" && outcome.warnings).toHaveLength(1);
+  });
+});
+
+describe("runComboSave grandfathered clashes with a combo output member", () => {
+  // Slot 0 is only a combo output and clashes with the keymap's slot 1 on the keyboard
+  const layers = [[SK(1)]];
+  const table = [SHIFT_A, CTRL_A];
+  const loaded = [combo(0, SK(0))];
+
+  const save = (combos: ComboType[]) =>
+    runComboSave(
+      mockIO().io,
+      input({
+        combos,
+        savedCombos: serializeCombos(loaded),
+        superkeys: superkeysInput({
+          draft: draftOf(table, layers, combos),
+          saved: savedOf(table, layers, loaded),
+          baseline: draftOf(table, layers, loaded),
+        }),
+      }),
+    );
+
+  test("deleting the combo warns and saves", async () => {
+    const outcome = await save([]);
+
+    expect(outcome).toMatchObject({ kind: "saved", done: ["combos", "backup"] });
+    expect(outcome.kind !== "blocked" && outcome.warnings).toHaveLength(1);
+  });
+
+  test("moving the combo to another layer warns and saves", async () => {
+    const outcome = await save([{ ...combo(0, SK(0)), layer: 1 }]);
+
+    expect(outcome).toMatchObject({ kind: "saved", done: ["combos", "backup"] });
+    expect(outcome.kind !== "blocked" && outcome.warnings).toHaveLength(1);
+  });
+});
+
+describe("runComboSave merged keymap Superkeys", () => {
+  // Two identical dual-function Superkeys on the keymap, which the keyboard reads back as the lower one
+  const table = [CTRL_A, CTRL_A];
+  const layers = [[SK(0), SK(1)]];
+
+  test("the merged cells are written to the keymap and returned as held", async () => {
+    const { io, steps } = mockIO();
+
+    const outcome = await runComboSave(
+      io,
+      input({ superkeys: superkeysInput({ draft: draftOf(table, layers, []), saved: savedOf(table, layers, []) }) }),
+    );
+
+    expect(steps).toEqual([`keymap ${SK(0)} ${SK(0)}|1`, "names 0 2", "backup"]);
+    expect(outcome.kind !== "blocked" && outcome.superkeys?.layers).toEqual([[SK(0), SK(0)]]);
+    expect(outcome.kind !== "blocked" && outcome.superkeys?.saved.keymapRefs).toEqual([0]);
+  });
+
+  test("a failed merge write keeps the loaded cells as held", async () => {
+    const outcome = await runComboSave(
+      mockIO({ keymap: true }).io,
+      input({ superkeys: superkeysInput({ draft: draftOf(table, layers, []), saved: savedOf(table, layers, []) }) }),
+    );
+
+    expect(outcome).toMatchObject({ kind: "failed", failed: "keymap" });
+    expect(outcome.kind !== "blocked" && outcome.superkeys?.layers).toBe(layers);
+  });
+});
+
+describe("readKeymapReplies", () => {
+  test("whole layers of key codes and a 0 or 1 flag are read", () => {
+    expect(readKeymapReplies({ custom: "4 5 6 7", defaults: "", onlyCustom: "1\n" }, 2)).toEqual({
+      custom: [
+        [4, 5],
+        [6, 7],
+      ],
+      defaults: [],
+      onlyCustom: true,
+    });
+  });
+
+  test.each([
+    [{ custom: "4 5 6", defaults: "", onlyCustom: "1" }], // a partial layer
+    [{ custom: "", defaults: "", onlyCustom: "1" }], // no custom layers
+    [{ custom: "4 x", defaults: "", onlyCustom: "1" }], // a token that is no key code
+    [{ custom: "4 65536", defaults: "", onlyCustom: "1" }], // a code out of range
+    [{ custom: "4 5", defaults: "4", onlyCustom: "0" }], // a partial default layer
+    [{ custom: "4 5", defaults: "", onlyCustom: "2" }], // a flag that is neither 0 nor 1
+    [{ custom: "4 5", defaults: "", onlyCustom: "" }], // an empty flag
+    [{ custom: new Error("timeout"), defaults: "", onlyCustom: "1" }], // a failed request
+  ])("an unusable reply gives null", replies => {
+    expect(readKeymapReplies(replies, 2)).toBeNull();
   });
 });
 

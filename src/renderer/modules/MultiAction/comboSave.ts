@@ -15,7 +15,14 @@
  */
 
 import { ComboType } from "@Renderer/types/combos";
-import { Conflict, LayoutRefs, SuperkeyDraft, prepareSuperkeyWrite, superkeyRefs } from "../../../api/parsers/multiAction";
+import {
+  Conflict,
+  LayoutRefs,
+  SuperkeyDraft,
+  prepareSuperkeyWrite,
+  reconcileDraft,
+  superkeyRefs,
+} from "../../../api/parsers/multiAction";
 import { serializeCombos } from "../../../api/parsers/combos";
 import { SuperkeyWriteFormat, serializeSuperkeyTable } from "../../../api/parsers/superkeys";
 import { SuperkeySavedState, superkeyWriteNeeded } from "../HoldMods/layoutSave";
@@ -69,7 +76,8 @@ export type ComboSaveOutcome =
       error?: unknown;
       warnings: Conflict[];
       savedCombos: string | null;
-      /* Only with a Superkey input. The table the save ends with and the saved state, also after a failed step */
+      /* Only with a Superkey input. The table the save ends with, the custom layers the keyboard holds and the saved state, also after a
+       * failed step */
       superkeys?: { table: number[][]; layers: number[][]; saved: SuperkeySavedState };
       /* A real keyboard keeps the save when the backup is left out. The preview command that could not be read, or the backup error */
       backupSkipped?: string;
@@ -84,21 +92,63 @@ export const refSlotsOf = (refs: Partial<LayoutRefs>): number[] =>
     (a, b) => a - b,
   );
 
+const MAX_KEYCODE = 65535;
+
+/* The layers in a keymap reply, or null unless it is whole layers of key codes */
+const keymapLayers = (raw: unknown, layerSize: number, allowEmpty: boolean): number[][] | null => {
+  if (typeof raw !== "string" || layerSize <= 0) {
+    return null;
+  }
+
+  const tokens = raw.trim().length === 0 ? [] : raw.trim().split(/\s+/);
+
+  if (tokens.some(token => !/^\d+$/.test(token) || parseInt(token, 10) > MAX_KEYCODE)) {
+    return null;
+  }
+
+  if (tokens.length % layerSize !== 0 || (tokens.length === 0 && !allowEmpty)) {
+    return null;
+  }
+
+  const codes = tokens.map(token => parseInt(token, 10));
+  return Array.from({ length: codes.length / layerSize }, (_, layer) => codes.slice(layer * layerSize, (layer + 1) * layerSize));
+};
+
+/** The keymap replies as layers and the onlyCustom flag, or null when any reply is not exactly what the firmware sends. */
+export const readKeymapReplies = (
+  replies: { custom: unknown; defaults: unknown; onlyCustom: unknown },
+  layerSize: number,
+): { custom: number[][]; defaults: number[][]; onlyCustom: boolean } | null => {
+  const custom = keymapLayers(replies.custom, layerSize, false);
+  const defaults = keymapLayers(replies.defaults, layerSize, true);
+  const flag = typeof replies.onlyCustom === "string" ? replies.onlyCustom.trim() : null;
+
+  if (custom === null || defaults === null || (flag !== "0" && flag !== "1")) {
+    return null;
+  }
+
+  return { custom, defaults, onlyCustom: flag === "1" };
+};
+
 /** Save the combos and the Superkeys their outputs use. Stop at the first failed step and report the progress. */
 export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Promise<ComboSaveOutcome> => {
   const sk = input.superkeys;
   let warnings: Conflict[] = [];
   let table: number[][] | null = null;
   let layers: number[][] = [];
+  /* The custom layers the keyboard holds, which become the merged layers once the keymap write lands */
+  let heldLayers: number[][] = sk?.draft.customLayers ?? [];
   let skSaved = sk?.saved;
   let { savedCombos } = input;
   const done: ComboSaveStep[] = [];
 
   if (sk) {
+    /* Leave combo outputs out of the clash checks' protection and baseline, since the keyboard never converts them. A combo edit then
+     * never turns a clash already on the keyboard into a new one, while table and cell changes still do */
     const prepared = prepareSuperkeyWrite({
       draft: sk.draft,
-      saved: sk.saved,
-      baseline: sk.baseline,
+      saved: { ...sk.saved, comboRefs: [], uncertainCombos: [] },
+      baseline: sk.baseline === null ? null : { ...sk.baseline, combos: sk.draft.combos },
       collect: false,
       format: sk.format,
     });
@@ -122,7 +172,7 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
     error,
     warnings,
     savedCombos,
-    ...(skSaved && table ? { superkeys: { table, layers, saved: skSaved } } : {}),
+    ...(skSaved && table ? { superkeys: { table, layers: heldLayers, saved: skSaved } } : {}),
     ...extra,
   });
 
@@ -142,8 +192,8 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
     done.push("superkeys");
   }
 
-  /* The keyboard converts dual-function Superkeys only when the keymap is written */
-  if (sk && skSaved?.keymapStale) {
+  /* The keyboard converts dual-function Superkeys only when the keymap is written. Merged cells need the write too */
+  if (sk && skSaved && (skSaved.keymapStale || reconcileDraft(sk.draft.customLayers, layers).length > 0)) {
     const keymapSlots = refSlotsOf({
       customLayers: layers,
       defaultLayers: sk.draft.defaultLayers,
@@ -158,6 +208,7 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
     }
 
     skSaved = { ...skSaved, keymapStale: false, keymapRefs: keymapSlots, uncertainKeymap: [] };
+    heldLayers = layers;
     done.push("keymap");
   }
 

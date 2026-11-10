@@ -40,7 +40,7 @@ import { ComboBreakDialog } from "@Renderer/components/molecules/CustomModal/Com
 import { AltRepeatBreakDialog } from "@Renderer/components/molecules/CustomModal/AltRepeatBreakDialog";
 import { MultiActionProps, MultiActionStorage } from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
-import { ComboSaveIO, refSlotsOf, runComboSave } from "@Renderer/modules/MultiAction/comboSave";
+import { ComboSaveIO, readKeymapReplies, refSlotsOf, runComboSave } from "@Renderer/modules/MultiAction/comboSave";
 import { EMPTY_SUPERKEY_SAVED, SuperkeyMode, SuperkeySavedState } from "@Renderer/modules/HoldMods/layoutSave";
 import { firstUnreadable, previewCommands } from "@Renderer/modules/DualFunctionKeys/previewReads";
 
@@ -175,6 +175,8 @@ function ComboEditor(props: ComboEditorProps) {
   const [superkeysBeyond, setSuperkeysBeyond] = useState<Map<number, number[]>>(new Map());
   /* False when the strict parser rejects the combos, since then not every Superkey reference is known */
   const [combosKnown, setCombosKnown] = useState(true);
+  /* False when a keymap reply is malformed, since a Superkey save may rewrite the keymap */
+  const [keymapKnown, setKeymapKnown] = useState(true);
   /* The previous-key rules, read only to know their Superkey references and the tabs an edit blocks */
   const [rules, setRules] = useState<AltRepeatRule[]>([]);
   const [rulesState, setRulesState] = useState<AltRepeatState>("unsupported");
@@ -193,6 +195,8 @@ function ComboEditor(props: ComboEditorProps) {
   const [neuronID, setNeuronID] = useState("");
   const [modified, setModified] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  /* Set from the start of a save to its end, so edits made meanwhile are refused instead of overwritten */
+  const saving = useRef(false);
   const [loadingData, setLoadingData] = useState(true);
   const [supported, setSupported] = useState(true);
   /* The first combos firmware: four keys per combo and combos on every layer.
@@ -289,15 +293,27 @@ function ComboEditor(props: ComboEditorProps) {
       setSuperkeysState(nextSuperkeysState);
       setSuperkeysBeyond(skParsed?.beyond ?? new Map());
 
-      const keymapRaw = (await currentDevice.noCacheCommand("keymap.custom")) as string;
-      const keymapDefault = (await currentDevice.noCacheCommand("keymap.default")) as string;
-      const onlyCustom = Boolean(parseInt((await currentDevice.noCacheCommand("keymap.onlyCustom")) as string, 10));
+      const keymapRaw = await currentDevice.noCacheCommand("keymap.custom");
+      const keymapDefault = await currentDevice.noCacheCommand("keymap.default");
+      const onlyCustomRaw = await currentDevice.noCacheCommand("keymap.onlyCustom");
 
       /* The board SVG wants parsed keys, not raw codes, so it can render each
        * label. Same shape the Layout Editor builds. */
       const layerSize = currentDevice.device.keyboard.rows * currentDevice.device.keyboard.columns;
-      const customCodes: number[][] = parseKeymapRaw(keymapRaw, layerSize);
-      const defaultCodes: number[][] = parseKeymapRaw(keymapDefault, layerSize);
+      /* A Superkey save may rewrite the keymap, so it needs replies that are exactly what the firmware sends */
+      const replies = readKeymapReplies({ custom: keymapRaw, defaults: keymapDefault, onlyCustom: onlyCustomRaw }, layerSize);
+      const asText = (raw: unknown) => (typeof raw === "string" ? raw : "");
+
+      if (replies === null) {
+        log.error("[Combos] the keymap replies could not be read", keymapRaw, keymapDefault, onlyCustomRaw);
+      }
+
+      setKeymapKnown(replies !== null);
+
+      /* Show what the replies hold even when they are unusable for a save */
+      const customCodes: number[][] = replies?.custom ?? parseKeymapRaw(asText(keymapRaw), layerSize);
+      const defaultCodes: number[][] = replies?.defaults ?? parseKeymapRaw(asText(keymapDefault), layerSize);
+      const onlyCustom = replies?.onlyCustom ?? Boolean(parseInt(asText(onlyCustomRaw), 10));
 
       setKeymap({
         custom: customCodes.map(l => l.map((k: number) => keymapDB.parse(k))),
@@ -416,6 +432,10 @@ function ComboEditor(props: ComboEditorProps) {
       return undefined;
     }
 
+    if (!keymapKnown) {
+      return i18n.editor.multiAction.keymapUnknown;
+    }
+
     if (!combosKnown) {
       return i18n.editor.multiAction.combosUnknown;
     }
@@ -440,6 +460,15 @@ function ComboEditor(props: ComboEditorProps) {
 
   const showMultiActionToast = (content: string) => {
     toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={content} />, { autoClose: 4000 });
+  };
+
+  /* True while a save runs, with a notice */
+  const savePending = (): boolean => {
+    if (saving.current) {
+      toast.warn(<ToastMessage title="Combo Editor" content={i18n.editor.multiAction.saving} />, { autoClose: 3000 });
+    }
+
+    return saving.current;
   };
 
   /* ---------------------------------------------------------------------- */
@@ -512,7 +541,12 @@ function ComboEditor(props: ComboEditorProps) {
       },
     };
 
+    if (saving.current) {
+      return;
+    }
+
     try {
+      saving.current = true;
       setIsSaving(true);
 
       const outcome = await runComboSave(io, {
@@ -537,6 +571,18 @@ function ComboEditor(props: ComboEditorProps) {
         skSaved.current = outcome.superkeys.saved;
       }
 
+      /* Show merged Superkeys as the keyboard now holds them, also when a later step failed */
+      if (outcome.superkeys && reconcileDraft(keymapCodes.custom, outcome.superkeys.layers).length > 0) {
+        const { layers } = outcome.superkeys;
+        setKeymap({
+          default: keymap.default,
+          onlyCustom: keymap.onlyCustom,
+          custom: keymap.custom.map((layer, l) =>
+            layer.map((key, i) => (layers[l][i] === key.keyCode ? key : keymapDB.parse(layers[l][i]))),
+          ),
+        });
+      }
+
       if (outcome.warnings.length > 0) {
         const content = [i18n.editor.multiAction.conflictWarning]
           .concat(outcome.warnings.map(conflict => conflictMessage(conflict, rules)))
@@ -551,18 +597,6 @@ function ComboEditor(props: ComboEditorProps) {
 
       if (outcome.superkeys) {
         const { table, layers } = outcome.superkeys;
-
-        /* Show merged Superkeys as the keyboard now holds them */
-        if (reconcileDraft(keymapCodes.custom, layers).length > 0) {
-          setKeymap({
-            default: keymap.default,
-            onlyCustom: keymap.onlyCustom,
-            custom: keymap.custom.map((layer, l) =>
-              layer.map((key, i) => (layers[l][i] === key.keyCode ? key : keymapDB.parse(layers[l][i]))),
-            ),
-          });
-        }
-
         setSuperkeys(withGeneratedNames(table, labelCtx));
         skBaseline.current = { ...draftRefs(combos), customLayers: layers, table };
       }
@@ -583,6 +617,7 @@ function ComboEditor(props: ComboEditorProps) {
       log.error("[Combos] failed to save", error);
       toast.error(<ToastMessage title="Could not save combos" content={String(error)} />, { autoClose: 4000 });
     } finally {
+      saving.current = false;
       setIsSaving(false);
     }
   };
@@ -602,6 +637,10 @@ function ComboEditor(props: ComboEditorProps) {
   const renumber = (list: ComboType[]): ComboType[] => list.map((item, index) => ({ ...item, id: index }));
 
   const commit = (list: ComboType[], nextSelected?: number) => {
+    if (savePending()) {
+      return;
+    }
+
     setCombos(list);
     if (nextSelected !== undefined) setSelected(nextSelected);
     setModified(true);
@@ -635,7 +674,7 @@ function ComboEditor(props: ComboEditorProps) {
   };
 
   const cloneCombo = () => {
-    if (overLimit()) return;
+    if (savePending() || overLimit()) return;
     const source = combos[selected];
     if (!source) return;
 
@@ -799,6 +838,10 @@ function ComboEditor(props: ComboEditorProps) {
   };
 
   const restoreSnapshot = (snapshot: ComboSnapshot) => {
+    if (savePending()) {
+      return;
+    }
+
     setSuperkeys(snapshot.superkeys);
     setCombos(snapshot.combos);
     setModified(true);
@@ -831,6 +874,10 @@ function ComboEditor(props: ComboEditorProps) {
   /* Set the five actions of the selected combo's result, as a plain key or a Superkey */
   const onComboMultiActionChange = (actions: number[]) => {
     const current = combos[selected];
+
+    if (savePending()) {
+      return;
+    }
 
     if (!current || superkeysState !== "ready" || multiActionBlock() !== undefined) {
       return;
@@ -949,7 +996,7 @@ function ComboEditor(props: ComboEditorProps) {
       slot: slot !== null && slot < MAX_ACTIVE_SUPERKEYS ? slot : null,
       users,
       capacity: { used: superkeysInUse(refs), max: MAX_ACTIVE_SUPERKEYS },
-      disabledReason: multiActionBlock(),
+      disabledReason: isSaving ? i18n.editor.multiAction.saving : multiActionBlock(),
       notice,
       actionLabel: action => actionText(action, labelCtx),
       onChange: onComboMultiActionChange,

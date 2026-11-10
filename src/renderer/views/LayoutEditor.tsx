@@ -388,6 +388,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
   const scanned = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
+  /* Set from the start of a save to its end, so edits made meanwhile are refused instead of overwritten */
+  const saving = useRef(false);
   const { state } = useDevice();
   const [layerData, setLayerData] = useState<Array<KeyType>>([]);
   const [isReadOnly, setIsReadOnly] = useState(false);
@@ -948,6 +950,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   });
 
   const restoreSnapshot = (snapshot: EditSnapshot) => {
+    if (savePending()) {
+      return;
+    }
+
     setSuperkeys(snapshot.superkeys);
     setKeymap({
       default: keymap.default,
@@ -984,6 +990,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   };
 
   const onKeyChange = (keyCode: number) => {
+    if (savePending()) {
+      return;
+    }
+
     // Keys can only change on the custom layers
     const layer = currentLayer;
     const keyIndex = currentKeyIndex;
@@ -1097,6 +1107,17 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const draftTable = (): number[][] =>
     (superkeys ?? []).slice(0, MAX_ACTIVE_SUPERKEYS).map(superkey => normalizeActions(superkey.actions));
 
+  /* True while a save runs, with a notice */
+  const savePending = (): boolean => {
+    if (saving.current) {
+      toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={i18n.editor.multiAction.saving} />, {
+        autoClose: 3000,
+      });
+    }
+
+    return saving.current;
+  };
+
   const showMultiActionToast = (content: string) => {
     toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={content} icon={<IconArrowDownWithLine />} />, {
       autoClose: 4000,
@@ -1166,6 +1187,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
   /* Set the five actions of the selected cell, as a plain key, a dual-function key or a Superkey */
   const onMultiActionChange = (actions: number[]) => {
+    if (savePending()) {
+      return;
+    }
+
     const customIdx = keymap.onlyCustom ? currentLayer : currentLayer - keymap.default.length;
     const custom = draftCodes(keymap.custom);
     const currentCode = custom[customIdx]?.[currentKeyIndex];
@@ -1239,6 +1264,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
   /* Set the five actions of a previous-key tab. Its output is a plain key or a Superkey, never a dual-function key */
   const onRuleMultiActionChange = (ruleIndex: number, actions: number[]) => {
+    if (savePending()) {
+      return;
+    }
+
     const rule = altRepeatRules[ruleIndex];
 
     if (rule === undefined || superkeysState !== "ready" || multiActionBlock() !== undefined) {
@@ -1411,6 +1440,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const onApply = async () => {
     const { currentDevice } = state;
 
+    if (saving.current) {
+      return;
+    }
+
     if (altRepeatState === "failed" || holdModsState === "failed") {
       const content = altRepeatState === "failed" ? i18n.editor.altRepeat.loadFailed : i18n.editor.holdMods.loadFailed;
       toast.error(<ToastMessage title="Error when saving" content={content} icon={<IconArrowDownWithLine />} />, {
@@ -1476,6 +1509,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     let reloadHoldMods = false;
 
     try {
+      saving.current = true;
       setLoading(true);
       setIsSaving(true);
       const saveInput: LayoutSaveInput = {
@@ -1601,6 +1635,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       setLoading(false);
       setIsSaving(false);
     } finally {
+      saving.current = false;
+
       /* Run the load the save dropped or deferred, so the editor sees the keyboard as the save left it */
       if (holdSync.endSave() || reloadHoldMods) {
         loadHoldMods(currentDevice, currentDevice?.device.info.product);
@@ -1617,6 +1653,11 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   };
 
   const copyFromLayer = (layer: number) => {
+    if (savePending()) {
+      setCopyFromOpen(false);
+      return;
+    }
+
     let nextRules: AltRepeatRule[] | null = null;
 
     if (altRepeatState === "ready") {
@@ -1946,6 +1987,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     holdMods?: unknown;
     superkeys?: unknown;
   }): boolean => {
+    if (savePending()) {
+      return false;
+    }
+
     const { currentDevice } = state;
     const replacesLayer =
       data.keymap.length > 0 &&
@@ -2190,6 +2235,12 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     };
 
     const resp = await ipcRenderer.invoke("open-dialog", options);
+
+    /* Check after the dialog, since a save may have started while it was open */
+    if (!resp.canceled && savePending()) {
+      return;
+    }
+
     if (!resp.canceled) {
       // log.info(resp.filePaths);
       let layers;
@@ -2791,6 +2842,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     const { ruleIndex } = previousDialog;
     setPreviousDialog({ open: false, ruleIndex: null });
 
+    if (savePending()) {
+      return;
+    }
+
     if (ruleIndex !== null) {
       editRules(
         altRepeatRules.map((rule, index) =>
@@ -2944,7 +2999,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       slot: slot !== null && slot < MAX_ACTIVE_SUPERKEYS ? slot : null,
       users,
       capacity: { used: superkeysInUse(refs), max: MAX_ACTIVE_SUPERKEYS },
-      disabledReason: multiActionBlock(),
+      disabledReason: isSaving ? i18n.editor.multiAction.saving : multiActionBlock(),
       notice,
       actionLabel: action => actionText(action, labelCtx),
       onChange,
