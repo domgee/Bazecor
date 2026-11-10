@@ -19,7 +19,6 @@ vi.mock("@Renderer/utils/Store", () => ({
 
 /* Stand in for the on-screen keyboard and the other tabs, whose module graphs vitest cannot load */
 vi.mock(".", () => ({ Picker: () => <div /> }));
-vi.mock("@Renderer/modules/KeysTabs/SuperkeysTab", () => ({ default: () => <div /> }));
 /* Render the nested picker for the third action, as a tile click does */
 vi.mock("@Renderer/modules/MultiAction/MultiActionTab", async () => {
   const { isOverrideEmpty } = await import("../../../api/parsers/dualFunction");
@@ -196,11 +195,11 @@ describe("KeyPickerKeyboard Multi-action tab", () => {
     expect(tabNames(container)[1]).toBe("Multi-actioncustom timing");
   });
 
-  test("without the prop the Superkeys tab stays", () => {
-    const { container } = renderWith({ keyCode: 4, withMultiAction: false });
+  test("without the prop neither tab shows and a Superkey opens Keys & Shortcuts", () => {
+    const { container } = renderWith({ keyCode: SUPERKEY_1, withMultiAction: false });
 
-    expect(tabNames(container)).toContain("Superkeys");
-    expect(tabNames(container)).not.toContain("Multi-action");
+    expect(tabNames(container).filter(name => name === "Superkeys" || name === "Multi-action")).toEqual([]);
+    expect(screen.getAllByRole("tab", { selected: true })[0].textContent?.trim()).toBe("Keys & Shortcuts");
   });
 
   test("the previous-key tab picker gets the tab in place of Superkeys and opens it on a Superkey output", () => {

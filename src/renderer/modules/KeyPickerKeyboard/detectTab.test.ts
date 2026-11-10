@@ -26,8 +26,8 @@ describe("detectTab with the Multi-action tab", () => {
   test.each([
     [53980, true, "tabMultiAction"], // Superkey 1
     [54107, true, "tabMultiAction"], // Superkey 128
-    [53980, false, "tabSuperKeys"], // Superkey 1 without the tab
-    [54107, false, "tabSuperKeys"], // Superkey 128 without the tab
+    [53980, false, "tabKeys"], // Superkey 1 without the tab
+    [54107, false, "tabKeys"], // Superkey 128 without the tab
     [49169 + 4, true, "tabMultiAction"], // A with left Ctrl on hold
     [49169 + 4, false, "tabLayers"], // A with left Ctrl on hold without the tab
     [51218 + 0x2c, true, "tabMultiAction"], // Space with layer 1 on hold

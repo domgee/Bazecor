@@ -3202,11 +3202,29 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     };
   };
 
-  /* The Multi-action tab for the selected cell. Default layers are read-only and keep the Superkeys tab */
+  /* The Multi-action tab for the selected cell. A default layer shows its key read-only */
   const cellMultiAction = (): MultiActionProps | undefined => {
+    if (currentKeyIndex === -1 || currentKeyIndex >= ledIndexStart) {
+      return undefined;
+    }
+
+    if (isReadOnly) {
+      const defaultCode = keymap.default[currentLayer + (keymap.onlyCustom ? keymap.default.length : 0)]?.[currentKeyIndex]?.keyCode;
+
+      if (defaultCode === undefined) {
+        return undefined;
+      }
+
+      return {
+        ...multiActionFor(defaultCode, "cell", () => {}),
+        disabledReason: i18n.editor.multiAction.defaultLayer,
+        perKey: undefined,
+      };
+    }
+
     const cellCode = keymap.custom[customLayerIdx]?.[currentKeyIndex]?.keyCode;
 
-    if (isReadOnly || currentKeyIndex === -1 || currentKeyIndex >= ledIndexStart || cellCode === undefined) {
+    if (cellCode === undefined) {
       return undefined;
     }
 

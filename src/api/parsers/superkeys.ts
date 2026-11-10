@@ -227,7 +227,7 @@ export const serializeSuperkeyTable = (
   return words.join(" ");
 };
 
-/** The old editors' write. Kept for MacroEditor and the Superkeys page. */
+/** The old editors' write. Kept for MacroEditor. */
 export const serializeSuperkeys = (superkeys: SuperkeysType[]) => {
   if (
     superkeys.length === 0 ||

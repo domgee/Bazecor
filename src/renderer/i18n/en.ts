@@ -643,6 +643,7 @@ const English = {
       combosUnknown: "The combos could not be read. Reload to edit multi-action keys.",
       rulesUnknown: "The previous-key rules could not be read. Reload to edit multi-action keys.",
       keymapUnknown: "The keymap could not be read. Reload to edit multi-action keys.",
+      defaultLayer: "Default layers are read-only.",
       saving: "Saving. Wait until the save finishes to make more changes.",
       capacity: "All 70 Superkey slots are in use. Clear a multi-action key and save first. Nothing was changed.",
       emptyRule: "A previous-key tab needs an output. Use Delete to remove this tab.",

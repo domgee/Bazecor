@@ -22,7 +22,6 @@ import { i18n } from "@Renderer/i18n";
 import NoKeyTransparentTab from "@Renderer/modules/KeysTabs/NoKeyTransparentTab";
 import LayersTab from "@Renderer/modules/KeysTabs/LayersTab";
 import MacroTab from "@Renderer/modules/KeysTabs/MacroTab";
-import SuperkeysTab from "@Renderer/modules/KeysTabs/SuperkeysTab";
 import MediaAndLightTab from "@Renderer/modules/KeysTabs/MediaAndLightTab";
 import MouseTab from "@Renderer/modules/KeysTabs/MouseTab";
 import WirelessTab from "@Renderer/modules/KeysTabs/WirelessTab";
@@ -267,7 +266,7 @@ interface Props {
   /* Show mouse movement and wheel keys, which the Mouse tab otherwise keeps to
    * the Layout Editor. */
   fullMouse?: boolean;
-  /* Show the Multi-action tab after Keys & Shortcuts in place of the Superkeys tab */
+  /* Show the Multi-action tab after Keys & Shortcuts */
   multiAction?: MultiActionProps;
 }
 
@@ -317,7 +316,7 @@ function KeyPickerKeyboard(props: Props) {
   // Layer Lens is available for Sonsei (fw >= 1.0.0), Defy (fw >= 2.3.0) and Raise2
   // (fw >= 1.5.0) — see App.tsx, which writes capabilities.lens on connect. Raise
   // (Raise1) never sets the flag, so the Layer Lens tab stays hidden for it in both
-  // the Layout Editor and the Superkeys view.
+  // the Layout Editor and the nested Superkey action picker.
   const lensCapabilityRaw = store.get("capabilities.lens");
   const isLensAvailable =
     lensCapabilityRaw === true || lensCapabilityRaw === "true" || lensCapabilityRaw === 1 || lensCapabilityRaw === "1";
@@ -333,7 +332,6 @@ function KeyPickerKeyboard(props: Props) {
     if (withMultiAction) tabList.push("tabMultiAction");
     tabList.push("tabLayers");
     tabList.push("tabMacro");
-    if (actTab !== "super" && !withMultiAction) tabList.push("tabSuperKeys");
     tabList.push("tabMedia");
     tabList.push("tabMouse");
     if (isWireless) tabList.push("tabWireless");
@@ -358,9 +356,7 @@ function KeyPickerKeyboard(props: Props) {
     setState(previous => {
       let tab = previous.currentTab;
 
-      if (hasMultiAction && tab === "tabSuperKeys") {
-        tab = "tabMultiAction";
-      } else if (!hasMultiAction && tab === "tabMultiAction") {
+      if (!hasMultiAction && tab === "tabMultiAction") {
         tab = detectTab(code != null ? code.modified + code.base : -1, undefined, false);
       }
 
@@ -461,20 +457,6 @@ function KeyPickerKeyboard(props: Props) {
                 <TabsTrigger value="tabMacro" variant="tab" className="text-sm [&_svg]:w-[20px] py-2" disabled={disable}>
                   <IconRobot size="sm" /> Macros
                 </TabsTrigger>
-                {actTab !== "super" && !hasMultiAction ? (
-                  <>
-                    <TabsTrigger value="tabSuperKeys" variant="tab" className="text-sm [&_svg]:w-[20px] py-2" disabled={disable}>
-                      <>
-                        <IconThunder size="sm" /> {i18n.editor.standardView.superkeys.title}
-                        {!sk20 && (
-                          <div className="badge badge-primary leading-none ml-1 font-bold text-[9px] text-white">BETA</div>
-                        )}
-                      </>
-                    </TabsTrigger>
-                  </>
-                ) : (
-                  ""
-                )}
                 <TabsTrigger value="tabMedia" variant="tab" className="text-sm [&_svg]:w-[20px] py-2" disabled={disable}>
                   <IconNote size="sm" /> {i18n.editor.standardView.mediaAndLED.title}
                 </TabsTrigger>
@@ -648,23 +630,6 @@ function KeyPickerKeyboard(props: Props) {
                 </>
               </motion.div>
             </TabsContent>
-            {actTab !== "super" && !hasMultiAction && (
-              <>
-                <TabsContent value="tabSuperKeys" key="tabSuperKeys">
-                  <motion.div initial="hidden" animate="visible" key="tabKeys" variants={tabVariants}>
-                    <div className="">
-                      <SuperkeysTab
-                        superkeys={superkeys}
-                        onKeySelect={onKeySelect}
-                        macros={macros}
-                        keyCode={code}
-                        disabled={disable}
-                      />
-                    </div>
-                  </motion.div>
-                </TabsContent>
-              </>
-            )}
             <TabsContent value="tabMedia" key="tabMedia">
               <motion.div initial="hidden" animate="visible" key="tabKeys" variants={tabVariants}>
                 <MediaAndLightTab onAddSpecial={onKeySelect} keyCode={code} disabled={disable} />

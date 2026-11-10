@@ -83,8 +83,9 @@ export const detectTab = (keyCode: number, currentTab: string | undefined, hasMu
     tab = "tabMacro";
   }
 
+  /* Without the Multi-action tab no tab edits a Superkey, so open the Keys tab */
   if (isSuperkeyKeyCode(keyCode)) {
-    tab = "tabSuperKeys";
+    tab = "tabKeys";
   }
 
   if (keyCode >= 54108 && keyCode <= 54111) {

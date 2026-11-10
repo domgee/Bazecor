@@ -46,7 +46,6 @@ import {
   IconKeyboard2Stroke,
   IconMemory,
   IconRobot,
-  IconThunder,
   IconPreferences,
   IconBazecordevtools,
   IconHome,
@@ -58,7 +57,6 @@ function NavigationMenu(props: NavigationMenuProps) {
   const [checkedVer, setCheckedVer] = useState(false);
   const [versions, setVersions] = useState(null);
   const [isUpdated, setIsUpdated] = useState(true);
-  const [isBeta, setIsBeta] = useState(false);
   const [device, setDevice] = useState<Record<string, DygmaDeviceType>>({});
   const [virtual, setVirtual] = useState(false);
   const location = useLocation();
@@ -67,7 +65,6 @@ function NavigationMenu(props: NavigationMenuProps) {
   const navigate = useNavigate();
   const { connected, pages, fwUpdate, flashing, allowBeta, modified, loading, saveButtonRef, discardChangesButtonRef } = props;
   const store = Store.getStore();
-  const sk20 = Boolean(store.get("capabilities.sk20"));
   const combos = Boolean(store.get("capabilities.combos"));
   const keyOverrides = Boolean(store.get("capabilities.keyOverrides"));
   const conditionalLayers = Boolean(store.get("capabilities.conditionalLayers"));
@@ -114,7 +111,7 @@ function NavigationMenu(props: NavigationMenuProps) {
       kaleidoscope: parts[1],
       firmware: parts[2],
     };
-    let Beta = getVersions.bazecor.includes("beta");
+    const Beta = getVersions.bazecor.includes("beta");
     let cleanedVersion = getVersions.bazecor;
     if (Beta && !getVersions.bazecor.includes("-beta")) cleanedVersion = getVersions.bazecor.replace("beta", "");
     // Getting GitHub Data
@@ -128,10 +125,8 @@ function NavigationMenu(props: NavigationMenuProps) {
     }
     // Comparing online Data to FW version
     const semVerCheck = fwList.length > 0 ? SemVer.compare(fwList[0].version, cleanedVersion) : 0;
-    Beta = Beta || state.currentDevice?.device.info.product !== "Raise";
     setVersions(getVersions);
     setIsUpdated(semVerCheck !== 1);
-    setIsBeta(Beta);
     setVirtual(state.currentDevice?.file);
     setCheckedVer(true);
   }, [getGitHubFW, state.currentDevice]);
@@ -246,26 +241,6 @@ function NavigationMenu(props: NavigationMenuProps) {
                       buttonText={i18n.app.menu.macros}
                       icoSVG={<IconRobot size="lg" />}
                       disabled={fwUpdate || loading}
-                    />
-                  </Link>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <AnimatePresence mode="popLayout">
-              {connected && pages.keymap && (
-                <motion.div initial={linkVariants.hidden} animate={linkVariants.visible} exit={linkVariants.hidden}>
-                  <Link
-                    to="/superkeys"
-                    onClick={linkHandler}
-                    className={`list-link flex hover:no-underline ${fwUpdate || !isBeta || loading ? "disabled pointer-events-none" : ""}`}
-                  >
-                    <NavigationButton
-                      selected={currentPage === "/superkeys"}
-                      buttonText={i18n.app.menu.superkeys}
-                      icoSVG={<IconThunder size="lg" />}
-                      showNotif={isBeta && !sk20}
-                      notifText="BETA"
-                      disabled={fwUpdate || !isBeta || loading}
                     />
                   </Link>
                 </motion.div>
