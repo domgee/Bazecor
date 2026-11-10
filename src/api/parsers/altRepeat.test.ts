@@ -16,6 +16,7 @@ import {
   hasRepeat,
   isAllowedOutput,
   isDualFunctionSuperkey,
+  isRegisteredQukeySuperkey,
   isValidPrevious,
   needsAltRepeatClear,
   normalizePrevious,
@@ -614,5 +615,20 @@ describe("native dual-use codes", () => {
 
   test.each([[49168], [53267], [49169], [51217], [51218], [53266]])("decodeDualUse(%i) is null", code => {
     expect(decodeDualUse(code)).toBeNull();
+  });
+});
+
+describe("isRegisteredQukeySuperkey", () => {
+  test("registers a modifier tap, which the cell conversion skips", () => {
+    expect(isRegisteredQukeySuperkey(superkey([225, 224]))).toBe(true);
+    expect(isDualFunctionSuperkey(superkey([225, 224]))).toBe(false);
+  });
+
+  test.each([[[6, 224]], [[6, 17450]]])("registers %j like isDualFunctionSuperkey", actions => {
+    expect(isRegisteredQukeySuperkey(superkey(actions))).toBe(true);
+  });
+
+  test.each([[[17492, 224]], [[6, 7]], [[6, 224, 4]], [[6, 17458]]])("does not register %j", actions => {
+    expect(isRegisteredQukeySuperkey(superkey(actions))).toBe(false);
   });
 });

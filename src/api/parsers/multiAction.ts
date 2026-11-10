@@ -15,7 +15,7 @@
  */
 
 import { AltRepeatBlock, AltRepeatRule } from "@Renderer/types/altRepeat";
-import { ComboType } from "@Renderer/types/combos";
+import { COMBO_POSITION_UNUSED, ComboType } from "@Renderer/types/combos";
 import { SuperkeysType } from "@Renderer/types/superkeys";
 import {
   DU_FIRST,
@@ -24,7 +24,9 @@ import {
   decodeDualUse,
   dualUseCodeFor,
   isAllowedOutput,
+  basePrevious,
   isDualFunctionSuperkey,
+  isRegisteredQukeySuperkey,
   rulesAt,
   superkeyQukeyCode,
 } from "./altRepeat";
@@ -58,8 +60,11 @@ export interface LayoutRefs {
   /** The firmware layer of custom layer 0 */
   layerOffset: number;
   rules: AltRepeatRule[];
-  comboOutputs: number[];
+  /** Combos by index. Only the output, the layer and the members matter here */
+  combos: ComboRef[];
 }
+
+export type ComboRef = Pick<ComboType, "layer" | "positions" | "action">;
 
 export interface SuperkeyDraft extends LayoutRefs {
   table: number[][];
@@ -134,8 +139,8 @@ export const superkeyRefs = (input: LayoutRefs): Map<number, SkRef[]> => {
     addRef(refs, rule.output, { kind: "rule", index });
   });
 
-  input.comboOutputs.forEach((code, index) => {
-    addRef(refs, code, { kind: "combo", index });
+  input.combos.forEach((combo, index) => {
+    addRef(refs, combo.action, { kind: "combo", index });
   });
 
   return refs;
@@ -326,19 +331,30 @@ export interface Conflict {
 }
 
 export interface Collisions {
-  /** Identical keymap Superkeys, from slot to the lowest keymap-referenced slot */
+  /** Identical keymap Superkeys, from slot to the lowest slot of the group, the one the keyboard reads cells back as */
   merges: Map<number, number>;
   conflicts: Conflict[];
 }
 
 const definitionKey = ([tap, hold]: Definition) => `${tap}/${hold}`;
 
-const refKey = (ref: SkRef) => {
+/* An identity that survives inserts and deletes elsewhere in the rules and combos */
+const refKey = (ref: SkRef, input: LayoutRefs) => {
   if (ref.kind === "cell") {
     return `c${ref.layer}:${ref.position}`;
   }
 
-  return ref.kind === "rule" ? `r${ref.index}` : `k${ref.index}`;
+  if (ref.kind === "rule") {
+    const rule = input.rules[ref.index];
+    return `r${rule.layer}:${rule.position}:${basePrevious(rule.previous)}`;
+  }
+
+  const combo = input.combos[ref.index];
+  const members = combo.positions
+    .filter(position => position !== COMBO_POSITION_UNUSED)
+    .sort((a, b) => a - b)
+    .join(".");
+  return `k${combo.layer}:${members}`;
 };
 
 /** Superkeys and native dual-use cells that the firmware would store under the same qukey code. Only groups with a keymap cell count. */
@@ -356,7 +372,8 @@ export const qukeyCollisions = (
   };
 
   table.forEach((actions, slot) => {
-    if (isDualFunctionSuperkey({ actions, name: "", id: slot })) {
+    /* Group every slot the firmware registers, since the first one with a code is what a cell with that code plays */
+    if (isRegisteredQukeySuperkey({ actions, name: "", id: slot })) {
       groupOf(superkeyQukeyCode(actions[0], actions[1])).slots.push(slot);
     }
   });
@@ -377,7 +394,11 @@ export const qukeyCollisions = (
   [...groups.entries()]
     .sort(([a], [b]) => a - b)
     .forEach(([code, group]) => {
-      const cellSlots = group.slots.filter(slot => (refs.get(slot) ?? []).some(ref => ref.kind === "cell"));
+      /* Only cells of slots the firmware converts become qukey codes. Cells of a modifier-tap slot keep the Superkey */
+      const cellSlots = group.slots.filter(
+        slot =>
+          isDualFunctionSuperkey({ actions: table[slot], name: "", id: slot }) && (refs.get(slot) ?? []).some(ref => ref.kind === "cell"),
+      );
 
       if (cellSlots.length === 0 && group.duCells.length === 0) {
         return;
@@ -400,16 +421,25 @@ export const qukeyCollisions = (
       const distinct = new Set(members.map(member => definitionKey(member.definition)));
 
       if (distinct.size === 1) {
-        cellSlots.slice(1).forEach(slot => {
-          merges.set(slot, cellSlots[0]);
-        });
+        /* Merge into the lowest slot of any kind, the one the keyboard reads converted cells back as */
+        const lowest = group.slots[0];
+        const converted = lowest !== undefined && isDualFunctionSuperkey({ actions: table[lowest], name: "", id: lowest });
+
+        if (converted) {
+          cellSlots
+            .filter(slot => slot !== lowest)
+            .forEach(slot => {
+              merges.set(slot, lowest);
+            });
+        }
+
         return;
       }
 
       /* Slots come first in table order, so the first member is the lowest slot */
       const winner = members[0].definition;
       const positions = members
-        .flatMap(member => member.refs.map(ref => `${refKey(ref)}=${definitionKey(member.definition)}`))
+        .flatMap(member => member.refs.map(ref => `${refKey(ref, input)}=${definitionKey(member.definition)}`))
         .sort();
       const signature = `${code}|${positions.join(",")}|${definitionKey(winner)}`;
 

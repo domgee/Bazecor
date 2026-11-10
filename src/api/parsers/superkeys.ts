@@ -263,6 +263,11 @@ export const writeSuperkeyTable = async (
     throw new Error("The keyboard did not store the Superkeys");
   }
 
+  /* Stale rows behind the table stay active until the first erased row, so a padded write must end exactly at the table */
+  if (format === "padded" && stored.storedRows !== table.length) {
+    throw new Error("The keyboard kept stale Superkeys behind the written table");
+  }
+
   return format === "padded" ? table.length : stored.storedRows;
 };
 

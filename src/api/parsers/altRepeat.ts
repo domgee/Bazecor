@@ -411,6 +411,31 @@ export const isDualFunctionSuperkey = (superkey: SuperkeysType | undefined): boo
   return code >= DU_FIRST && code <= DU_LAST;
 };
 
+/** KeyRoleManager::determine_key_role. True when the firmware registers this Superkey under a qukey code, which a keymap cell with
+ * that code then plays. Unlike isDualFunctionSuperkey a modifier tap counts, since only the cell conversion skips it. */
+export const isRegisteredQukeySuperkey = (superkey: SuperkeysType | undefined): boolean => {
+  if (!superkey) {
+    return false;
+  }
+
+  const [tap, hold, action2, action3, action4] = superkey.actions;
+
+  if (isIdle(tap) || isIdle(hold) || !isIdle(action2) || !isIdle(action3) || !isIdle(action4)) {
+    return false;
+  }
+
+  if (tap >= LAYER_LOCK_FIRST && tap <= LAYER_LOCK_FIRST + 9) {
+    return false;
+  }
+
+  if (!isOnlyModifier(hold) && !hasLayerChange(hold)) {
+    return false;
+  }
+
+  const code = superkeyQukeyCode(tap, hold);
+  return code >= DU_FIRST && code <= DU_LAST;
+};
+
 /** Why a key with this default cannot have previous-key rules, or null when it can. */
 export const altRepeatDefaultBlock = (code: number, superkeys: SuperkeysType[] = []): AltRepeatBlock | null => {
   if (code === TRANSPARENT) {

@@ -210,6 +210,13 @@ describe("writeSuperkeyTable", () => {
     await expect(writeSuperkeyTable(device, [row(4)], "padded", null)).rejects.toThrow("did not store");
   });
 
+  test("throws when stale rows stay behind a padded table", async () => {
+    // The old serializer's trailing 0 row is still active up to the first erased row
+    const { device } = fakeDevice(() => fixedReply([row(4)], [[0, ERASED, ERASED, ERASED, ERASED, ERASED]]));
+
+    await expect(writeSuperkeyTable(device, [row(4)], "padded", null)).rejects.toThrow("stale");
+  });
+
   test("throws when the read-back fails", async () => {
     const { device } = fakeDevice(() => new Error("timeout"));
 

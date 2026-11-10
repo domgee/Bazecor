@@ -214,8 +214,10 @@ export const parseCombosStrict = (raw: unknown, stored: ComboType[] = []): Combo
   }
 
   const combos: ComboType[] = [];
+  const records = (values.length - 1) / FIELDS_PER_COMBO;
 
-  for (let i = 0; i < count; i += 1) {
+  /* Check every record the reply holds, and return only the first `count` */
+  for (let i = 0; i < records; i += 1) {
     const base = 1 + i * FIELDS_PER_COMBO;
     const positions = values.slice(base, base + MAX_COMBO_MEMBERS);
     const layer = values[base + MAX_COMBO_MEMBERS];
@@ -226,7 +228,9 @@ export const parseCombosStrict = (raw: unknown, stored: ComboType[] = []): Combo
       return null;
     }
 
-    combos.push({ id: i, name: stored[i]?.name ?? "", positions, layer, flags, action });
+    if (i < count) {
+      combos.push({ id: i, name: stored[i]?.name ?? "", positions, layer, flags, action });
+    }
   }
 
   return combos;

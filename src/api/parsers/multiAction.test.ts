@@ -49,12 +49,15 @@ const combo = (index: number, positions: number[], layer: number, action: number
   return { id: index, name: "", positions: members, layer, flags: 1, action };
 };
 
+// Combos on layer 0 with distinct members, one per output
+const outputs = (actions: number[]): ComboType[] => actions.map((action, i) => combo(i, [i, i + 1], 0, action));
+
 const layout = (customLayers: number[][], extra: Partial<LayoutRefs> = {}): LayoutRefs => ({
   customLayers,
   defaultLayers: [],
   layerOffset: 0,
   rules: [],
-  comboOutputs: [],
+  combos: [],
   ...extra,
 });
 
@@ -76,7 +79,7 @@ const stateOf = (table: number[][], refs: LayoutRefs, currentCode: number, extra
 describe("superkeyRefs and freeSlot", () => {
   test("collects references from custom and default layers, rules and combos", () => {
     const refs = superkeyRefs(
-      layout([[SK(0), A]], { defaultLayers: [[SK(1)]], layerOffset: 1, rules: [rule(1, 1, SK(0))], comboOutputs: [A, SK(2)] }),
+      layout([[SK(0), A]], { defaultLayers: [[SK(1)]], layerOffset: 1, rules: [rule(1, 1, SK(0))], combos: outputs([A, SK(2)]) }),
     );
 
     expect(refs).toEqual(
@@ -107,7 +110,7 @@ describe("applyMultiAction", () => {
     test.each([
       ["another cell", layout([[SK(0), SK(0)]])],
       ["a rule", layout([[SK(0), A]], { rules: [rule(0, 1, SK(0))] })],
-      ["a combo", layout([[SK(0), A]], { comboOutputs: [SK(0)] })],
+      ["a combo", layout([[SK(0), A]], { combos: outputs([SK(0)]) })],
     ])("shared with %s, through tap-only and all idle", (_, refs) => {
       const state = stateOf(table, refs, SK(0));
 
@@ -176,7 +179,7 @@ describe("applyMultiAction", () => {
   });
 
   test("a new Superkey takes the lowest slot no reference or protection uses", () => {
-    const state = stateOf([full(A), full(A), full(A)], layout([[A, SK(0)]], { comboOutputs: [SK(2)] }), A, {
+    const state = stateOf([full(A), full(A), full(A)], layout([[A, SK(0)]], { combos: outputs([SK(2)]) }), A, {
       protectedSlots: new Set([1]),
     });
 
@@ -230,12 +233,33 @@ describe("qukeyCollisions", () => {
   const CTRL_A = [0x104, CTRL, 1, 1, 1];
   const SHIFT_A = [0x804, CTRL, 1, 1, 1];
 
-  test("identical keymap Superkeys merge into the lowest keymap-referenced slot, also when a combo-only twin is lower (P4)", () => {
+  test("identical keymap Superkeys merge into the lowest slot of the group, also a combo-only one", () => {
     const table = [full(A), full(A), CTRL_A, IDLE, IDLE, IDLE, CTRL_A, IDLE, IDLE, IDLE, IDLE, CTRL_A];
 
-    const collisions = qukeyCollisions(table, layout([[SK(11), SK(6)]], { comboOutputs: [SK(2)] }));
+    const collisions = qukeyCollisions(table, layout([[SK(11), SK(6)]], { combos: outputs([SK(2)]) }));
 
-    expect(collisions).toEqual({ merges: new Map([[11, 6]]), conflicts: [] });
+    expect(collisions).toEqual({
+      merges: new Map([
+        [11, 2],
+        [6, 2],
+      ]),
+      conflicts: [],
+    });
+  });
+
+  test("a lower registered Superkey with a modifier tap shadows a keymap Superkey with the same code", () => {
+    // Shift tap with a Ctrl hold, and tap 0x61 with a Ctrl hold, both give the code DUM + 0x61
+    const conflicts = qukeyCollisions([[0xe1, CTRL, 1, 1, 1], [0x61, CTRL, 1, 1, 1]], layout([[SK(1)]])).conflicts;
+
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].winner).toEqual([0xe1, CTRL]);
+  });
+
+  test("cells of a modifier-tap Superkey are not converted, so they alone make no group", () => {
+    expect(qukeyCollisions([[0xe1, CTRL, 1, 1, 1], [0xe1, 0x1e0, 1, 1, 1]], layout([[SK(0)]]))).toEqual({
+      merges: new Map(),
+      conflicts: [],
+    });
   });
 
   test("taps that differ only in modifier flags conflict", () => {
@@ -247,12 +271,12 @@ describe("qukeyCollisions", () => {
   });
 
   test("a combo-only or unused collider conflicts with a keymap Superkey", () => {
-    expect(qukeyCollisions([CTRL_A, SHIFT_A], layout([[SK(1)]], { comboOutputs: [SK(0)] })).conflicts).toHaveLength(1);
+    expect(qukeyCollisions([CTRL_A, SHIFT_A], layout([[SK(1)]], { combos: outputs([SK(0)]) })).conflicts).toHaveLength(1);
     expect(qukeyCollisions([CTRL_A, SHIFT_A], layout([[SK(1)]])).conflicts).toHaveLength(1);
   });
 
   test("combo and rule references alone are exempt", () => {
-    expect(qukeyCollisions([CTRL_A, SHIFT_A], layout([[A]], { comboOutputs: [SK(0)], rules: [rule(0, 0, SK(1))] }))).toEqual({
+    expect(qukeyCollisions([CTRL_A, SHIFT_A], layout([[A]], { combos: outputs([SK(0)]), rules: [rule(0, 0, SK(1))] }))).toEqual({
       merges: new Map(),
       conflicts: [],
     });
@@ -321,6 +345,27 @@ describe("prepareSuperkeyWrite", () => {
     );
   });
 
+  test("merges cells into the lowest identical slot, which a combo references", () => {
+    const prepared = prepareSuperkeyWrite({
+      draft: draftOf([CTRL_A, CTRL_A, CTRL_A], [[SK(1), SK(2)]], { combos: outputs([SK(0)]) }),
+      saved: {},
+      baseline: null,
+      collect: true,
+      format: "padded",
+    });
+
+    expect(prepared).toEqual({
+      table: [CTRL_A],
+      layers: [[SK(0), SK(0)]],
+      merges: new Map([
+        [1, 0],
+        [2, 0],
+      ]),
+      conflicts: [],
+      warnings: [],
+    });
+  });
+
   test("merges, then collects the merged-away slot", () => {
     const prepared = prepareSuperkeyWrite({
       draft: draftOf([CTRL_A, CTRL_A], [[SK(1), SK(0)]]),
@@ -334,7 +379,7 @@ describe("prepareSuperkeyWrite", () => {
   });
 
   describe("pre-existing conflicts (Q4, A2)", () => {
-    const baseline = draftOf([CTRL_A, SHIFT_A, ALT_A], [[SK(0), SK(1), A, A]], { comboOutputs: [A], rules: [rule(0, 3, A)] });
+    const baseline = draftOf([CTRL_A, SHIFT_A, ALT_A], [[SK(0), SK(1), A, A]], { combos: outputs([A]), rules: [rule(0, 3, A)] });
     const run = (draft: SuperkeyDraft) => prepareSuperkeyWrite({ draft, saved: {}, baseline, collect: false, format: "padded" });
 
     test("an unchanged conflict is a warning", () => {
@@ -345,22 +390,44 @@ describe("prepareSuperkeyWrite", () => {
     });
 
     test.each([
-      ["a cell", draftOf(baseline.table, [[SK(0), SK(1), SK(1), A]], { comboOutputs: [A], rules: [rule(0, 3, A)] })],
-      ["a combo", draftOf(baseline.table, [[SK(0), SK(1), A, A]], { comboOutputs: [SK(1)], rules: [rule(0, 3, A)] })],
-      ["a rule", draftOf(baseline.table, [[SK(0), SK(1), A, A]], { comboOutputs: [A], rules: [rule(0, 3, SK(1))] })],
+      ["a cell", draftOf(baseline.table, [[SK(0), SK(1), SK(1), A]], { combos: outputs([A]), rules: [rule(0, 3, A)] })],
+      ["a combo", draftOf(baseline.table, [[SK(0), SK(1), A, A]], { combos: outputs([SK(1)]), rules: [rule(0, 3, A)] })],
+      ["a rule", draftOf(baseline.table, [[SK(0), SK(1), A, A]], { combos: outputs([A]), rules: [rule(0, 3, SK(1))] })],
     ])("one more referencing %s blocks", (_, draft) => {
       expect(run(draft).conflicts).toHaveLength(1);
     });
 
+    describe("rules and combos are known by what they are, not by their index", () => {
+      const shared = draftOf([CTRL_A, SHIFT_A], [[SK(0), SK(1)]], { rules: [rule(0, 3, SK(1))], combos: [combo(0, [0, 1], 0, SK(1))] });
+      const runShared = (draft: SuperkeyDraft) => prepareSuperkeyWrite({ draft, saved: {}, baseline: shared, collect: false, format: "padded" });
+
+      test("an unrelated rule and combo inserted before the conflict's own still warn", () => {
+        const draft = { ...shared, rules: [rule(0, 9, A), ...shared.rules], combos: [combo(0, [7, 8], 0, A), ...shared.combos] };
+
+        const prepared = runShared(draft);
+
+        expect(prepared.conflicts).toEqual([]);
+        expect(prepared.warnings).toHaveLength(1);
+      });
+
+      test("a rule moved to another key blocks", () => {
+        expect(runShared({ ...shared, rules: [rule(0, 4, SK(1))] }).conflicts).toHaveLength(1);
+      });
+
+      test("a combo moved to other keys blocks", () => {
+        expect(runShared({ ...shared, combos: [combo(0, [0, 2], 0, SK(1))] }).conflicts).toHaveLength(1);
+      });
+    });
+
     test("a changed winner blocks", () => {
-      const draft = draftOf([ALT_A, SHIFT_A, ALT_A], [[SK(0), SK(1), A, A]], { comboOutputs: [A], rules: [rule(0, 3, A)] });
+      const draft = draftOf([ALT_A, SHIFT_A, ALT_A], [[SK(0), SK(1), A, A]], { combos: outputs([A]), rules: [rule(0, 3, A)] });
 
       expect(run(draft).conflicts).toHaveLength(1);
     });
 
     test("moving a cell to another definition with the same positions and winner blocks", () => {
       // Swap which key asks for which definition. The positions and the winner stay the same
-      const draft = draftOf([CTRL_A, SHIFT_A, ALT_A], [[SK(1), SK(0), A, A]], { comboOutputs: [A], rules: [rule(0, 3, A)] });
+      const draft = draftOf([CTRL_A, SHIFT_A, ALT_A], [[SK(1), SK(0), A, A]], { combos: outputs([A]), rules: [rule(0, 3, A)] });
 
       expect(run(draft).conflicts).toHaveLength(1);
     });
@@ -373,7 +440,7 @@ describe("conflictMessage", () => {
     const SHIFT_A = [0x804, CTRL, 1, 1, 1];
     const ALT_A = [0x204, CTRL, 1, 1, 1];
     const rules = [rule(0, 20, SK(1))];
-    const conflict = qukeyCollisions([CTRL_A, SHIFT_A, ALT_A], layout([[SK(0)]], { comboOutputs: [A, A, A, SK(1)], rules }))
+    const conflict = qukeyCollisions([CTRL_A, SHIFT_A, ALT_A], layout([[SK(0)]], { combos: outputs([A, A, A, SK(1)]), rules }))
       .conflicts[0];
 
     expect(conflictMessage(conflict, rules)).toBe(

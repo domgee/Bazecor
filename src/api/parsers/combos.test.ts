@@ -214,7 +214,14 @@ describe("parseCombosStrict", () => {
     expect(parseCombosStrict("0")).toEqual([]);
   });
 
-  test("ignores the unused records of a fixed-size reply", () => {
+  test("returns null for an out-of-range record past the count", () => {
+    const values = reply(1, [record], 9).split(" ");
+    values[1 + 9 + 2] = "256";
+
+    expect(parseCombosStrict(values.join(" "))).toBeNull();
+  });
+
+  test("returns only the first count records of a fixed-size reply", () => {
     const values = reply(1, [record], 9).split(" ");
     values[values.length - 1] = "65535";
 
