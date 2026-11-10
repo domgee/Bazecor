@@ -13,7 +13,6 @@ import {
   conflictMessage,
   definedSlots,
   dualUseOnlyCode,
-  finalGcTable,
   freeSlot,
   gcRemovals,
   multiActionBreaks,
@@ -453,33 +452,19 @@ describe("conflictMessage", () => {
 });
 
 describe("gcRemovals", () => {
-  test("replacing the last reference of a slot removes it", () => {
-    const persistedTable = [full(A), full(B)];
-    const draft = layout([[SK(0), B]]);
+  test("a slot the final table drops or idles counts as removed", () => {
+    const removals = gcRemovals({ persistedTable: [full(A), full(B), full(A)], finalTable: [full(A), IDLE] });
 
-    const removals = gcRemovals({ persistedTable, finalTable: finalGcTable(persistedTable, draft, "padded") });
-
-    expect(removals).toEqual([{ slot: 1, actions: full(B) }]);
+    expect(removals).toEqual([
+      { slot: 1, actions: full(B) },
+      { slot: 2, actions: full(A) },
+    ]);
   });
 
   test("an idle slot of the persisted table is never counted as removed", () => {
     const removals = gcRemovals({ persistedTable: [IDLE, full(B)], finalTable: [] });
 
     expect(removals).toEqual([{ slot: 1, actions: full(B) }]);
-  });
-
-  test("a slot only the baseline keymap referenced counts as removed once the draft dropped it", () => {
-    const persistedTable = [full(A), full(B), full(A)];
-    const draft = draftOf(persistedTable, [[SK(0), A]]);
-
-    const prepared = prepareSuperkeyWrite({ draft, saved: { keymapRefs: [0, 2] }, baseline: null, collect: true, format: "padded" });
-    const removals = gcRemovals({ persistedTable, finalTable: finalGcTable(prepared.table, draft, "padded") });
-
-    expect(prepared.table).toEqual([full(A), IDLE, full(A)]);
-    expect(removals).toEqual([
-      { slot: 1, actions: full(B) },
-      { slot: 2, actions: full(A) },
-    ]);
   });
 });
 

@@ -1,6 +1,9 @@
 import React from "react";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import Styled, { ThemeProvider } from "styled-components";
+import Light from "@Renderer/theme/LightTheme";
+import { keyboardCanvasStyles } from "@Renderer/modules/KeyboardCanvas/keyboardCanvasStyles";
 import KeyFaceLabel from "./KeyFaceLabel";
 import Key from "./Key";
 
@@ -118,5 +121,36 @@ describe("Key", () => {
 
     expect(container.querySelector("[data-slot]")).toBeNull();
     expect(container.querySelector(".labelClass")).not.toBeNull();
+  });
+});
+
+describe("KeyFaceLabel with the editor styles", () => {
+  const Canvas = Styled.div`
+    ${keyboardCanvasStyles}
+  `;
+
+  test("SlotIcon_KeepsItsOwnSizeWhileTheBoardFillsTheWidth", () => {
+    // Use the play-pause icon on the tap, which superkeySlots draws as a nested svg
+    const { container } = render(
+      <ThemeProvider theme={Light}>
+        <Canvas>
+          <div className="singleViewMode keyboard">
+            <div className="LayerHolder">
+              <div className="raiseKeyboard">
+                <svg className="board">
+                  <KeyFaceLabel x={4} y={0} width={49} height={49} centerExtra="" centerPrimary="" slots={[{ text: "", icon: "play-pause" }]} />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </Canvas>
+      </ThemeProvider>,
+    );
+    const board = container.querySelector("svg.board") as SVGElement;
+    const icon = container.querySelector('[data-slot="tap"] svg') as SVGElement;
+
+    expect([getComputedStyle(board).width, getComputedStyle(board).height]).toEqual(["100%", "100%"]);
+    expect(icon).not.toBeNull();
+    expect([getComputedStyle(icon).width, getComputedStyle(icon).height]).not.toContain("100%");
   });
 });

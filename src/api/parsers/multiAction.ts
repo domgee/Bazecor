@@ -344,10 +344,6 @@ export const collectSuperkeys = (table: number[][], keep: Set<number>, mode: Col
   return sameTable(next, table) ? table : next;
 };
 
-/** The table the last GC step writes: every slot the draft references, and nothing it does not. */
-export const finalGcTable = (table: number[][], draft: LayoutRefs, format: SuperkeyWriteFormat): number[][] =>
-  collectSuperkeys(table, new Set(refSlots(superkeyRefs(draft))), collectModeFor(format));
-
 /** The slots the keyboard holds that the final table idles or drops, with what they held. */
 export const gcRemovals = ({
   persistedTable,

@@ -42,7 +42,8 @@ export const keyboardCanvasStyles = css`
     margin: 0 auto;
     min-width: 680px;
     // max-width: 1640px;
-    svg {
+    /* Leave the Multi-action slot glyphs at their own size */
+    svg:not(.keyContentSlots, .keyContentSlots svg) {
       width: 100%;
     }
   }
@@ -77,7 +78,7 @@ export const keyboardCanvasStyles = css`
     margin: 0 auto;
     // max-height: 44vh;
     height: 100%;
-    svg {
+    svg:not(.keyContentSlots, .keyContentSlots svg) {
       height: 100%;
     }
   }
