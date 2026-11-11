@@ -160,7 +160,7 @@ type RuleBreakState = { reason: AltRepeatBlock; ruleCount: number; undo: ComboSn
 const IDLE_ACTION = 1;
 
 function ComboEditor(props: ComboEditorProps) {
-  const { darkMode, startContext, cancelContext, setLoading, saveButtonRef, discardChangesButtonRef } = props;
+  const { darkMode, startContext, cancelContext, setLoading, saveButtonRef, discardChangesButtonRef, capabilitiesRefresh } = props;
   const { state } = useDevice();
 
   const [combos, setCombos] = useState<ComboType[]>([]);
@@ -184,6 +184,11 @@ function ComboEditor(props: ComboEditorProps) {
   /* How the firmware stores tap and hold Superkeys, read from the capabilities at load */
   const [superkeyMode, setSuperkeyMode] = useState<UniqueSuperkeysMode>("unknown");
   const uniqueSuperkeys = superkeyMode === "unique";
+
+  /* Follow the Superkey mode when App reads the capabilities again, as after a firmware update. Drafts stay as they are */
+  useEffect(() => {
+    setSuperkeyMode(uniqueSuperkeysMode(uniqueSuperkeysStore.get()));
+  }, [capabilitiesRefresh]);
   /* Rows at or above 70 from the load, kept to show what such a result held */
   const [superkeysBeyond, setSuperkeysBeyond] = useState<Map<number, number[]>>(new Map());
   /* False when the strict parser rejects the combos, since then not every Superkey reference is known */

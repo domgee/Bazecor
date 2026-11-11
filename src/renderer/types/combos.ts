@@ -63,4 +63,6 @@ export interface ComboEditorProps {
   setLoading: (loading: boolean) => void;
   saveButtonRef?: React.RefObject<HTMLButtonElement>;
   discardChangesButtonRef?: React.RefObject<HTMLButtonElement>;
+  /* Count App's capability reads after a firmware update, so the editor follows the Superkey mode */
+  capabilitiesRefresh?: number;
 }

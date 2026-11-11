@@ -615,6 +615,7 @@ function App() {
                 setLoading={setLoadingData}
                 saveButtonRef={saveButtonRef}
                 discardChangesButtonRef={discardChangesButtonRef}
+                capabilitiesRefresh={capabilitiesRefresh}
               />
             }
           />
