@@ -192,6 +192,36 @@ export const superkeyWriteFormat = (product: string | undefined): SuperkeyWriteF
 export const superkeysAvailable = (product: string | undefined, version: string | undefined): boolean =>
   product !== "Raise" || (version ?? "").split(" ")[0].includes("beta");
 
+/* Read-only command the Sonsei firmware lists in `help` when tap+hold Superkeys keep their own code instead of a shared qukey code */
+export const UNIQUE_SUPERKEYS_COMMAND = "superkeys.unique";
+
+export type UniqueSuperkeysMode = "unique" | "legacy" | "unknown";
+
+/** Does the firmware's `help` reply list the unique Superkeys command? */
+export const hasUniqueSuperkeysMarker = (help: unknown): boolean => {
+  if (typeof help !== "string") {
+    return false;
+  }
+
+  return help.split(/\r?\n/).some(line => line.trim() === UNIQUE_SUPERKEYS_COMMAND);
+};
+
+/**
+ * The Superkey mode from the stored `capabilities.uniqueSuperkeys`.
+ * Only a boolean comes from a successful `help` read, so anything else is "unknown".
+ */
+export const uniqueSuperkeysMode = (stored: unknown): UniqueSuperkeysMode => {
+  if (stored === true) {
+    return "unique";
+  }
+
+  if (stored === false) {
+    return "legacy";
+  }
+
+  return "unknown";
+};
+
 const serializeLegacyRows = (table: ReadonlyArray<ReadonlyArray<number>>): string => {
   if (table.length === 0) {
     return Array(LEGACY_EMPTY_WORDS).fill(ERASED).join(" ");

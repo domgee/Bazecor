@@ -4,6 +4,7 @@ import {
   SUPERKEYS_COMMAND,
   SuperkeysDevice,
   fitSuperkeysForTarget,
+  hasUniqueSuperkeysMarker,
   isIdleSuperkey,
   parseSuperkeysRaw,
   parseSuperkeysTable,
@@ -11,6 +12,7 @@ import {
   serializeSuperkeys,
   superkeyWriteFormat,
   superkeysAvailable,
+  uniqueSuperkeysMode,
   writeSuperkeyTable,
 } from "./superkeys";
 
@@ -273,5 +275,31 @@ describe("fitSuperkeysForTarget", () => {
   test("leaves data that is not a Superkey table unchanged", () => {
     expect(fitSuperkeysForTarget("4 x 0", "Sonsei")).toBe("4 x 0");
     expect(fitSuperkeysForTarget("4 x 0", "Defy")).toBe("4 x 0");
+  });
+});
+
+describe("unique Superkeys capability", () => {
+  test.each([
+    ["help\r\nsuperkeys.map\r\nsuperkeys.unique\r\nversion", true],
+    ["superkeys.map\nsuperkeys.unique", true],
+    ["help\r\nsuperkeys.map\r\nversion", false],
+    ["superkeys.uniqueX", false],
+    ["", false],
+    [undefined, false],
+    [42, false],
+  ])("hasUniqueSuperkeysMarker(%j) is %s", (help, expected) => {
+    expect(hasUniqueSuperkeysMarker(help)).toBe(expected);
+  });
+
+  test.each([
+    [true, "unique"],
+    [false, "legacy"],
+    ["unknown", "unknown"],
+    [undefined, "unknown"],
+    [null, "unknown"],
+    ["true", "unknown"], // Only a boolean comes from a successful help read
+    [1, "unknown"],
+  ])("uniqueSuperkeysMode(%j) is %s", (stored, expected) => {
+    expect(uniqueSuperkeysMode(stored)).toBe(expected);
   });
 });

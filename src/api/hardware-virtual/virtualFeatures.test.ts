@@ -364,3 +364,32 @@ describe("held modifiers of partial layer holds", () => {
     expect(vk.virtual.help.data.split("\r\n")).toContain("holdmods.map");
   });
 });
+
+describe("unique Superkeys marker", () => {
+  test("the Sonsei lists superkeys.unique in help, replies 1 and never erases it", () => {
+    expect(SonseiWireless.virtual.help.data.split("\r\n")).toContain("superkeys.unique");
+    expect(SonseiWireless.virtual["superkeys.unique"]).toEqual({ data: "1", eraseable: false });
+  });
+
+  test.each([
+    ["Defy wireless", DefyWireless],
+    ["Raise 2 ANSI", Raise2ANSI],
+  ])("the %s does not", (_, template) => {
+    expect(template.virtual.help.data.split("\r\n")).not.toContain("superkeys.unique");
+    expect(template.virtual["superkeys.unique"]).toBeUndefined();
+  });
+
+  test("addMissingVirtualCommands adds it to a Sonsei file saved before it", () => {
+    const vk: VirtualType = JSON.parse(JSON.stringify(SonseiWireless));
+    delete vk.virtual["superkeys.unique"];
+    vk.virtual.help.data = vk.virtual.help.data
+      .split("\r\n")
+      .filter(c => c !== "superkeys.unique")
+      .join("\r\n");
+
+    const added = addMissingVirtualCommands(vk);
+
+    expect(added).toEqual(["superkeys.unique"]);
+    expect(vk.virtual.help.data.split("\r\n")).toContain("superkeys.unique");
+  });
+});

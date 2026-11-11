@@ -266,6 +266,8 @@ export default class Backup {
       "macros.state",
       // Read-only reply of the highest macro step type the firmware plays
       "macros.steps",
+      // Read-only marker for the Superkey mode
+      "superkeys.unique",
     ];
     const commands = await device.command("help");
     // A blank line in `help` used to end up in every backup as an empty command.

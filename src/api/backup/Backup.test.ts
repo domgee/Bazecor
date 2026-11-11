@@ -67,6 +67,16 @@ describe("Backup.Commands", () => {
     expect(commands).toContain("macros.map");
     expect(commands).not.toContain("macros.steps");
   });
+
+  test("leaves out the unique Superkeys marker and keeps the Superkeys", async () => {
+    const device = { command: async () => "superkeys.map\r\nsuperkeys.unique\r\nsuperkeys.waittime" } as unknown as Device;
+
+    const commands = await Backup.Commands(device);
+
+    expect(commands).toContain("superkeys.map");
+    expect(commands).toContain("superkeys.waittime");
+    expect(commands).not.toContain("superkeys.unique");
+  });
 });
 
 /* A Sonsei that stores each command it is sent and replies with it, as the firmware with the dual-function commands does */
