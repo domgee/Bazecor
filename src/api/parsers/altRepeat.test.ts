@@ -16,11 +16,14 @@ import {
   hasRepeat,
   isAllowedOutput,
   isDualFunctionSuperkey,
+  isDualFunctionSuperkeyCode,
   isRegisteredQukeySuperkey,
+  isUniqueDualFunctionSuperkey,
   isValidPrevious,
   needsAltRepeatClear,
   normalizePrevious,
   parseAltRepeatRaw,
+  playsAsDualFunction,
   previousModifiers,
   readAltRepeatRules,
   remapMacroOutputs,
@@ -304,6 +307,55 @@ describe("Superkey conversion mirror", () => {
   });
 });
 
+describe("isUniqueDualFunctionSuperkey", () => {
+  test.each([
+    [[42, 0x11e2]], // Backspace / Ctrl+Cmd+Left Alt from the trigger case
+    [[8, 0x11e2]],
+    [[6, 224]],
+    [[6, 0x1e1]],
+    [[6, 0xe4]], // Right Ctrl
+    [[6, 17458]], // Layer Shift 8
+    [[6, 17459]], // Layer Shift 9
+    [[0x1006, 224]], // Ctrl+c tap
+    [[6, 224, 0, null, 1]], // Bazecor sends 0 and null as idle
+  ])("%j plays as dual-function", actions => {
+    expect(isUniqueDualFunctionSuperkey(superkey(actions))).toBe(true);
+  });
+
+  test.each([
+    [[6, 17492]], // Lock layer hold
+    [[17492, 224]], // Lock layer tap
+    [[225, 224]], // Modifier tap
+    [[0x10e1, 224]], // Modifier tap with a flag
+    [[6, 0x44e0]], // Synthetic flag on the hold
+    [[6, 0x4ce2]], // Mute hold, a consumer key with a modifier low byte
+    [[6, 65535]],
+    [[65535, 224]],
+    [[6, 224, 7]], // A third action
+    [[6, 1]], // Idle hold
+    [[6, 54372]], // Swap hands momentary hold
+    [[0, 224]], // Idle tap
+  ])("%j does not play as dual-function", actions => {
+    expect(isUniqueDualFunctionSuperkey(superkey(actions))).toBe(false);
+  });
+
+  test("a missing Superkey is not dual-function", () => {
+    expect(isUniqueDualFunctionSuperkey(undefined)).toBe(false);
+  });
+
+  test("playsAsDualFunction picks the rule of the firmware", () => {
+    expect(playsAsDualFunction(superkey([6, 17458]), true)).toBe(true);
+    expect(playsAsDualFunction(superkey([6, 17458]), false)).toBe(false);
+  });
+
+  test("the unique firmware only runs slots below 70", () => {
+    const superkeys = Array.from({ length: 71 }, () => superkey([6, 224]));
+
+    expect(isDualFunctionSuperkeyCode(53980 + 69, superkeys, true)).toBe(true);
+    expect(isDualFunctionSuperkeyCode(53980 + 70, superkeys, true)).toBe(false);
+  });
+});
+
 describe("altRepeatDefaultBlock", () => {
   test.each([
     [65535, "transparent"],
@@ -335,6 +387,43 @@ describe("altRepeatDefaultBlock", () => {
     expect(replacesTap(53980, [superkey([6, 224])])).toBe(true);
     expect(replacesTap(4)).toBe(false);
     expect(replacesTap(53980, [superkey([6, 17458])])).toBe(false);
+  });
+
+  test("a Layer Shift 8 hold allows tabs on unique firmware only", () => {
+    const superkeys = [superkey([6, 17458])];
+
+    expect(altRepeatDefaultBlock(53980, superkeys, true)).toBeNull();
+    expect(replacesTap(53980, superkeys, true)).toBe(true);
+    expect(altRepeatDefaultBlock(53980, superkeys)).toBe("superkey");
+    expect(replacesTap(53980, superkeys)).toBe(false);
+  });
+
+  test("a Lock layer hold is blocked in both modes", () => {
+    const superkeys = [superkey([6, 17492])];
+
+    expect(altRepeatDefaultBlock(53980, superkeys, true)).toBe("superkey");
+    expect(altRepeatDefaultBlock(53980, superkeys)).toBe("superkey");
+  });
+
+  test("the trigger case Superkey allows tabs that replace its tap on unique firmware", () => {
+    const superkeys = [superkey([42, 0x11e2])];
+
+    expect(altRepeatDefaultBlock(53980, superkeys, true)).toBeNull();
+    expect(replacesTap(53980, superkeys, true)).toBe(true);
+  });
+
+  // The firmware fires a rule on a dual-function cell only when the resolved tap has no synthetic or reserved flag
+  test.each([
+    [23785], // Volume up
+    [17450], // Layer Shift 0
+    [53852], // Macro 1
+  ])("a dual-function Superkey with tap %i is blocked in both modes", tap => {
+    const superkeys = [superkey([tap, 224])];
+
+    expect(altRepeatDefaultBlock(53980, superkeys, true)).toBe("superkey");
+    expect(replacesTap(53980, superkeys, true)).toBe(false);
+    expect(altRepeatDefaultBlock(53980, superkeys)).toBe("superkey");
+    expect(replacesTap(53980, superkeys)).toBe(false);
   });
 });
 

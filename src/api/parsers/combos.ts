@@ -26,6 +26,7 @@ import {
 import { SuperkeysType } from "@Renderer/types/superkeys";
 import { OverlayCodes } from "../../hw/overlay";
 import { isSwapHandsCode } from "../../hw/swaphands";
+import { isDualFunctionSuperkeyCode } from "./altRepeat";
 
 /* Wire format of `combos.map`, matching CombosDygma::onFocusEvent:
  *
@@ -360,7 +361,7 @@ export type ComboBreakReason = "lens" | "superkey" | "swaphands";
  *
  * Lens keys, swap hands keys and superkeys break a combo, except a superkey that behaves as a Qukey. Qukeys, autoshift and CapsWord are fine.
  */
-export const comboBreakReason = (keyCode: number, superkeys: SuperkeysType[] = []): ComboBreakReason | null => {
+export const comboBreakReason = (keyCode: number, superkeys: SuperkeysType[] = [], unique = false): ComboBreakReason | null => {
   if (LENS_KEYS.includes(keyCode)) return "lens";
 
   if (isSwapHandsCode(keyCode)) {
@@ -368,6 +369,10 @@ export const comboBreakReason = (keyCode: number, superkeys: SuperkeysType[] = [
   }
 
   if (keyCode >= SUPERKEY_FIRST && keyCode < SUPERKEY_FIRST + SUPERKEY_COUNT) {
+    if (unique) {
+      return isDualFunctionSuperkeyCode(keyCode, superkeys, true) ? null : "superkey";
+    }
+
     return isQukeySuperkey(superkeys[keyCode - SUPERKEY_FIRST]) ? null : "superkey";
   }
 
@@ -375,11 +380,11 @@ export const comboBreakReason = (keyCode: number, superkeys: SuperkeysType[] = [
 };
 
 /** Positions of `keyCodes`, one layer's keys by position, that can't be a combo member. */
-export const blockedComboPositions = (keyCodes: (number | undefined)[], superkeys: SuperkeysType[] = []): Set<number> => {
+export const blockedComboPositions = (keyCodes: (number | undefined)[], superkeys: SuperkeysType[] = [], unique = false): Set<number> => {
   const blocked = new Set<number>();
 
   keyCodes.forEach((keyCode, position) => {
-    if (keyCode !== undefined && comboBreakReason(keyCode, superkeys) !== null) {
+    if (keyCode !== undefined && comboBreakReason(keyCode, superkeys, unique) !== null) {
       blocked.add(position);
     }
   });

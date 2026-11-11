@@ -28,7 +28,7 @@ import {
 } from "../../../api/parsers/multiAction";
 import { serializeCombos } from "../../../api/parsers/combos";
 import { parseKeymapRaw } from "../../../api/parsers/keymap";
-import { SuperkeyWriteFormat, serializeSuperkeyTable } from "../../../api/parsers/superkeys";
+import { SuperkeyWriteFormat, UniqueSuperkeysMode, serializeSuperkeyTable } from "../../../api/parsers/superkeys";
 import { SuperkeySavedState, superkeyWriteNeeded } from "../HoldMods/layoutSave";
 
 /* The Combo Editor save. The order is superkeys.map, the keymap when a Superkey write made it stale, combos.map, the unused Superkeys
@@ -46,6 +46,8 @@ export interface ComboSuperkeyInput {
   onlyCustom: boolean;
   /* Drop the Superkeys nothing references once combos.map is saved */
   collect: boolean;
+  /* From uniqueSuperkeysMode, legacy when left out */
+  mode?: UniqueSuperkeysMode;
 }
 
 export interface ComboSaveInput {
@@ -73,7 +75,8 @@ export interface ComboSaveIO {
 }
 
 export type ComboSaveOutcome =
-  | { kind: "blocked"; conflicts: Conflict[]; warnings: Conflict[] }
+  /* modeUnknown when the Superkey mode is unknown and the legacy checks would merge or clash */
+  | { kind: "blocked"; conflicts: Conflict[]; warnings: Conflict[]; modeUnknown?: true }
   | {
       kind: "saved" | "failed";
       /* The steps that wrote, in order */
@@ -179,7 +182,12 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
       baseline: sk.baseline === null ? null : { ...sk.baseline, combos: sk.draft.combos },
       collect: false,
       format: sk.format,
+      mode: sk.mode,
     });
+
+    if (prepared.modeUnknown) {
+      return { kind: "blocked", conflicts: [], warnings: [], modeUnknown: true };
+    }
 
     if (prepared.conflicts.length > 0) {
       return { kind: "blocked", conflicts: prepared.conflicts, warnings: prepared.warnings };

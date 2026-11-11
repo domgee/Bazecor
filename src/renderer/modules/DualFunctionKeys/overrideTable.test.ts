@@ -181,4 +181,15 @@ describe("key roles", () => {
   test("treat an unknown superkey as another key", () => {
     expect(keyRole(53981, [superkey([4, 225, 1, 1, 1])])).toBe("other");
   });
+
+  test("treat a Layer Shift 8 HOLD superkey as a dual-function key on unique firmware only", () => {
+    // Superkey 0 holds A on tap and Layer Shift 8 on hold
+    expect(keyRole(53980, [superkey([4, 17458, 1, 1, 1])], true)).toBe("dualFunction");
+    expect(keyRole(53980, [superkey([4, 17458, 1, 1, 1])])).toBe("other");
+  });
+
+  test("treat a Lock layer HOLD superkey as another key in both modes", () => {
+    expect(keyRole(53980, [superkey([4, 17492, 1, 1, 1])], true)).toBe("other");
+    expect(keyRole(53980, [superkey([4, 17492, 1, 1, 1])])).toBe("other");
+  });
 });

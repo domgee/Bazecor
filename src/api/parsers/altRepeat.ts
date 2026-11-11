@@ -436,8 +436,64 @@ export const isRegisteredQukeySuperkey = (superkey: SuperkeysType | undefined): 
   return code >= DU_FIRST && code <= DU_LAST;
 };
 
+const SYNTHETIC_OR_RESERVED = 0xc0;
+const MAX_ACTIVE_SUPERKEYS = 70;
+
+/** KeyRoleManager::dual_function_rule on firmware with `superkeys.unique`. True when Qukeys plays this Superkey as a dual-function key. */
+export const isUniqueDualFunctionSuperkey = (superkey: SuperkeysType | undefined): boolean => {
+  if (!superkey) {
+    return false;
+  }
+
+  const [tap, hold, action2, action3, action4] = superkey.actions;
+
+  if (isIdle(tap) || isIdle(hold) || !isIdle(action2) || !isIdle(action3) || !isIdle(action4)) {
+    return false;
+  }
+
+  if (tap === TRANSPARENT || hold === TRANSPARENT) {
+    return false;
+  }
+
+  if ((tap >= LAYER_LOCK_FIRST && tap <= LAYER_LOCK_FIRST + 9) || isOnlyModifier(tap)) {
+    return false;
+  }
+
+  if (hold >= LAYER_SHIFT_FIRST && hold <= LAYER_SHIFT_FIRST + 9) {
+    return true;
+  }
+
+  return ((hold >> 8) & SYNTHETIC_OR_RESERVED) === 0 && isOnlyModifier(hold);
+};
+
+/** True when the firmware plays this Superkey as a dual-function key, by the unique or the legacy rule. */
+export const playsAsDualFunction = (superkey: SuperkeysType | undefined, unique: boolean): boolean =>
+  unique ? isUniqueDualFunctionSuperkey(superkey) : isDualFunctionSuperkey(superkey);
+
+/** True when `code` is a Superkey the firmware plays as a dual-function key. The unique firmware only runs slots below 70. */
+export const isDualFunctionSuperkeyCode = (code: number, superkeys: SuperkeysType[], unique: boolean): boolean => {
+  if (!isSuperkeyCode(code)) {
+    return false;
+  }
+
+  const slot = code - SUPERKEY_FIRST;
+  return (!unique || slot < MAX_ACTIVE_SUPERKEYS) && playsAsDualFunction(superkeys[slot], unique);
+};
+
+/* AltRepeatDygma::replaysCell fires a rule on a dual-function cell only when the resolved tap is a plain or modified key, not a modifier */
+const tapReplays = (superkey: SuperkeysType | undefined): boolean => {
+  const tap = superkey?.actions[0] ?? 0;
+  const keycode = tap & 0xff;
+
+  return ((tap >> 8) & SYNTHETIC_OR_RESERVED) === 0 && keycode !== 0 && !isOnlyModifier(keycode);
+};
+
+/* A Superkey whose rules replace its tap, by the firmware's Superkey rule and the replay check */
+const tapRuleSuperkey = (code: number, superkeys: SuperkeysType[], unique: boolean): boolean =>
+  isDualFunctionSuperkeyCode(code, superkeys, unique) && tapReplays(superkeys[code - SUPERKEY_FIRST]);
+
 /** Why a key with this default cannot have previous-key rules, or null when it can. */
-export const altRepeatDefaultBlock = (code: number, superkeys: SuperkeysType[] = []): AltRepeatBlock | null => {
+export const altRepeatDefaultBlock = (code: number, superkeys: SuperkeysType[] = [], unique = false): AltRepeatBlock | null => {
   if (code === TRANSPARENT) {
     return "transparent";
   }
@@ -458,7 +514,7 @@ export const altRepeatDefaultBlock = (code: number, superkeys: SuperkeysType[] =
     return "unsupported";
   }
 
-  if (isSuperkeyCode(code) && !isDualFunctionSuperkey(superkeys[code - SUPERKEY_FIRST])) {
+  if (isSuperkeyCode(code) && !tapRuleSuperkey(code, superkeys, unique)) {
     return "superkey";
   }
 
@@ -466,8 +522,8 @@ export const altRepeatDefaultBlock = (code: number, superkeys: SuperkeysType[] =
 };
 
 /** True when a rule on this default replaces only the tap and keeps the hold. */
-export const replacesTap = (code: number, superkeys: SuperkeysType[] = []): boolean =>
-  (code >= DU_FIRST && code <= DU_LAST) || (isSuperkeyCode(code) && isDualFunctionSuperkey(superkeys[code - SUPERKEY_FIRST]));
+export const replacesTap = (code: number, superkeys: SuperkeysType[] = [], unique = false): boolean =>
+  (code >= DU_FIRST && code <= DU_LAST) || tapRuleSuperkey(code, superkeys, unique);
 
 /* ------------------------------------------------------------------------ */
 /* Table operations. Each returns a new table and leaves its input alone    */

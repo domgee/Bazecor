@@ -604,7 +604,7 @@ const English = {
         autoshift: "Autoshift keys can't have previous-key tabs.",
         capsword: "The CapsWord key can't have previous-key tabs.",
         swaphands: "Swap hands keys can't have previous-key tabs.",
-        superkey: "Superkeys with more than a TAP and a modifier or layer shift HOLD can't have previous-key tabs.",
+        superkey: "Only Superkeys whose TAP types a key and whose HOLD is a modifier or layer shift can have previous-key tabs.",
         unsupported: "This key type can't have previous-key tabs.",
       },
       inactive: "The tabs on this key do nothing until it gets a supported key again. You can still delete them.",
@@ -661,6 +661,8 @@ const English = {
       ruleFromTapBlocked:
         "This key's Superkey can't be copied until the keyboard is read again, so the new tab starts from its Tap.",
       conflictTitle: "Multi-action keys clash",
+      modeUnknown:
+        "The keyboard's Superkey mode could not be read, and this save would merge or clash multi-action keys. Reload, then save again.",
       conflictWarning: "These keys already clashed on the keyboard and still play the same tap and hold:",
       saveFailed: "The keyboard did not store the Superkeys.",
       gcFailed: "The keyboard did not store the cleaned-up Superkeys.",

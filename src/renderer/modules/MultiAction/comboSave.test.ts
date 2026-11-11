@@ -272,6 +272,79 @@ describe("runComboSave conflicts", () => {
   });
 });
 
+describe("runComboSave by Superkey mode", () => {
+  // A new clash between a combo result and a keymap Superkey
+  const layers = [[SK(1)]];
+  const combos = [combo(0, SK(0))];
+
+  const save = (io: ReturnType<typeof mockIO>["io"], mode: ComboSuperkeyInput["mode"]) =>
+    runComboSave(
+      io,
+      input({
+        combos,
+        superkeys: superkeysInput({
+          draft: draftOf([SHIFT_A, CTRL_A], layers, combos),
+          saved: savedOf([IDLE, CTRL_A], layers, []),
+          baseline: draftOf([IDLE, CTRL_A], layers, []),
+          mode,
+        }),
+      }),
+    );
+
+  test("a clash saves on unique firmware", async () => {
+    const outcome = await save(mockIO().io, "unique");
+
+    expect(outcome).toMatchObject({ kind: "saved", warnings: [] });
+  });
+
+  test("a clash blocks on legacy firmware", async () => {
+    const outcome = await save(mockIO().io, "legacy");
+
+    expect(outcome.kind).toBe("blocked");
+  });
+
+  test("a clash blocks before any write while the mode is unknown", async () => {
+    const { io, steps } = mockIO();
+
+    const outcome = await save(io, "unknown");
+
+    expect(steps).toEqual([]);
+    expect(outcome).toEqual({ kind: "blocked", conflicts: [], warnings: [], modeUnknown: true });
+  });
+
+  test("identical keymap Superkeys block while the mode is unknown", async () => {
+    const { io, steps } = mockIO();
+    const table = [CTRL_A, CTRL_A];
+    const cells = [[SK(0), SK(1)]];
+
+    const outcome = await runComboSave(
+      io,
+      input({ superkeys: superkeysInput({ draft: draftOf(table, cells, []), saved: savedOf(table, cells, []), mode: "unknown" }) }),
+    );
+
+    expect(steps).toEqual([]);
+    expect(outcome).toMatchObject({ kind: "blocked", modeUnknown: true });
+  });
+
+  test("a clash-free table saves while the mode is unknown", async () => {
+    const { io, steps } = mockIO();
+    const table = [CTRL_A];
+    const cells = [[SK(0)]];
+    const next = [combo(0, A)];
+
+    const outcome = await runComboSave(
+      io,
+      input({
+        combos: next,
+        superkeys: superkeysInput({ draft: draftOf(table, cells, next), saved: savedOf(table, cells, []), mode: "unknown" }),
+      }),
+    );
+
+    expect(steps).toEqual(["combos 1", "names 1 1", "backup"]);
+    expect(outcome.kind).toBe("saved");
+  });
+});
+
 describe("runComboSave grandfathered clashes with a combo output member", () => {
   // Slot 0 is only a combo output and clashes with the keymap's slot 1 on the keyboard
   const layers = [[SK(1)]];

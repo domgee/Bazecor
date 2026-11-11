@@ -198,6 +198,28 @@ describe("combo member blocking", () => {
   test("a swap hands key is blocked as a member", () => {
     expect(blockedComboPositions([4, 54372, 5])).toEqual(new Set([1]));
   });
+
+  test.each([
+    [[8, 0x11e2], null, null], // E / Ctrl+Cmd+Left Alt
+    [[8, 17458], null, null], // Layer Shift 8 hold
+    [[8, 17492], "superkey", null], // Lock layer hold stays on the Superkeys timeline on unique firmware
+  ])("comboBreakReason of Superkey %j is %s on unique firmware and %s on legacy", (actions, unique, legacy) => {
+    const superkeys: SuperkeysType[] = [{ id: 0, name: "", actions }];
+
+    expect(comboBreakReason(53980, superkeys, true)).toBe(unique);
+    expect(comboBreakReason(53980, superkeys)).toBe(legacy);
+  });
+
+  test("a Lock layer hold Superkey is blocked as a member on unique firmware only", () => {
+    const superkeys: SuperkeysType[] = [
+      { id: 0, name: "lock hold", actions: [8, 17492, 0, 0, 0] },
+      { id: 1, name: "trigger case", actions: [8, 0x11e2, 0, 0, 0] },
+    ];
+    const keyCodes = [53980, 53981, 4];
+
+    expect(blockedComboPositions(keyCodes, superkeys, true)).toEqual(new Set([0]));
+    expect(blockedComboPositions(keyCodes, superkeys)).toEqual(new Set());
+  });
 });
 
 describe("parseCombosStrict", () => {

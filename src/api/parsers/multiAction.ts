@@ -40,6 +40,7 @@ import {
   MAX_ACTIVE_SUPERKEYS,
   SUPERKEY_FIRST,
   SuperkeyWriteFormat,
+  UniqueSuperkeysMode,
   isIdleSuperkey,
   isSuperkeyCode,
   normalizeActions,
@@ -522,6 +523,8 @@ export interface PreparedSuperkeyWrite {
   conflicts: Conflict[];
   /** Conflicts that were already on the keyboard, unchanged */
   warnings: Conflict[];
+  /** The Superkey mode is unknown and the legacy checks found a merge or a conflict, so the save must stop */
+  modeUnknown?: true;
 }
 
 /** The Superkey table and custom layers to write, with the collisions on exactly that table. */
@@ -531,21 +534,35 @@ export const prepareSuperkeyWrite = ({
   baseline,
   collect,
   format,
+  mode = "legacy",
 }: {
   draft: SuperkeyDraft;
   saved: SuperkeyProtection;
   baseline: SuperkeyDraft | null;
   collect: boolean;
   format: SuperkeyWriteFormat;
+  /* From uniqueSuperkeysMode. Unique firmware keeps every Superkey code in the keymap, so nothing clashes or merges */
+  mode?: UniqueSuperkeysMode;
 }): PreparedSuperkeyWrite => {
   const protectedSet = protectedSlots(saved);
-  const mode = collectModeFor(format);
+  const gcMode = collectModeFor(format);
   const keepFor = (input: LayoutRefs) => new Set([...refSlots(superkeyRefs(input)), ...protectedSet]);
-  const collected = collect ? collectSuperkeys(draft.table, keepFor(draft), mode) : draft.table;
+  const collected = collect ? collectSuperkeys(draft.table, keepFor(draft), gcMode) : draft.table;
+
+  if (mode === "unique") {
+    return { table: collected, layers: draft.customLayers, merges: new Map(), conflicts: [], warnings: [] };
+  }
+
   const { merges, conflicts: found } = qukeyCollisions(collected, draft, protectedSet);
+
+  /* Refuse what the legacy checks would change, since a merge couples two keys for good on firmware that is in fact unique */
+  if (mode === "unknown" && (merges.size > 0 || found.length > 0)) {
+    return { table: collected, layers: draft.customLayers, merges: new Map(), conflicts: [], warnings: [], modeUnknown: true };
+  }
+
   const layers = merges.size > 0 ? applyMerges(draft.customLayers, merges) : draft.customLayers;
   const merged = { ...draft, customLayers: layers };
-  const table = collect && merges.size > 0 ? collectSuperkeys(collected, keepFor(merged), mode) : collected;
+  const table = collect && merges.size > 0 ? collectSuperkeys(collected, keepFor(merged), gcMode) : collected;
   const known = new Set(baseline ? qukeyCollisions(baseline.table, baseline).conflicts.map(conflict => conflict.signature) : []);
   const conflicts: Conflict[] = [];
   const warnings: Conflict[] = [];
@@ -739,7 +756,13 @@ export interface MultiActionBreaks {
 }
 
 /** The combos and previous-key rules that an edit breaks, over every cell whose code or Superkey definition changed. */
-export const multiActionBreaks = (before: BreakState, after: BreakState, combos: ComboType[], rules: AltRepeatRule[]): MultiActionBreaks => {
+export const multiActionBreaks = (
+  before: BreakState,
+  after: BreakState,
+  combos: ComboType[],
+  rules: AltRepeatRule[],
+  unique = false,
+): MultiActionBreaks => {
   const superkeysBefore = asSuperkeys(before.table);
   const superkeysAfter = asSuperkeys(after.table);
   const comboIndexes = new Set<number>();
@@ -759,9 +782,9 @@ export const multiActionBreaks = (before: BreakState, after: BreakState, combos:
         return;
       }
 
-      const comboAfter = comboBreakReason(code, superkeysAfter);
+      const comboAfter = comboBreakReason(code, superkeysAfter, unique);
 
-      if (comboAfter !== null && comboBreakReason(previous, superkeysBefore) === null) {
+      if (comboAfter !== null && comboBreakReason(previous, superkeysBefore, unique) === null) {
         const found = combosAtPosition(combos, position, layer);
         found.forEach(i => comboIndexes.add(i));
 
@@ -770,9 +793,9 @@ export const multiActionBreaks = (before: BreakState, after: BreakState, combos:
         }
       }
 
-      const blockAfter = altRepeatDefaultBlock(code, superkeysAfter);
+      const blockAfter = altRepeatDefaultBlock(code, superkeysAfter, unique);
 
-      if (blockAfter !== null && altRepeatDefaultBlock(previous, superkeysBefore) === null) {
+      if (blockAfter !== null && altRepeatDefaultBlock(previous, superkeysBefore, unique) === null) {
         const count = rulesAt(rules, layer, position).length;
         ruleCount += count;
 

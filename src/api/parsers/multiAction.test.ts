@@ -435,6 +435,75 @@ describe("prepareSuperkeyWrite", () => {
   });
 });
 
+describe("prepareSuperkeyWrite by Superkey mode", () => {
+  const E = 8;
+  // E with a Ctrl+Cmd+Left Alt hold, which legacy firmware reads as Right Alt
+  const E_CTRL_CMD_ALT = [E, 0x11e2, 1, 1, 1];
+  // The native dual-use code for E with a Right Alt hold
+  const E_RIGHT_ALT = 50713;
+  const run = (draft: SuperkeyDraft, mode: "unique" | "legacy" | "unknown", collect = false) =>
+    prepareSuperkeyWrite({ draft, saved: {}, baseline: null, collect, format: "padded", mode });
+
+  describe("the trigger case, a rule output Superkey and a native cell with the same legacy code", () => {
+    const draft = draftOf([E_CTRL_CMD_ALT], [[E_RIGHT_ALT, A]], { rules: [rule(0, 1, SK(0))] });
+
+    test("conflicts on legacy firmware", () => {
+      expect(run(draft, "legacy").conflicts).toHaveLength(1);
+    });
+
+    test("saves as drafted on unique firmware", () => {
+      expect(run(draft, "unique")).toEqual({
+        table: [E_CTRL_CMD_ALT],
+        layers: [[E_RIGHT_ALT, A]],
+        merges: new Map(),
+        conflicts: [],
+        warnings: [],
+      });
+    });
+
+    test("blocks while the mode is unknown", () => {
+      expect(run(draft, "unknown")).toMatchObject({ conflicts: [], warnings: [], modeUnknown: true });
+    });
+  });
+
+  describe("identical dual-function Superkeys in two cells", () => {
+    const draft = draftOf([tapHold(A, CTRL), tapHold(A, CTRL)], [[SK(0), SK(1)]]);
+
+    test("merge on legacy firmware", () => {
+      expect(run(draft, "legacy").merges).toEqual(new Map([[1, 0]]));
+    });
+
+    test("stay separate on unique firmware", () => {
+      expect(run(draft, "unique")).toEqual({
+        table: [tapHold(A, CTRL), tapHold(A, CTRL)],
+        layers: [[SK(0), SK(1)]],
+        merges: new Map(),
+        conflicts: [],
+        warnings: [],
+      });
+    });
+
+    test("block while the mode is unknown", () => {
+      const prepared = run(draft, "unknown");
+
+      expect(prepared).toMatchObject({ layers: [[SK(0), SK(1)]], merges: new Map(), modeUnknown: true });
+    });
+  });
+
+  test("unique firmware still collects unreferenced slots", () => {
+    const prepared = run(draftOf([tapHold(A, CTRL), tapHold(B, CTRL)], [[SK(1)]]), "unique", true);
+
+    expect(prepared.table).toEqual([IDLE, tapHold(B, CTRL)]);
+  });
+
+  test("a clash-free save proceeds while the mode is unknown", () => {
+    const draft = draftOf([tapHold(A, CTRL), tapHold(B, CTRL)], [[SK(0), SK(1)]]);
+
+    expect(run(draft, "unknown")).toEqual(run(draft, "legacy"));
+    expect(run(draft, "unknown").modeUnknown).toBeUndefined();
+  });
+});
+
 describe("conflictMessage", () => {
   test("names cells, combos, rules and unused slots", () => {
     const CTRL_A = [0x104, CTRL, 1, 1, 1];
@@ -523,6 +592,46 @@ describe("multiActionBreaks", () => {
     const after = { ...before, table: [full(B)] };
 
     expect(multiActionBreaks(before, after, combos, rules)).toEqual({ comboIndexes: [], comboReason: null, ruleCount: 0, ruleReason: null });
+  });
+
+  describe("by Superkey mode, on a cell with a rule and a combo", () => {
+    const cellCombos = [combo(0, [0, 1], 1, A)];
+    const cellRules = [rule(1, 0, B)];
+    const before = { customLayers: [[A, A]], table: [IDLE], layerOffset: 1 };
+
+    test("a Layer Shift 8 hold breaks only the rule on legacy firmware and nothing on unique firmware", () => {
+      const after = { customLayers: [[SK(0), A]], table: [tapHold(A, 17458)], layerOffset: 1 };
+
+      expect(multiActionBreaks(before, after, cellCombos, cellRules)).toEqual({
+        comboIndexes: [],
+        comboReason: null,
+        ruleCount: 1,
+        ruleReason: "superkey",
+      });
+      expect(multiActionBreaks(before, after, cellCombos, cellRules, true)).toEqual({
+        comboIndexes: [],
+        comboReason: null,
+        ruleCount: 0,
+        ruleReason: null,
+      });
+    });
+
+    test("a Lock layer hold breaks the combo on unique firmware only and the rule in both modes", () => {
+      const after = { customLayers: [[SK(0), A]], table: [tapHold(A, 17492)], layerOffset: 1 };
+
+      expect(multiActionBreaks(before, after, cellCombos, cellRules)).toEqual({
+        comboIndexes: [],
+        comboReason: null,
+        ruleCount: 1,
+        ruleReason: "superkey",
+      });
+      expect(multiActionBreaks(before, after, cellCombos, cellRules, true)).toEqual({
+        comboIndexes: [0],
+        comboReason: "superkey",
+        ruleCount: 1,
+        ruleReason: "superkey",
+      });
+    });
   });
 });
 

@@ -16,7 +16,7 @@
 
 import { SuperkeysType } from "@Renderer/types/superkeys";
 
-import { DU_FIRST, DU_LAST, SUPERKEY_FIRST, isDualFunctionSuperkey } from "../../../api/parsers/altRepeat";
+import { DU_FIRST, DU_LAST, SUPERKEY_FIRST, isDualFunctionSuperkeyCode } from "../../../api/parsers/altRepeat";
 import {
   DUAL_FUNCTION_MODES,
   PerKeyOverride,
@@ -140,7 +140,7 @@ export const sliderBounds = (stored: number | null, range: { min: number; max: n
 export type KeyRole = "dualFunction" | "swapHands" | "other";
 
 /** Return which overrides apply to `keyCode`. A dual-function key uses all of them, a timed swap hands key only the hold timeout. */
-export const keyRole = (keyCode: number | undefined, superkeys: SuperkeysType[] = []): KeyRole => {
+export const keyRole = (keyCode: number | undefined, superkeys: SuperkeysType[] = [], unique = false): KeyRole => {
   if (keyCode === undefined) {
     return "other";
   }
@@ -150,7 +150,7 @@ export const keyRole = (keyCode: number | undefined, superkeys: SuperkeysType[] 
   }
 
   if (keyCode >= SUPERKEY_FIRST && keyCode < SUPERKEY_FIRST + SUPERKEY_COUNT) {
-    return isDualFunctionSuperkey(superkeys[keyCode - SUPERKEY_FIRST]) ? "dualFunction" : "other";
+    return isDualFunctionSuperkeyCode(keyCode, superkeys, unique) ? "dualFunction" : "other";
   }
 
   if (isSwapTap(keyCode) || keyCode === SwapHandsCodes.SWAP_HANDS_TAP_TOGGLE) {
