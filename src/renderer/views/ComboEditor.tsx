@@ -103,9 +103,11 @@ import { transferUsed } from "../../api/parsers/layerTransfer";
 import {
   MAX_ACTIVE_SUPERKEYS,
   SUPERKEY_FIRST,
+  UniqueSuperkeysMode,
   normalizeActions,
   parseSuperkeysTable,
   superkeyWriteFormat,
+  uniqueSuperkeysMode,
   writeSuperkeyTable,
 } from "../../api/parsers/superkeys";
 
@@ -173,6 +175,9 @@ function ComboEditor(props: ComboEditorProps) {
   const [superkeys, setSuperkeys] = useState<SuperkeysType[]>([]);
   /* "ready" once superkeys.map is read uncached and parsed */
   const [superkeysState, setSuperkeysState] = useState<SuperkeyMode>("unsupported");
+  /* How the firmware stores tap and hold Superkeys, read from the capabilities at load */
+  const [superkeyMode, setSuperkeyMode] = useState<UniqueSuperkeysMode>("unknown");
+  const uniqueSuperkeys = superkeyMode === "unique";
   /* Rows at or above 70 from the load, kept to show what such a result held */
   const [superkeysBeyond, setSuperkeysBeyond] = useState<Map<number, number[]>>(new Map());
   /* False when the strict parser rejects the combos, since then not every Superkey reference is known */
@@ -293,6 +298,7 @@ function ComboEditor(props: ComboEditorProps) {
       );
       setSuperkeys(withGeneratedNames(skTable, loadCtx));
       setSuperkeysState(nextSuperkeysState);
+      setSuperkeyMode(uniqueSuperkeysMode(store.get("capabilities.uniqueSuperkeys")));
       setSuperkeysBeyond(skParsed?.beyond ?? new Map());
 
       const keymapRaw = await currentDevice.noCacheCommand("keymap.custom");
@@ -570,6 +576,7 @@ function ComboEditor(props: ComboEditorProps) {
             baseline: skBaseline.current,
             onlyCustom: keymap.onlyCustom,
             collect,
+            mode: superkeyMode,
           }
         : undefined;
 
@@ -580,6 +587,14 @@ function ComboEditor(props: ComboEditorProps) {
         rereadBeforeBackup: dualFunction || superkeysState !== "unsupported",
         isVirtual,
       });
+
+      /* Refuse what the legacy checks would merge or clash while the mode is unknown, since a merge couples two keys for good */
+      if (outcome.kind === "blocked" && outcome.modeUnknown) {
+        toast.error(<ToastMessage title={i18n.editor.multiAction.conflictTitle} content={i18n.editor.multiAction.modeUnknown} />, {
+          autoClose: false,
+        });
+        return;
+      }
 
       /* Refuse before any write, since the keyboard would play one of the clashing definitions on every key of a group */
       if (outcome.kind === "blocked") {
@@ -963,6 +978,7 @@ function ComboEditor(props: ComboEditorProps) {
       { customLayers: keymapCodes.custom, table: nextTable, layerOffset },
       list,
       ruleList,
+      uniqueSuperkeys,
     );
     const defaults = keymap.onlyCustom
       ? null
@@ -971,6 +987,7 @@ function ComboEditor(props: ComboEditorProps) {
           { customLayers: keymapCodes.default, table: nextTable, layerOffset: 0 },
           list,
           ruleList,
+          uniqueSuperkeys,
         );
     const comboIndexes = [...new Set([...custom.comboIndexes, ...(defaults?.comboIndexes ?? [])])].sort((a, b) => a - b);
 
@@ -1109,8 +1126,9 @@ function ComboEditor(props: ComboEditorProps) {
       blockedComboPositions(
         layerData.map(key => key?.keyCode),
         superkeys,
+        uniqueSuperkeys,
       ),
-    [layerData, superkeys],
+    [layerData, superkeys, uniqueSuperkeys],
   );
 
   const onKeyboardKeySelect = (event: React.MouseEvent<Element>) => {

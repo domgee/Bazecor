@@ -131,9 +131,11 @@ import {
 import {
   MAX_ACTIVE_SUPERKEYS,
   SUPERKEY_FIRST,
+  UniqueSuperkeysMode,
   normalizeActions,
   parseSuperkeysTable,
   superkeyWriteFormat,
+  uniqueSuperkeysMode,
   writeSuperkeyTable,
 } from "../../api/parsers/superkeys";
 import {
@@ -372,6 +374,9 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   } | null>(null);
   /* "ready" once superkeys.map is read uncached and parsed */
   const [superkeysState, setSuperkeysState] = useState<SuperkeyMode>("unsupported");
+  /* How the firmware stores tap and hold Superkeys, read from the capabilities at load */
+  const [superkeyMode, setSuperkeyMode] = useState<UniqueSuperkeysMode>("unknown");
+  const uniqueSuperkeys = superkeyMode === "unique";
   /* Rows at or above 70 from the load, kept to show what such a key held */
   const [superkeysBeyond, setSuperkeysBeyond] = useState<Map<number, number[]>>(new Map());
   /* The combos as the strict parser reads them. Allocation needs them, since their outputs use Superkey slots */
@@ -962,6 +967,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         };
         skBaseline.current = nextSuperkeysState === "ready" ? { ...scanRefs, table: skTable } : null;
         setSuperkeysState(nextSuperkeysState);
+        setSuperkeyMode(uniqueSuperkeysMode(store.get("capabilities.uniqueSuperkeys")));
         setSuperkeysBeyond(skParsed?.beyond ?? new Map());
         setCombosState(nextCombosState);
         setStrictCombos(nextStrictCombos);
@@ -1142,10 +1148,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       return;
     }
 
-    const reason = comboBreakReason(keyCode, superkeys);
+    const reason = comboBreakReason(keyCode, superkeys, uniqueSuperkeys);
     /* A key can be in several combos on this layer; every one of them breaks. */
     const comboIndexes = reason ? combosAtPosition(combos, keyIndex, layer) : [];
-    const block = altRepeatDefaultBlock(keyCode, superkeys);
+    const block = altRepeatDefaultBlock(keyCode, superkeys, uniqueSuperkeys);
     const ruleCount = rulesAt(altRepeatRules, layer, keyIndex).length;
 
     showBreaks(reason, comboIndexes, block, ruleCount, undo);
@@ -1379,6 +1385,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       { customLayers: after, table: nextTable, layerOffset },
       combos,
       altRepeatRules,
+      uniqueSuperkeys,
     );
 
     if (nextTable !== table) {
@@ -1438,6 +1445,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       { customLayers: custom, table: nextTable, layerOffset },
       combos,
       altRepeatRules,
+      uniqueSuperkeys,
     );
 
     if (nextTable !== table) {
@@ -1644,7 +1652,31 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         }
 
         const draft = { ...refs, table: draftTable() };
-        const prepared = prepareSuperkeyWrite({ draft, saved: skSaved.current, baseline: skBaseline.current, collect, format });
+        const prepared = prepareSuperkeyWrite({
+          draft,
+          saved: skSaved.current,
+          baseline: skBaseline.current,
+          collect,
+          format,
+          mode: superkeyMode,
+        });
+
+        /* Refuse what the legacy checks would merge or clash while the mode is unknown, since a merge couples two keys for good */
+        if (prepared.modeUnknown) {
+          toast.error(
+            <ToastMessage
+              title={i18n.editor.multiAction.conflictTitle}
+              content={i18n.editor.multiAction.modeUnknown}
+              icon={<IconArrowDownWithLine />}
+            />,
+            {
+              autoClose: false,
+              icon: "",
+            },
+          );
+          stopBeforeWrite();
+          return;
+        }
 
         /* Refuse before any write, since the keyboard would play one of the clashing definitions on every key of a group */
         if (prepared.conflicts.length > 0) {
@@ -3089,7 +3121,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const keyRules = currentKeyIndex === -1 ? [] : rulesAt(altRepeatRules, currentLayer, currentKeyIndex);
   const selectedRuleIdx = altRepeatTab >= 0 && altRepeatTab < keyRules.length ? keyRules[altRepeatTab] : -1;
   const selectedRule = selectedRuleIdx === -1 ? null : altRepeatRules[selectedRuleIdx];
-  const defaultBlock = altRepeatDefaultBlock(defaultKeyCode, superkeys);
+  const defaultBlock = altRepeatDefaultBlock(defaultKeyCode, superkeys, uniqueSuperkeys);
   const showAltRepeat =
     altRepeatState !== "unsupported" && !isReadOnly && currentKeyIndex !== -1 && currentKeyIndex < ledIndexStart;
 
@@ -3246,7 +3278,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       override: overrideAt(perKeyList, position),
       stored: overrideAt(perKeyStored.current, position),
       keyData: layerData[position],
-      role: keyRole(keymap.custom[customLayerIdx]?.[position]?.keyCode, superkeys),
+      role: keyRole(keymap.custom[customLayerIdx]?.[position]?.keyCode, superkeys, uniqueSuperkeys),
       globals: perKeyGlobals,
       disabled: isSaving,
       disabledReason,
@@ -3462,7 +3494,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     onToggleRepeat={onToggleRepeat}
                     totalCount={altRepeatRules.length}
                     block={defaultBlock}
-                    replacesTap={replacesTap(defaultKeyCode, superkeys)}
+                    replacesTap={replacesTap(defaultKeyCode, superkeys, uniqueSuperkeys)}
                     noKeyDefault={defaultKeyCode === 0}
                     keymapDB={keymapDB}
                   />
