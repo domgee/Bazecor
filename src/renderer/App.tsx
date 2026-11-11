@@ -101,8 +101,8 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
   }
 
   /* Detect Hold until layer change and its held modifiers table, previous-key rules, key overrides, quick tap, dual-function options,
-   * conditional layers, swap hands, the macro options, the highest macro step type and unique Superkeys through help, because official firmware of the same
-   * version lacks them. capabilities.holdMods is informational, since the Layout editor confirms the table with its own help read */
+   * conditional layers, swap hands, the macro options, the highest macro step type and unique Superkeys through help,
+   * because official firmware of the same version lacks them. capabilities.holdMods is informational, since the Layout editor confirms the table with its own help read */
   try {
     const help = await currentDevice.noCacheCommand("help");
     const available = hasLayerHoldMarker(help);
