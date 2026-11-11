@@ -8,6 +8,7 @@ import {
   isIdleSuperkey,
   parseSuperkeysRaw,
   parseSuperkeysTable,
+  resolveSuperkeyModeForSave,
   serializeSuperkeyTable,
   serializeSuperkeys,
   superkeyWriteFormat,
@@ -313,5 +314,71 @@ describe("unique Superkeys capability", () => {
     [1, "unknown"],
   ])("uniqueSuperkeysMode(%j) is %s", (stored, expected) => {
     expect(uniqueSuperkeysMode(stored)).toBe(expected);
+  });
+});
+
+describe("resolveSuperkeyModeForSave", () => {
+  const storeWith = (value: unknown) => {
+    const stored = { value };
+    return {
+      stored,
+      get: () => stored.value,
+      set: vi.fn((next: boolean) => {
+        stored.value = next;
+      }),
+    };
+  };
+  const deviceWith = (help: unknown) => ({ noCacheCommand: vi.fn(async () => help) });
+
+  test.each([
+    [true, "unique"],
+    [false, "legacy"],
+  ])("a stored %s gives %s without reading help", async (value, expected) => {
+    const device = deviceWith("");
+    const capabilities = storeWith(value);
+
+    const mode = await resolveSuperkeyModeForSave(device, capabilities);
+
+    expect(mode).toBe(expected);
+    expect(device.noCacheCommand).not.toHaveBeenCalled();
+    expect(capabilities.set).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["help\r\nsuperkeys.unique\r\nversion", "unique", true],
+    ["help\r\nsuperkeys.map\r\nversion", "legacy", false],
+  ])("an unknown mode reads help %j and stores the result", async (help, expected, stored) => {
+    const device = deviceWith(help);
+    const capabilities = storeWith("unknown");
+
+    const mode = await resolveSuperkeyModeForSave(device, capabilities);
+
+    expect(mode).toBe(expected);
+    expect(device.noCacheCommand).toHaveBeenCalledWith("help");
+    expect(capabilities.stored.value).toBe(stored);
+  });
+
+  test("an unknown mode stays unknown when help fails again", async () => {
+    // noCacheCommand returns the error instead of throwing
+    const capabilities = storeWith("unknown");
+
+    const mode = await resolveSuperkeyModeForSave(deviceWith(new Error("timeout")), capabilities);
+
+    expect(mode).toBe("unknown");
+    expect(capabilities.set).not.toHaveBeenCalled();
+  });
+
+  test("an unknown mode stays unknown when help throws", async () => {
+    const capabilities = storeWith(undefined);
+    const device = {
+      noCacheCommand: vi.fn(async () => {
+        throw new Error("closed");
+      }),
+    };
+
+    const mode = await resolveSuperkeyModeForSave(device, capabilities);
+
+    expect(mode).toBe("unknown");
+    expect(capabilities.set).not.toHaveBeenCalled();
   });
 });

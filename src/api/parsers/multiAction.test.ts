@@ -496,6 +496,18 @@ describe("prepareSuperkeyWrite by Superkey mode", () => {
     expect(prepared.table).toEqual([IDLE, tapHold(B, CTRL)]);
   });
 
+  test("a clash already on the keyboard warns and saves while the mode is unknown", () => {
+    const CTRL_A = [0x104, CTRL, 1, 1, 1];
+    const SHIFT_A = [0x804, CTRL, 1, 1, 1];
+    const draft = draftOf([CTRL_A, SHIFT_A], [[SK(0), SK(1)]]);
+
+    const prepared = prepareSuperkeyWrite({ draft, saved: {}, baseline: draft, collect: false, format: "padded", mode: "unknown" });
+
+    expect(prepared.modeUnknown).toBeUndefined();
+    expect(prepared.conflicts).toEqual([]);
+    expect(prepared.warnings).toHaveLength(1);
+  });
+
   test("a clash-free save proceeds while the mode is unknown", () => {
     const draft = draftOf([tapHold(A, CTRL), tapHold(B, CTRL)], [[SK(0), SK(1)]]);
 

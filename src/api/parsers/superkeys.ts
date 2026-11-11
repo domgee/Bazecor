@@ -320,3 +320,40 @@ export const fitSuperkeysForTarget = (data: string, targetProduct: string | unde
 
   return serializeSuperkeyTable(parsed.table, superkeyWriteFormat(targetProduct), null);
 };
+
+/** Where `capabilities.uniqueSuperkeys` lives, so the save-time read works with the app store and in tests. */
+export interface UniqueSuperkeysStore {
+  get(): unknown;
+  set(value: boolean): void;
+}
+
+/**
+ * The Superkey mode for a write. Read `help` again when the stored mode is unknown, and store a successful result.
+ * Returns "unknown" only when that read also fails.
+ */
+export const resolveSuperkeyModeForSave = async (device: SuperkeysDevice, stored: UniqueSuperkeysStore): Promise<UniqueSuperkeysMode> => {
+  const mode = uniqueSuperkeysMode(stored.get());
+
+  if (mode !== "unknown") {
+    return mode;
+  }
+
+  let help: unknown;
+
+  try {
+    help = await device.noCacheCommand("help");
+  } catch (error) {
+    log.warn("[Superkeys] help could not be read for the Superkey mode", error);
+    return "unknown";
+  }
+
+  const detected = uniqueSuperkeysFromHelp(help);
+
+  if (detected === "unknown") {
+    return "unknown";
+  }
+
+  stored.set(detected);
+  log.info(`[Capabilities] uniqueSuperkeys -> ${detected} (read again before a save)`);
+  return detected ? "unique" : "legacy";
+};

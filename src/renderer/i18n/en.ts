@@ -662,7 +662,7 @@ const English = {
         "This key's Superkey can't be copied until the keyboard is read again, so the new tab starts from its Tap.",
       conflictTitle: "Multi-action keys clash",
       modeUnknown:
-        "The keyboard's Superkey mode could not be read, and this save would merge or clash multi-action keys. Reload, then save again.",
+        "The keyboard's Superkey mode could not be read and this save would merge or clash multi-action keys. Reconnect the keyboard and save again.",
       conflictWarning: "These keys already clashed on the keyboard and still play the same tap and hold:",
       saveFailed: "The keyboard did not store the Superkeys.",
       gcFailed: "The keyboard did not store the cleaned-up Superkeys.",

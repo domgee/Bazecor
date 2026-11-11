@@ -104,14 +104,20 @@ import {
   MAX_ACTIVE_SUPERKEYS,
   SUPERKEY_FIRST,
   UniqueSuperkeysMode,
+  UniqueSuperkeysStore,
   normalizeActions,
   parseSuperkeysTable,
+  resolveSuperkeyModeForSave,
   superkeyWriteFormat,
   uniqueSuperkeysMode,
   writeSuperkeyTable,
 } from "../../api/parsers/superkeys";
 
 const store = Store.getStore();
+const uniqueSuperkeysStore: UniqueSuperkeysStore = {
+  get: () => store.get("capabilities.uniqueSuperkeys"),
+  set: value => store.set("capabilities.uniqueSuperkeys", value),
+};
 const bkp = new Backup();
 
 /* The very same rules the Layout Editor uses, so the board renders identically
@@ -298,7 +304,7 @@ function ComboEditor(props: ComboEditorProps) {
       );
       setSuperkeys(withGeneratedNames(skTable, loadCtx));
       setSuperkeysState(nextSuperkeysState);
-      setSuperkeyMode(uniqueSuperkeysMode(store.get("capabilities.uniqueSuperkeys")));
+      setSuperkeyMode(uniqueSuperkeysMode(uniqueSuperkeysStore.get()));
       setSuperkeysBeyond(skParsed?.beyond ?? new Map());
 
       const keymapRaw = await currentDevice.noCacheCommand("keymap.custom");
@@ -568,6 +574,10 @@ function ComboEditor(props: ComboEditorProps) {
         toast.warn(<ToastMessage title={i18n.editor.multiAction.title} content={content} />, { autoClose: 6000 });
       }
 
+      /* Never write with a mode from before a firmware update or a failed detection */
+      const mode = superkeysReady ? await resolveSuperkeyModeForSave(currentDevice, uniqueSuperkeysStore) : superkeyMode;
+      setSuperkeyMode(mode);
+
       const superkeysInput = superkeysReady
         ? {
             format: superkeyWriteFormat(currentDevice.device.info.product),
@@ -576,7 +586,7 @@ function ComboEditor(props: ComboEditorProps) {
             baseline: skBaseline.current,
             onlyCustom: keymap.onlyCustom,
             collect,
-            mode: superkeyMode,
+            mode,
           }
         : undefined;
 

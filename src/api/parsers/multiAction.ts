@@ -554,23 +554,22 @@ export const prepareSuperkeyWrite = ({
   }
 
   const { merges, conflicts: found } = qukeyCollisions(collected, draft, protectedSet);
+  const known = new Set(baseline ? qukeyCollisions(baseline.table, baseline).conflicts.map(conflict => conflict.signature) : []);
+  const isWarning = (conflict: Conflict) => !conflict.members.some(member => member.protectedOnly) && known.has(conflict.signature);
 
   /* Refuse what the legacy checks would change, since a merge couples two keys for good on firmware that is in fact unique */
-  if (mode === "unknown" && (merges.size > 0 || found.length > 0)) {
+  if (mode === "unknown" && (merges.size > 0 || found.some(conflict => !isWarning(conflict)))) {
     return { table: collected, layers: draft.customLayers, merges: new Map(), conflicts: [], warnings: [], modeUnknown: true };
   }
 
   const layers = merges.size > 0 ? applyMerges(draft.customLayers, merges) : draft.customLayers;
   const merged = { ...draft, customLayers: layers };
   const table = collect && merges.size > 0 ? collectSuperkeys(collected, keepFor(merged), gcMode) : collected;
-  const known = new Set(baseline ? qukeyCollisions(baseline.table, baseline).conflicts.map(conflict => conflict.signature) : []);
   const conflicts: Conflict[] = [];
   const warnings: Conflict[] = [];
 
   found.forEach(conflict => {
-    const protectedOnly = conflict.members.some(member => member.protectedOnly);
-
-    if (!protectedOnly && known.has(conflict.signature)) {
+    if (isWarning(conflict)) {
       warnings.push(conflict);
     } else {
       conflicts.push(conflict);

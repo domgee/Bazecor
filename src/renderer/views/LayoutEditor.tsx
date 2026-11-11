@@ -132,8 +132,10 @@ import {
   MAX_ACTIVE_SUPERKEYS,
   SUPERKEY_FIRST,
   UniqueSuperkeysMode,
+  UniqueSuperkeysStore,
   normalizeActions,
   parseSuperkeysTable,
+  resolveSuperkeyModeForSave,
   superkeyWriteFormat,
   uniqueSuperkeysMode,
   writeSuperkeyTable,
@@ -211,6 +213,10 @@ import {
 import { readQuickTapTerm } from "../../api/parsers/quickTap";
 
 const store = Store.getStore();
+const uniqueSuperkeysStore: UniqueSuperkeysStore = {
+  get: () => store.get("capabilities.uniqueSuperkeys"),
+  set: value => store.set("capabilities.uniqueSuperkeys", value),
+};
 
 const NO_GLOBALS: DualFunctionGlobalPreview = { holdTimeout: null, quickTapTerm: null, priorInterval: null, options: null };
 
@@ -967,7 +973,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         };
         skBaseline.current = nextSuperkeysState === "ready" ? { ...scanRefs, table: skTable } : null;
         setSuperkeysState(nextSuperkeysState);
-        setSuperkeyMode(uniqueSuperkeysMode(store.get("capabilities.uniqueSuperkeys")));
+        setSuperkeyMode(uniqueSuperkeysMode(uniqueSuperkeysStore.get()));
         setSuperkeysBeyond(skParsed?.beyond ?? new Map());
         setCombosState(nextCombosState);
         setStrictCombos(nextStrictCombos);
@@ -1651,6 +1657,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           });
         }
 
+        /* Never write with a mode from before a firmware update or a failed detection */
+        const mode = currentDevice ? await resolveSuperkeyModeForSave(currentDevice, uniqueSuperkeysStore) : superkeyMode;
+        setSuperkeyMode(mode);
+
         const draft = { ...refs, table: draftTable() };
         const prepared = prepareSuperkeyWrite({
           draft,
@@ -1658,7 +1668,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           baseline: skBaseline.current,
           collect,
           format,
-          mode: superkeyMode,
+          mode,
         });
 
         /* Refuse what the legacy checks would merge or clash while the mode is unknown, since a merge couples two keys for good */
@@ -3027,6 +3037,11 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
     loadAltRepeatRules(currentDevice);
   }, [capabilitiesRefresh, altRepeatState, state, loadAltRepeatRules]);
+
+  /* Follow the Superkey mode when App reads the capabilities again, as after a firmware update */
+  useEffect(() => {
+    setSuperkeyMode(uniqueSuperkeysMode(uniqueSuperkeysStore.get()));
+  }, [capabilitiesRefresh]);
 
   /* Reload the table when App reads the capabilities again and they disagree with it, or while its last load could not read the keyboard */
   const seenHoldModsRefresh = useRef(capabilitiesRefresh);
