@@ -22,4 +22,12 @@ describe("KeyLabel", () => {
 
     expect(container.childElementCount).toBeGreaterThan(0);
   });
+
+  test("the Repeat key renders its REPEAT label", () => {
+    const keyData = new KeymapDB().parse(53594);
+
+    const { container } = render(<KeyLabel keyData={keyData} />);
+
+    expect(container.textContent).toContain("REPEAT");
+  });
 });

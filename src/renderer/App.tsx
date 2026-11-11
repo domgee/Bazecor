@@ -52,6 +52,7 @@ import getTranslator from "@Renderer/utils/translator";
 import { Neuron } from "@Types/neurons";
 import { hasLayerHoldMarker } from "../hw/layerhold";
 import { hasSwapHandsMarker } from "../hw/swaphands";
+import { hasRepeatKeyMarker } from "../hw/repeatkey";
 import { hasAltRepeatCommand } from "../api/parsers/altRepeat";
 import { hasHoldModsCommand } from "../api/parsers/holdMods";
 import { hasKeyOverridesCommand } from "../api/parsers/keyOverrides";
@@ -77,8 +78,8 @@ const store = Store.getStore();
 // Runs on connect and again after a firmware update, since the keyboard stays connected through it.
 // The minimum FW per product for each capability lives in src/versionRules.json.
 // Also reads help for capabilities.layerHold, capabilities.holdMods, capabilities.altRepeat, capabilities.keyOverrides, capabilities.quickTap,
-// capabilities.dualFunction, capabilities.conditionalLayers, capabilities.swapHands, capabilities.macroUpgrade, capabilities.macroSteps
-// and capabilities.uniqueSuperkeys, which official firmware of the same version lacks.
+// capabilities.dualFunction, capabilities.conditionalLayers, capabilities.swapHands, capabilities.macroUpgrade, capabilities.macroSteps,
+// capabilities.uniqueSuperkeys and capabilities.repeatKey, which official firmware of the same version lacks.
 // capabilities.uniqueSuperkeys is true or false only after a successful help read and "unknown" when help fails or replies nothing.
 const detectFirmwareCapabilities = async (currentDevice: Device) => {
   try {
@@ -101,7 +102,7 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
   }
 
   /* Detect Hold until layer change and its held modifiers table, previous-key rules, key overrides, quick tap, dual-function options,
-   * conditional layers, swap hands, the macro options, the highest macro step type and unique Superkeys through help,
+   * conditional layers, swap hands, the macro options, the highest macro step type, unique Superkeys and the Repeat key through help,
    * because official firmware of the same version lacks them.
    * capabilities.holdMods is informational, since the Layout editor confirms the table with its own help read */
   try {
@@ -136,6 +137,9 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     const uniqueSuperkeys = uniqueSuperkeysFromHelp(help);
     store.set("capabilities.uniqueSuperkeys", uniqueSuperkeys);
     log.info(`[Capabilities] uniqueSuperkeys -> ${uniqueSuperkeys}`);
+    const repeatKey = hasRepeatKeyMarker(help);
+    store.set("capabilities.repeatKey", repeatKey);
+    log.info(`[Capabilities] repeatKey -> available: ${repeatKey}`);
     const macroSteps = await readMacroStepLimit(currentDevice, help);
     store.set("capabilities.macroSteps", macroSteps);
     log.info(`[Capabilities] macroSteps -> highest step: ${macroSteps}`);
@@ -150,6 +154,7 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     store.set("capabilities.conditionalLayers", false);
     store.set("capabilities.swapHands", false);
     store.set("capabilities.macroUpgrade", false);
+    store.set("capabilities.repeatKey", false);
     // Keep the Superkey mode unknown so a save never merges or skips the clash check on a guess
     store.set("capabilities.uniqueSuperkeys", "unknown");
     store.set("capabilities.macroSteps", MACRO_STEP_LIMIT_CLASSIC);

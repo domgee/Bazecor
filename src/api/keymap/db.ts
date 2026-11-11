@@ -34,6 +34,7 @@ import TapDanceTable from "./db/tapdance";
 import { Battery, Bluetooth, Energy, RF, Overlay } from "./db/wireless";
 import { CapsWord } from "./db/autoshift";
 import SwapHandsTable from "./db/swaphands";
+import RepeatKeyTable from "./db/repeatkey";
 import NumpadTable, { ModifiedNumpadTables } from "./db/numpad";
 import FunctionKeyTable, { ModifiedFunctionKeyTables } from "./db/fxs";
 
@@ -97,6 +98,7 @@ const defaultBaseKeyCodeTable: BaseKeycodeTableType[] = [
   RF,
   Overlay,
   CapsWord,
+  RepeatKeyTable,
   SwapHandsTable,
   BlankTable,
 ];

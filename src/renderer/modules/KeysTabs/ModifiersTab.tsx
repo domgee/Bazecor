@@ -12,6 +12,7 @@ import CustomRadioCheckBox from "@Renderer/components/molecules/Form/CustomRadio
 import { SegmentedKeyType } from "@Renderer/types/layout";
 import Store from "@Renderer/utils/Store";
 import { CapsWordCodes } from "../../../hw/capsword";
+import { RepeatKeyCodes } from "../../../hw/repeatkey";
 
 interface ModifiersTabProps {
   keyCode: SegmentedKeyType;
@@ -39,6 +40,7 @@ const ModifiersTab = ({
   const [activeModifierTab, setActiveModifierTab] = useState<string>("None");
   const store = Store.getStore();
   const capsword = Boolean(store.get("capabilities.capsword"));
+  const repeatKey = Boolean(store.get("capabilities.repeatKey"));
 
   const KC = useMemo(() => {
     if (keyCode?.base !== undefined && keyCode?.modified !== undefined) {
@@ -242,6 +244,30 @@ const ModifiersTab = ({
                   <p className="description text-ssm font-medium text-gray-400 dark:text-gray-300 max-w-md">
                     After you press this key, the next word will be capitalized. You can also deactivate it by pressing the key
                     again.
+                  </p>
+                </div>
+              </div>
+            )}
+            {repeatKey && (
+              <div className="basis-full flex flex-col gap-2">
+                <Heading renderAs="h4" headingLevel={3} className="text-base flex leading-6 gap-1">
+                  Repeat key
+                </Heading>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <Button
+                    variant="config"
+                    onClick={() => {
+                      log.info(`[RepeatKey] assigning key: ${RepeatKeyCodes.REPEAT_KEY} (previous keycode ${KC})`);
+                      onKeySelect(RepeatKeyCodes.REPEAT_KEY);
+                    }}
+                    selected={KC === RepeatKeyCodes.REPEAT_KEY}
+                    size="sm"
+                    className="min-w-16 text-ssm h-9"
+                  >
+                    Repeat
+                  </Button>
+                  <p className="description text-ssm font-medium text-gray-400 dark:text-gray-300 max-w-md">
+                    Sends the last key you typed again, with its modifiers. Modifiers you hold add to it. Hold it to repeat.
                   </p>
                 </div>
               </div>

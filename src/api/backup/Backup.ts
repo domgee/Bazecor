@@ -268,6 +268,8 @@ export default class Backup {
       "macros.steps",
       // Read-only marker for the Superkey mode
       "superkeys.unique",
+      // Read-only reply of what the Repeat key sends now
+      "repeatkey.state",
     ];
     const commands = await device.command("help");
     // A blank line in `help` used to end up in every backup as an empty command.

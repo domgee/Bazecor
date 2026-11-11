@@ -2,6 +2,7 @@ import log from "electron-log/renderer";
 import { AutoshiftCodes } from "../../../hw/autoshift";
 import { CapsWordCodes } from "../../../hw/capsword";
 import { isHoldCode } from "../../../hw/layerhold";
+import { isRepeatKey } from "../../../hw/repeatkey";
 import { isSwapHandsCode } from "../../../hw/swaphands";
 import { decodeDualUse } from "../../../api/parsers/altRepeat";
 import { SUPERKEY_CODES, SUPERKEY_FIRST } from "../../../api/parsers/superkeys";
@@ -103,6 +104,11 @@ export const detectTab = (keyCode: number, currentTab: string | undefined, hasMu
   }
 
   if (keyCode === CapsWordCodes.CAPS_WORD) {
+    tab = "tabLayers";
+  }
+
+  /* The Repeat key is assigned from Layers & modifiers */
+  if (isRepeatKey(keyCode)) {
     tab = "tabLayers";
   }
 

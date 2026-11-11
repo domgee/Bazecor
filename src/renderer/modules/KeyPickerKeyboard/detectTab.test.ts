@@ -17,6 +17,8 @@ describe("detectTab", () => {
     [54372, "tabKeys", "tabLayers"], // Swap hands while held
     [54420, "tabKeys", "tabLayers"], // Swap hands, Space on tap
     [54631, undefined, "tabLayers"], // Last swap hands tap code
+    [53594, "tabKeys", "tabLayers"], // Repeat key
+    [53594, undefined, "tabLayers"], // Repeat key on open
   ])("keycode %i with %s open gives %s", (keyCode, currentTab, expected) => {
     expect(detectTab(keyCode, currentTab)).toBe(expected);
   });
@@ -35,6 +37,7 @@ describe("detectTab with the Multi-action tab", () => {
     [54108, true, "tabWireless"], // First wireless key
     [54111, false, "tabWireless"], // Last wireless key
     [4, true, "tabKeys"], // A
+    [53594, true, "tabLayers"], // Repeat key
   ])("keycode %i with the tab %s gives %s", (keyCode, hasMultiAction, expected) => {
     expect(detectTab(keyCode, undefined, hasMultiAction)).toBe(expected);
   });

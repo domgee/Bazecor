@@ -51,6 +51,15 @@ describe("Backup.Commands", () => {
     expect(commands).not.toContain("macros.state");
   });
 
+  test("leaves out the Repeat key state", async () => {
+    const device = { command: async () => "keymap.custom\r\nrepeatkey.state\r\naltrepeat.map" } as unknown as Device;
+
+    const commands = await Backup.Commands(device);
+
+    expect(commands).toContain("altrepeat.map");
+    expect(commands).not.toContain("repeatkey.state");
+  });
+
   test("keeps the held modifiers of partial layer holds", async () => {
     const device = { command: async () => "keymap.custom\r\nlayerhold.state\r\nholdmods.map" } as unknown as Device;
 
