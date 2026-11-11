@@ -124,4 +124,8 @@ describe("decodeKey", () => {
     expect([decodeKey(code), decodeKey(0x382b)]).toEqual([plain, plain]);
     expect(plain).toEqual({ primary: expect.any(String), hold: "", modifiers: ["Shift", "OS"] });
   });
+
+  test("RepeatKey_OneLineRepeatLabel", () => {
+    expect(decodeKey(53594)).toEqual({ primary: "REPEAT", hold: "" });
+  });
 });

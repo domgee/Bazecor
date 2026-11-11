@@ -604,6 +604,7 @@ const English = {
         autoshift: "Autoshift keys can't have previous-key tabs.",
         capsword: "The CapsWord key can't have previous-key tabs.",
         swaphands: "Swap hands keys can't have previous-key tabs.",
+        repeatkey: "The Repeat key can't have previous-key tabs.",
         superkey: "Only Superkeys whose TAP types a key and whose HOLD is a modifier or layer shift can have previous-key tabs.",
         unsupported: "This key type can't have previous-key tabs.",
       },

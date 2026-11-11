@@ -166,7 +166,7 @@ describe("previous key", () => {
 });
 
 describe("isAllowedOutput", () => {
-  test.each([[4], [0x1006], [17450], [53852], [53980], [54371]])("%i is allowed", code => {
+  test.each([[4], [0x1006], [17450], [53852], [53980], [54371], [53594]])("%i is allowed", code => {
     expect(isAllowedOutput(code)).toBe(true);
   });
 
@@ -366,6 +366,8 @@ describe("altRepeatDefaultBlock", () => {
     [53851, "unsupported"],
     [54372, "swaphands"],
     [54420, "swaphands"],
+    [53594, "repeatkey"], // Repeat key, inside the unsupported range
+    [53593, "unsupported"], // One below the Repeat key
   ])("%i is blocked as %s", (code, expected) => {
     expect(altRepeatDefaultBlock(code)).toBe(expected);
   });

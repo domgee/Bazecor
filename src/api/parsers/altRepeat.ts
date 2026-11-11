@@ -17,6 +17,7 @@
 
 import { AltRepeatBlock, AltRepeatLayerEntry, AltRepeatRule } from "@Renderer/types/altRepeat";
 import { SuperkeysType } from "@Renderer/types/superkeys";
+import { isRepeatKey } from "../../hw/repeatkey";
 import { isSwapHandsCode } from "../../hw/swaphands";
 import { PARTIAL_HOLD_FLAG, isPartialHold } from "../../hw/layerhold";
 
@@ -508,6 +509,11 @@ export const altRepeatDefaultBlock = (code: number, superkeys: SuperkeysType[] =
 
   if (isSwapHandsCode(code)) {
     return "swaphands";
+  }
+
+  /* Check before the unsupported range, which holds the Repeat key */
+  if (isRepeatKey(code)) {
+    return "repeatkey";
   }
 
   if (code >= UNSUPPORTED_FIRST && code <= UNSUPPORTED_LAST) {

@@ -30,7 +30,7 @@ export interface AltRepeatRule {
 export type AltRepeatState = "unsupported" | "ready" | "failed";
 
 /** Why a key's default keeps it from having previous-key rules. */
-export type AltRepeatBlock = "transparent" | "autoshift" | "capsword" | "unsupported" | "superkey" | "swaphands";
+export type AltRepeatBlock = "transparent" | "autoshift" | "capsword" | "unsupported" | "superkey" | "swaphands" | "repeatkey";
 
 /** A previous-key rule as a single-layer export stores it. */
 export interface AltRepeatLayerEntry {

@@ -191,6 +191,7 @@ describe("combo member blocking", () => {
     [54375, "swaphands"], // One-shot
     [54420, "swaphands"], // Swap hands, Space on tap
     [54371, null], // CapsWord
+    [53594, null], // Repeat key
   ])("comboBreakReason(%i) is %s", (keyCode, expected) => {
     expect(comboBreakReason(keyCode)).toBe(expected);
   });

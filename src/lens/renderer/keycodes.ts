@@ -179,6 +179,9 @@ const TWO_LINE: Record<number, [string, string]> = {
 
   // CapsWord (db/autoshift.ts)
   54371: ["CAPS", "WORD"],
+
+  // Repeat key (db/repeatkey.ts)
+  53594: ["REPEAT", ""],
 };
 
 const ONE_SHOT_MOD: Record<number, string> = {

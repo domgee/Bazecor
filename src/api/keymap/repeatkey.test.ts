@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { KeymapDB } from ".";
+import { decodeKey } from "../../lens/renderer/keycodes";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -23,5 +24,11 @@ describe("KeymapDB Repeat key", () => {
 
     // Keep it from splitting into Num 2 plus modifier flags
     expect(db.keySegmentor(53594)).toEqual({ base: 53594, modified: 0 });
+  });
+
+  test("Layer Lens shows the same label as KeymapDB", () => {
+    const db = new KeymapDB();
+
+    expect(decodeKey(53594)).toEqual({ primary: db.parse(53594).label, hold: "" });
   });
 });
