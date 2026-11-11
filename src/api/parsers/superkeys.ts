@@ -206,6 +206,15 @@ export const hasUniqueSuperkeysMarker = (help: unknown): boolean => {
   return help.split(/\r?\n/).some(line => line.trim() === UNIQUE_SUPERKEYS_COMMAND);
 };
 
+/** The value for `capabilities.uniqueSuperkeys`, "unknown" when the `help` read failed, since `noCacheCommand` returns errors instead of throwing. */
+export const uniqueSuperkeysFromHelp = (help: unknown): boolean | "unknown" => {
+  if (typeof help !== "string" || help.trim().length === 0) {
+    return "unknown";
+  }
+
+  return hasUniqueSuperkeysMarker(help);
+};
+
 /**
  * The Superkey mode from the stored `capabilities.uniqueSuperkeys`.
  * Only a boolean comes from a successful `help` read, so anything else is "unknown".

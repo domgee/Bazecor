@@ -58,7 +58,7 @@ import { hasKeyOverridesCommand } from "../api/parsers/keyOverrides";
 import { hasConditionalLayersCommand } from "../api/parsers/conditionalLayers";
 import { hasQuickTapCommand } from "../api/parsers/quickTap";
 import { hasDualFunctionCommands } from "../api/parsers/dualFunction";
-import { hasUniqueSuperkeysMarker, superkeysAvailable } from "../api/parsers/superkeys";
+import { superkeysAvailable, uniqueSuperkeysFromHelp } from "../api/parsers/superkeys";
 import { MACRO_STEP_LIMIT_CLASSIC, hasMacroUpgradeMarker, readMacroStepLimit } from "../api/parsers/macros";
 import { version } from "../../package.json";
 import "../api/keymap";
@@ -79,7 +79,7 @@ const store = Store.getStore();
 // Also reads help for capabilities.layerHold, capabilities.holdMods, capabilities.altRepeat, capabilities.keyOverrides, capabilities.quickTap,
 // capabilities.dualFunction, capabilities.conditionalLayers, capabilities.swapHands, capabilities.macroUpgrade, capabilities.macroSteps
 // and capabilities.uniqueSuperkeys, which official firmware of the same version lacks.
-// capabilities.uniqueSuperkeys is true or false only after a successful help read and "unknown" when help fails.
+// capabilities.uniqueSuperkeys is true or false only after a successful help read and "unknown" when help fails or replies nothing.
 const detectFirmwareCapabilities = async (currentDevice: Device) => {
   try {
     const versionStr = (await currentDevice.noCacheCommand("version")) as string;
@@ -133,9 +133,9 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     const macroUpgrade = hasMacroUpgradeMarker(help);
     store.set("capabilities.macroUpgrade", macroUpgrade);
     log.info(`[Capabilities] macroUpgrade -> available: ${macroUpgrade}`);
-    const uniqueSuperkeys = hasUniqueSuperkeysMarker(help);
+    const uniqueSuperkeys = uniqueSuperkeysFromHelp(help);
     store.set("capabilities.uniqueSuperkeys", uniqueSuperkeys);
-    log.info(`[Capabilities] uniqueSuperkeys -> available: ${uniqueSuperkeys}`);
+    log.info(`[Capabilities] uniqueSuperkeys -> ${uniqueSuperkeys}`);
     const macroSteps = await readMacroStepLimit(currentDevice, help);
     store.set("capabilities.macroSteps", macroSteps);
     log.info(`[Capabilities] macroSteps -> highest step: ${macroSteps}`);

@@ -12,6 +12,7 @@ import {
   serializeSuperkeys,
   superkeyWriteFormat,
   superkeysAvailable,
+  uniqueSuperkeysFromHelp,
   uniqueSuperkeysMode,
   writeSuperkeyTable,
 } from "./superkeys";
@@ -289,6 +290,17 @@ describe("unique Superkeys capability", () => {
     [42, false],
   ])("hasUniqueSuperkeysMarker(%j) is %s", (help, expected) => {
     expect(hasUniqueSuperkeysMarker(help)).toBe(expected);
+  });
+
+  test.each([
+    [new Error("timeout"), "unknown"], // noCacheCommand returns the error instead of throwing
+    [undefined, "unknown"], // noCacheCommand on a closed device
+    ["", "unknown"],
+    ["\r\n", "unknown"],
+    ["help\r\nsuperkeys.map\r\nversion", false],
+    ["help\r\nsuperkeys.map\r\nsuperkeys.unique\r\nversion", true],
+  ])("uniqueSuperkeysFromHelp(%j) is %s", (help, expected) => {
+    expect(uniqueSuperkeysFromHelp(help)).toBe(expected);
   });
 
   test.each([
