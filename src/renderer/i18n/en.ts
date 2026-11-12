@@ -623,6 +623,15 @@ const English = {
       saveFailed: "The keyboard did not store the previous-key tabs.",
       deleteBlockedFailedLoad: "Previous-key rules could not be read, so deleting is off. Open this page again to retry.",
     },
+    keySwap: {
+      title: "Swap keys",
+      hint: "Hover a layer to show it. Drop on a key to swap.",
+      source: "Start",
+      rulesFailed: "The previous-key tabs could not be read, so keys can't be swapped. Reload to swap keys.",
+      rulesLoading: "The previous-key tabs are still loading. Try again in a moment.",
+      missing: "That key can't be swapped.",
+      conflict: "This swap would move a key in a dual-function clash, and Save would refuse it.",
+    },
     multiAction: {
       title: "Multi-action",
       empty: "Empty",

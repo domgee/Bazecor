@@ -51,7 +51,7 @@ import { KeyPickerKeyboard } from "@Renderer/modules/KeyPickerKeyboard";
 import AltRepeatTabs from "@Renderer/modules/AltRepeat/AltRepeatTabs";
 import PreviousKeyDialog from "@Renderer/modules/AltRepeat/PreviousKeyDialog";
 import { holdPickerProps } from "@Renderer/modules/HoldMods/holdPickerProps";
-import { loadHoldModsForEditor } from "@Renderer/modules/HoldMods/layoutLoad";
+import { HOLD_MODS_PRODUCT, loadHoldModsForEditor } from "@Renderer/modules/HoldMods/layoutLoad";
 import { altRepeatMissed, createHoldModsSync, holdModsRetryWanted } from "@Renderer/modules/HoldMods/holdModsSync";
 import {
   EMPTY_HOLD_SAVED,
@@ -76,6 +76,19 @@ import {
 import { actionText, keyFaceSlots, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 import { collectBlock, gcInputsKnown } from "@Renderer/modules/MultiAction/preGcGate";
 import { loadKeymapReplies } from "@Renderer/modules/MultiAction/comboSave";
+import {
+  SwapCell,
+  SwapListAnchor,
+  keyRectsUnion,
+  keySwapStyles,
+  nonEmptyLayers,
+  planSwap,
+  rulesSupportUnknown,
+  swapCells,
+  swapListAnchor,
+} from "@Renderer/modules/KeySwap/keySwap";
+import { SwapCellTarget, useKeySwapDrag } from "@Renderer/modules/KeySwap/swapDrag";
+import LayerDropList from "@Renderer/modules/KeySwap/LayerDropList";
 import {
   BackupSkippedError,
   HOLD_TIMEOUT_COMMAND,
@@ -362,6 +375,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const [neuronID, setNeuronID] = useState("");
   const [currentKeyIndex, setCurrentKeyIndex] = useState(-1);
   const [currentLedIndex, setCurrentLedIndex] = useState(-1);
+  /* The key being dragged, with the layers it can go to and where the list shows */
+  const [swapDrag, setSwapDrag] = useState<{ source: SwapCell; layers: number[]; anchor: SwapListAnchor } | null>(null);
+  const [swapHover, setSwapHover] = useState<SwapCell | null>(null);
+  const swapSource = useRef<SwapCell | null>(null);
   const [keymap, setKeymap] = useState<KeymapType>({
     custom: [],
     default: [],
@@ -402,6 +419,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   /* Count rules loads and edits, so only the newest load applies, and only when no edit came after it started */
   const altRepeatLoads = useRef(0);
   const altRepeatEdits = useRef(0);
+  /* Count rules reads in flight, so a swap never moves tabs that a load is about to replace */
+  const altRepeatPending = useRef(0);
   /* Index the selected key's tabs, with -1 for Default */
   const [altRepeatTab, setAltRepeatTab] = useState(-1);
   /* Point ruleIndex at the rule whose previous key changes, or null for a new tab */
@@ -470,6 +489,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   } = props;
 
   const layoutEditorContainerRef = useRef(null);
+  const keyboardAreaRef = useRef<HTMLDivElement>(null);
 
   /* Label Superkeys from their actions, so key faces and names follow every edit */
   const labelCtx = useMemo(
@@ -689,7 +709,14 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       return;
     }
 
-    const rules = await readAltRepeatRules(currentDevice);
+    altRepeatPending.current += 1;
+    let rules: AltRepeatRule[] | null;
+
+    try {
+      rules = await readAltRepeatRules(currentDevice);
+    } finally {
+      altRepeatPending.current -= 1;
+    }
 
     /* Drop a reply that a newer load or a rules edit made stale */
     if (load !== altRepeatLoads.current || edits !== altRepeatEdits.current) {
@@ -1566,6 +1593,193 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     setPreviousLayer(currentLayer);
     setCurrentLayer(id);
   };
+
+  const showKeySwapToast = (content: string) => {
+    toast.warn(<ToastMessage title={i18n.editor.keySwap.title} content={content} icon={<IconArrowDownWithLine />} />, {
+      autoClose: 4000,
+      icon: "",
+    });
+  };
+
+  /* Why keys can't be swapped now, as a message, undefined to refuse silently, or null when they can */
+  const swapBlocked = (): string | null | undefined => {
+    if (modeselect !== "keyboard" || isReadOnly || saving.current || keymap.custom.length === 0 || !state.currentDevice) {
+      return undefined;
+    }
+
+    if (altRepeatState === "failed") {
+      return i18n.editor.keySwap.rulesFailed;
+    }
+
+    const isSonsei = state.currentDevice.device?.info?.product === HOLD_MODS_PRODUCT;
+
+    if (altRepeatPending.current > 0 || rulesSupportUnknown(altRepeatState, holdModsState, isSonsei)) {
+      return i18n.editor.keySwap.rulesLoading;
+    }
+
+    return null;
+  };
+
+  const onSwapBegin = (source: SwapCellTarget): boolean => {
+    const blocked = swapBlocked();
+
+    if (blocked !== null) {
+      if (blocked !== undefined) {
+        showKeySwapToast(blocked);
+      }
+
+      return false;
+    }
+
+    if (source.layer !== currentLayer || keymap.custom[source.layer - layerOffset]?.[source.position] === undefined) {
+      return false;
+    }
+
+    const cell = { layer: source.layer, position: source.position };
+    const area = keyboardAreaRef.current;
+    const keys = area ? Array.from(area.querySelectorAll(".keyItem")).map(key => key.getBoundingClientRect()) : [];
+    const fallback = area?.getBoundingClientRect() ?? { top: 0, right: 0 };
+    const anchor = swapListAnchor(keyRectsUnion(keys) ?? fallback, { width: window.innerWidth, height: window.innerHeight });
+
+    swapSource.current = cell;
+    setSwapDrag({ source: cell, layers: nonEmptyLayers(draftCodes(keymap.custom), layerOffset, source.layer), anchor });
+    setSwapHover(null);
+    return true;
+  };
+
+  const endSwap = () => {
+    swapSource.current = null;
+    setSwapDrag(null);
+    setSwapHover(null);
+  };
+
+  const onSwapCancel = () => {
+    const from = swapSource.current;
+    endSwap();
+
+    if (from !== null) {
+      setCurrentLayer(from.layer);
+    }
+  };
+
+  const onSwapDrop = ({ layer, position, ledIndex }: SwapCellTarget) => {
+    const from = swapSource.current;
+    endSwap();
+
+    if (from === null) {
+      return;
+    }
+
+    const back = () => setCurrentLayer(from.layer);
+
+    if (savePending()) {
+      back();
+      return;
+    }
+
+    const blocked = swapBlocked();
+
+    if (blocked !== null) {
+      if (blocked !== undefined) {
+        showKeySwapToast(blocked);
+      }
+
+      back();
+      return;
+    }
+
+    const { currentDevice } = state;
+    const persisted = skSaved.current.table === null ? null : parseSuperkeysTable(skSaved.current.table);
+    /* Check with Save's own arguments, so a swap is refused exactly when Save would refuse it */
+    const superkeysInput =
+      superkeysState === "ready"
+        ? {
+            refs: {
+              defaultLayers: keymap.onlyCustom ? [] : draftCodes(keymap.default),
+              combos: combosState === "ready" ? strictCombos : [],
+            },
+            saved: skSaved.current,
+            baseline: skBaseline.current,
+            collect:
+              collectBlock({
+                ready: gcInputsKnown({ combos: combosState, keymapKnown }),
+                isVirtual: currentDevice?.file === true,
+                readsOk: true,
+                persistedTable: persisted?.table ?? null,
+              }) === null,
+            format: superkeyWriteFormat(currentDevice?.device.info.product),
+            mode: superkeyMode,
+          }
+        : undefined;
+    const plan = planSwap({
+      custom: draftCodes(keymap.custom),
+      rules: altRepeatRules,
+      from,
+      to: { layer, position },
+      layerOffset,
+      combos,
+      table: draftTable(),
+      unique: uniqueSuperkeys,
+      repeatKeyRules,
+      superkeys: superkeysInput,
+    });
+
+    if (plan.kind === "refused") {
+      const messages: Record<typeof plan.reason, string> = {
+        missing: i18n.editor.keySwap.missing,
+        modeUnknown: i18n.editor.multiAction.modeUnknown,
+        conflict: [i18n.editor.keySwap.conflict]
+          .concat(plan.conflicts.map(conflict => conflictMessage(conflict, altRepeatRules)))
+          .join(" "),
+      };
+      showKeySwapToast(messages[plan.reason]);
+      back();
+      return;
+    }
+
+    if (layer !== from.layer) {
+      setPreviousLayer(from.layer);
+    }
+
+    setCurrentLayer(layer);
+    setCurrentKeyIndex(position);
+    setCurrentLedIndex(ledIndex);
+
+    if (plan.kind === "noop") {
+      return;
+    }
+
+    const undo = editSnapshot();
+    setKeymap({
+      default: keymap.default,
+      onlyCustom: keymap.onlyCustom,
+      custom: swapCells(keymap.custom, plan.a, plan.b),
+    });
+
+    if (plan.movedRules !== altRepeatRules) {
+      editRules(plan.movedRules);
+    }
+
+    setModified(true);
+    startContext();
+    showBreaks(plan.breaks.comboReason, plan.breaks.comboIndexes, null, 0, undo);
+  };
+
+  const swapDragHandlers = useKeySwapDrag({
+    enabled: modeselect === "keyboard" && !isReadOnly && keymap.custom.length > 0,
+    areaRef: keyboardAreaRef,
+    onBegin: onSwapBegin,
+    onHoverLayer: setCurrentLayer,
+    onHoverCell: cell => setSwapHover(cell === null ? null : { layer: cell.layer, position: cell.position }),
+    onDrop: onSwapDrop,
+    onCancel: onSwapCancel,
+  });
+
+  /* End a drag when the keyboard changes under it */
+  useEffect(() => {
+    swapDragHandlers.cancel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.currentDevice]);
 
   const saveFailedMessage = (step: LayoutSaveStep): string => {
     const messages: Partial<Record<LayoutSaveStep, string>> = {
@@ -3070,6 +3284,11 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   useEffect(() => {
     const { currentDevice } = state;
 
+    /* A drag switches layers on hover, which is no key pick */
+    if (swapSource.current !== null) {
+      return;
+    }
+
     if (!holdModsRetryWanted(holdModsState, currentKeyIndex, holdSync.loading()) || !currentDevice || currentDevice.isClosed) {
       return;
     }
@@ -3428,6 +3647,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
        * key component. */}
       <style>{comboBadgeStyles(combos, currentLayer)}</style>
       <style>{altRepeatBadgeStyles(altRepeatRules, currentLayer)}</style>
+      <style>{keySwapStyles(swapDrag?.source ?? null, currentLayer, swapHover)}</style>
       <motion.div
         className={`keyboard-editor h-[inherit] px-3 ${modeselect} ${modeselect === "color" ? "[&_.raiseKeyboard]:h-auto" : ""} singleViewMode ${
           typeof selectedPaletteColor === "number" ? "colorSelected" : ""
@@ -3492,7 +3712,12 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           saveButtonRef={saveButtonRef}
           discardChangesButtonRef={discardChangesButtonRef}
         />
-        <div className="w-full h-[inherit] keyboardsWrapper">
+        <div
+          className="w-full h-[inherit] keyboardsWrapper"
+          ref={keyboardAreaRef}
+          onPointerDown={swapDragHandlers.onPointerDown}
+          onClickCapture={swapDragHandlers.onClickCapture}
+        >
           {/* <div className="raise-editor layer-col h-full"> // Set keyboard on bottom */}
           <div className="raise-editor layer-col h-[inherit]">
             <div className="dygma-keyboard-editor editor">{layer}</div>
@@ -3653,6 +3878,14 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {swapDrag && (
+        <LayerDropList
+          layers={swapDrag.layers.map(id => ({ id, number: id - layerOffset + 1, name: layerName(id) }))}
+          displayed={currentLayer}
+          source={swapDrag.source.layer}
+          anchor={swapDrag.anchor}
+        />
+      )}
     </Styles>
   );
 };

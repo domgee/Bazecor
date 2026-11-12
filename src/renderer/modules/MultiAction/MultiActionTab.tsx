@@ -88,10 +88,17 @@ const IDLE = 1;
 /* Marks the open action picker, so wheel events inside it never switch the outer picker's tab */
 export const MULTI_ACTION_POPOVER_ATTR = "data-multiaction-popover";
 
+/* Marks an overlay whose wheel events never switch the picker's tab */
+export const WHEEL_EXEMPT_ATTR = "data-wheel-exempt";
+
 /** False for wheel events the outer picker must ignore, which come from a select list or arrive while an action picker is open. */
 export const wheelSwitchesTab = (target: Element | null, doc: Document): boolean => {
   /* Keep the old check for a select list, whose own markup holds its options */
   if (target?.outerHTML?.includes('<div role="option"') || target?.closest?.('[role="option"]')) {
+    return false;
+  }
+
+  if (target?.closest?.(`[${WHEEL_EXEMPT_ATTR}]`)) {
     return false;
   }
 

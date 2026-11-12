@@ -20,7 +20,7 @@ import { HoldModsDevice, hasHoldModsCommand, readHoldMods } from "../../../api/p
 import { HoldBaseline, keymapSaveKey } from "./layoutSave";
 
 /* Only the Sonsei firmware has the held modifiers table */
-const HOLD_MODS_PRODUCT = "Sonsei";
+export const HOLD_MODS_PRODUCT = "Sonsei";
 
 export interface HoldModsLoad {
   state: HoldModsState;

@@ -9,6 +9,7 @@ import MultiActionTab, {
   MultiActionProps,
   hasCustomTiming,
   multiActionStatus,
+  WHEEL_EXEMPT_ATTR,
   wheelSwitchesTab,
 } from "./MultiActionTab";
 
@@ -334,6 +335,16 @@ describe("wheelSwitchesTab", () => {
 
     expect(wheelSwitchesTab(picked, document)).toBe(false);
     expect(wheelSwitchesTab(tile(0), document)).toBe(false);
+  });
+
+  test("a wheel event inside an exempt overlay leaves the tab", () => {
+    const overlay = document.createElement("div");
+    overlay.setAttribute(WHEEL_EXEMPT_ATTR, "");
+    overlay.innerHTML = "<span>Swap keys</span>";
+    document.body.appendChild(overlay);
+
+    expect(wheelSwitchesTab(overlay.firstElementChild, document)).toBe(false);
+    overlay.remove();
   });
 
   test("a wheel event in a select list leaves the tab", () => {
