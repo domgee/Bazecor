@@ -30,11 +30,23 @@ import { serializeCombos } from "../../../api/parsers/combos";
 import { parseKeymapRaw } from "../../../api/parsers/keymap";
 import { SuperkeyWriteFormat, UniqueSuperkeysMode, serializeSuperkeyTable } from "../../../api/parsers/superkeys";
 import { SuperkeySavedState, superkeyWriteNeeded } from "../HoldMods/layoutSave";
+import { LedCustomSlot } from "../../../api/parsers/ledCustom";
+import { LedSavedState, collectLedSlots, ledRefSlots, sortedUnion as sortedSlotUnion, writeLedTable } from "../LedCustom/ledSave";
 
-/* The Combo Editor save. The order is superkeys.map, the keymap when a Superkey write made it stale, combos.map, the unused Superkeys
- * and the keymap after them, names and the backup. */
+/* The Combo Editor save. The order is led.custom, superkeys.map, the keymap when a Superkey write made it stale, combos.map, the unused
+ * LED slots, the unused Superkeys and the keymap after them, names and the backup. */
 
-export type ComboSaveStep = "superkeys" | "keymap" | "combos" | "skgc" | "keymapAfterGc" | "backup";
+export type ComboSaveStep = "ledTable" | "superkeys" | "keymap" | "combos" | "ledGc" | "skgc" | "keymapAfterGc" | "backup";
+
+export interface ComboLedInput {
+  table: LedCustomSlot[];
+  saved: LedSavedState;
+  /* Free the slots nothing references once combos.map is saved */
+  collect: boolean;
+  /* The keymap, default layers included, and the rules, which this save leaves alone */
+  layers: number[][];
+  rules: ReadonlyArray<{ output: number }>;
+}
 
 export interface ComboSuperkeyInput {
   format: SuperkeyWriteFormat;
@@ -56,6 +68,8 @@ export interface ComboSaveInput {
   savedCombos: string | null;
   /* Only when the Superkeys and every reference to them are known */
   superkeys?: ComboSuperkeyInput;
+  /* Only when the LED table and every reference to it are known */
+  ledCustom?: ComboLedInput;
   /* Read the commands the backup records again before it, since a failed read at load stays in the cache */
   rereadBeforeBackup: boolean;
   /* A virtual keyboard keeps the save only in the backup file, so a backup that does not run fails the save */
@@ -67,6 +81,8 @@ export interface ComboSaveIO {
   writeSuperkeys: (table: number[][], format: SuperkeyWriteFormat, storedRows: number | null) => Promise<number | null>;
   writeKeymap: (serialized: string, onlyCustom: boolean) => Promise<void>;
   writeCombos: (serialized: string) => Promise<void>;
+  /* Required with a custom LED effects input */
+  writeLedCustom?: (table: LedCustomSlot[]) => Promise<void>;
   /* Store the combo names and the generated Superkey names, which the backup reads */
   storeNames: (combos: ComboType[], table: number[][] | null) => void;
   /* The first command the backup records that can not be read, or null */
@@ -88,6 +104,8 @@ export type ComboSaveOutcome =
       /* Only with a Superkey input. The table the save ends with, the custom layers the keyboard holds and the saved state, also after a
        * failed step */
       superkeys?: { table: number[][]; layers: number[][]; saved: SuperkeySavedState };
+      /* Only with a custom LED effects input. The table the save ends with and the saved state, also after a failed step */
+      ledCustom?: { table: LedCustomSlot[]; saved: LedSavedState };
       /* A real keyboard keeps the save when the backup is left out. The command that could not be read, or the backup error */
       backupSkipped?: string;
       backupError?: unknown;
@@ -172,6 +190,14 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
   let skSaved = sk?.saved;
   let { savedCombos } = input;
   const done: ComboSaveStep[] = [];
+  const led = input.ledCustom;
+  const sendLedCustom = io.writeLedCustom;
+  let ledSaved = led?.saved;
+  let ledTable = led?.table;
+
+  if (led && !sendLedCustom) {
+    throw new Error("A custom LED effects save needs writeLedCustom");
+  }
 
   if (sk) {
     /* Leave combo outputs out of the clash checks' protection and baseline, since the keyboard never converts them. A combo edit then
@@ -209,6 +235,7 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
     warnings,
     savedCombos,
     ...(skSaved && table ? { superkeys: { table, layers: heldLayers, saved: skSaved } } : {}),
+    ...(ledSaved && ledTable ? { ledCustom: { table: ledTable, saved: ledSaved } } : {}),
     ...extra,
   });
 
@@ -243,6 +270,20 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
     heldLayers = layers;
   };
 
+  /* The LED effects go first, so every slot a combo sends has its settings */
+  if (sendLedCustom && ledSaved && ledTable) {
+    const written = await writeLedTable(sendLedCustom, ledTable, ledSaved);
+    ledSaved = written.saved;
+
+    if (written.error !== undefined) {
+      return outcome("ledTable", written.error);
+    }
+
+    if (written.wrote) {
+      done.push("ledTable");
+    }
+  }
+
   /* Superkeys go first, so every Superkey a combo or key sends is defined */
   if (sk && skSaved && table && superkeyWriteNeeded(sk.format, skSaved, table)) {
     try {
@@ -267,6 +308,7 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
 
   const serialized = serializeCombos(input.combos);
   const comboSlots = refSlotsOf({ combos: input.combos });
+  const comboLedSlots = ledRefSlots({ layers: [], combos: input.combos });
 
   if (serialized !== savedCombos) {
     try {
@@ -279,6 +321,10 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
         skSaved = { ...skSaved, uncertainCombos: sortedUnion(skSaved.uncertainCombos, comboSlots) };
       }
 
+      if (ledSaved) {
+        ledSaved = { ...ledSaved, uncertainCombos: sortedSlotUnion(ledSaved.uncertainCombos, comboLedSlots) };
+      }
+
       return outcome("combos", error);
     }
 
@@ -288,6 +334,30 @@ export const runComboSave = async (io: ComboSaveIO, input: ComboSaveInput): Prom
 
   if (skSaved) {
     skSaved = { ...skSaved, comboRefs: comboSlots, uncertainCombos: [] };
+  }
+
+  if (ledSaved) {
+    ledSaved = { ...ledSaved, comboRefs: comboLedSlots, uncertainCombos: [] };
+  }
+
+  /* Keep the slots the layout and combos reference and the keyboard may still play, now that combos.map is saved */
+  if (led && led.collect && sendLedCustom && ledSaved && ledTable) {
+    const collected = collectLedSlots(ledTable, { layers: led.layers, rules: led.rules, combos: input.combos }, ledSaved);
+
+    if (collected !== ledTable) {
+      const written = await writeLedTable(sendLedCustom, collected, ledSaved);
+      ledSaved = written.saved;
+
+      if (written.error !== undefined) {
+        return outcome("ledGc", written.error);
+      }
+
+      ledTable = collected;
+
+      if (written.wrote) {
+        done.push("ledGc");
+      }
+    }
   }
 
   /* Keep what the draft references and what the keyboard may still hold, now that the keymap and combos are saved */

@@ -61,10 +61,10 @@ const restoreAltRepeatHolds = async (
 };
 
 /** Restore one backup command. Validate and read back the previous-key rules, the key overrides, the conditional layers, the quick tap
- * term, the dual-function options, the custom LED effects and the held modifiers, whose rejection must fail the restore. Skip macros that use steps the keyboard
- * lacks. Check the keymap write on a target with the held modifiers table, and make partial holds plain on any other target. Send the rest
- * plain. `keysPerLayer` runs only for the previous-key rules, so a plain command never needs the keyboard's layout. `holdModsTarget` is the
- * target's `help` classified once per restore. Return a warning for the user when a command was skipped or changed. */
+ * term, the dual-function options, the custom LED effects and the held modifiers, whose rejection must fail the restore. Skip macros that
+ * use steps the keyboard lacks. Check the keymap write on a target with the held modifiers table, and make partial holds plain on any other
+ * target. Send the rest plain. `keysPerLayer` runs only for the previous-key rules, so a plain command never needs the keyboard's layout.
+ * `holdModsTarget` is the target's `help` classified once per restore. Return a warning for the user when a command was skipped or changed. */
 export const restoreCommand = async (
   device: AltRepeatDevice,
   command: string,

@@ -35,6 +35,8 @@ import {
   serializeSuperkeyTable,
 } from "../../../api/parsers/superkeys";
 import { isPartialHold } from "../../../hw/layerhold";
+import { LedCustomSlot } from "../../../api/parsers/ledCustom";
+import { LedSavedState, collectLedSlots, ledRefSlots, sortedUnion as sortedSlotUnion, writeLedTable } from "../LedCustom/ledSave";
 
 /* The Layout editor's save of the keymap, the previous-key rules and the held modifiers table.
  *
@@ -44,12 +46,25 @@ import { isPartialHold } from "../../../hw/layerhold";
  *
  * With Superkeys the order is table, superkeys.map, keymap, rules, per-key options, unused table entries, unused Superkeys. The keyboard
  * converts dual-function Superkeys only when the keymap is written, so every Superkey write is followed by a keymap write.
+ *
+ * The custom LED effects follow the same pattern. led.custom goes right after the held modifiers table and its unused slots are freed after
+ * the unused table entries.
  */
 
 /** "settled": the table and rules are loaded. "unsupported": the firmware lacks the table. "pending": the table is not loaded yet. */
 export type LayoutSaveMode = "settled" | "unsupported" | "pending";
 
-export type LayoutSaveStep = "table" | "superkeys" | "keymap" | "rules" | "perKey" | "gc" | "skgc" | "keymapAfterGc";
+export type LayoutSaveStep =
+  | "table"
+  | "ledTable"
+  | "superkeys"
+  | "keymap"
+  | "rules"
+  | "perKey"
+  | "gc"
+  | "ledGc"
+  | "skgc"
+  | "keymapAfterGc";
 
 /** "ready": the table is loaded and parsed. "unsupported": the keyboard has no Superkeys. "failed": the table could not be read. */
 export type SuperkeyMode = "ready" | "unsupported" | "failed";
@@ -96,6 +111,15 @@ export interface SuperkeySaveInput {
   /* The references outside the custom layers and rules this save writes */
   draftRefs: Pick<LayoutRefs, "defaultLayers" | "layerOffset" | "combos">;
   saved: SuperkeySavedState;
+}
+
+export interface LedSaveInput {
+  table: LedCustomSlot[];
+  saved: LedSavedState;
+  /* Free the slots nothing references once the keymap and rules are saved */
+  collect: boolean;
+  /* The references outside the custom layers and rules this save writes */
+  draftRefs: { defaultLayers: number[][]; combos: ReadonlyArray<{ action: number }> };
 }
 
 export interface PerKeySaveInput {
@@ -178,6 +202,8 @@ export interface LayoutSaveIO {
   writeSuperkeys?: (table: number[][], format: SuperkeyWriteFormat, storedRows: number | null) => Promise<number | null>;
   /* Required with a per-key input */
   writePerKey?: (list: PerKeyOverride[]) => Promise<void>;
+  /* Required with a custom LED effects input */
+  writeLedCustom?: (table: LedCustomSlot[]) => Promise<void>;
 }
 
 export interface LayoutSaveInput {
@@ -193,6 +219,8 @@ export interface LayoutSaveInput {
   savedRules: string | null;
   superkeys?: SuperkeySaveInput;
   perKey?: PerKeySaveInput;
+  /* Only when the table, the keymap, the rules and the combos are known */
+  ledCustom?: LedSaveInput;
 }
 
 export interface LayoutSaveOutcome {
@@ -210,6 +238,8 @@ export interface LayoutSaveOutcome {
   superkeys?: { table: number[][]; saved: SuperkeySavedState };
   /* Only with a per-key input */
   perKeySaved?: string | null;
+  /* Only with a custom LED effects input. The table the save ends with and the saved state, also after a failed step */
+  ledCustom?: { table: LedCustomSlot[]; saved: LedSavedState };
 }
 
 const canonicalDraft = (input: LayoutSaveInput): { layers: number[][]; rules: AltRepeatRule[] } => {
@@ -266,7 +296,8 @@ export const superkeyWriteNeeded = (format: SuperkeyWriteFormat, saved: Superkey
 export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): Promise<LayoutSaveOutcome> => {
   const sk = input.superkeys;
   const skReady = sk?.mode === "ready";
-  const { writeSuperkeys: sendSuperkeys, writePerKey: sendPerKey } = io;
+  const { writeSuperkeys: sendSuperkeys, writePerKey: sendPerKey, writeLedCustom: sendLedCustom } = io;
+  const led = input.ledCustom;
 
   if (skReady && !sendSuperkeys) {
     throw new Error("A Superkey save needs writeSuperkeys");
@@ -274,6 +305,10 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
 
   if (input.perKey && !sendPerKey) {
     throw new Error("A per-key save needs writePerKey");
+  }
+
+  if (led && !sendLedCustom) {
+    throw new Error("A custom LED effects save needs writeLedCustom");
   }
 
   const { layers, rules } = canonicalDraft(input);
@@ -286,6 +321,11 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
   let skSaved = sk?.saved;
   let skTable = sk?.prepared.table;
   let perKeySaved = input.perKey?.saved;
+  let ledSaved = led?.saved;
+  let ledTable = led?.table;
+  /* The LED slots the keymap this save writes holds, default layers included */
+  const ledKeymapSlots = led ? ledRefSlots({ layers: [...led.draftRefs.defaultLayers, ...layers] }) : [];
+  const ledRuleSlots = ledRefSlots({ layers: [], rules });
 
   const outcome = (failed?: LayoutSaveStep, error?: unknown): LayoutSaveOutcome => ({
     done,
@@ -298,6 +338,7 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
     savedRules,
     ...(sk && skSaved && skTable ? { superkeys: { table: skTable, saved: skSaved } } : {}),
     ...(input.perKey ? { perKeySaved } : {}),
+    ...(ledSaved && ledTable ? { ledCustom: { table: ledTable, saved: ledSaved } } : {}),
   });
 
   /* Write the Superkey table and mark the keymap for a rewrite. On failure the keyboard may hold any part of it */
@@ -324,6 +365,10 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
     } catch (error) {
       saved = { ...saved, keymap: null, uncertainKeymap: addPartials(saved.uncertainKeymap, codes) };
 
+      if (ledSaved) {
+        ledSaved = { ...ledSaved, uncertainKeymap: sortedSlotUnion(ledSaved.uncertainKeymap, ledKeymapSlots) };
+      }
+
       if (sk && skSaved) {
         skSaved = { ...skSaved, uncertainKeymap: sortedUnion(skSaved.uncertainKeymap, keymapSlots(layers, sk.draftRefs)) };
       }
@@ -332,6 +377,10 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
     }
 
     saved = { ...saved, keymap, keymapCodes: codes, uncertainKeymap: [] };
+
+    if (ledSaved) {
+      ledSaved = { ...ledSaved, keymapRefs: ledKeymapSlots, uncertainKeymap: [] };
+    }
 
     if (sk && skSaved) {
       skSaved = { ...skSaved, keymapStale: false, keymapRefs: keymapSlots(layers, sk.draftRefs), uncertainKeymap: [] };
@@ -349,6 +398,20 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
 
     saved = { ...saved, holdMods: serializeHoldMods(table) };
     done.push("table");
+  }
+
+  /* The LED effects go before the keymap and rules, so every slot a key sends has its settings */
+  if (sendLedCustom && ledSaved && ledTable) {
+    const written = await writeLedTable(sendLedCustom, ledTable, ledSaved);
+    ledSaved = written.saved;
+
+    if (written.error !== undefined) {
+      return outcome("ledTable", written.error);
+    }
+
+    if (written.wrote) {
+      done.push("ledTable");
+    }
   }
 
   /* Superkeys go before the keymap, so every Superkey a key sends is defined */
@@ -390,6 +453,10 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
         skSaved = { ...skSaved, uncertainRules: sortedUnion(skSaved.uncertainRules, ruleSlots(rules)) };
       }
 
+      if (ledSaved) {
+        ledSaved = { ...ledSaved, uncertainRules: sortedSlotUnion(ledSaved.uncertainRules, ledRuleSlots) };
+      }
+
       return outcome("rules", error);
     }
 
@@ -398,6 +465,10 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
 
     if (skSaved) {
       skSaved = { ...skSaved, ruleRefs: ruleSlots(rules), uncertainRules: [] };
+    }
+
+    if (ledSaved) {
+      ledSaved = { ...ledSaved, ruleRefs: ledRuleSlots, uncertainRules: [] };
     }
 
     done.push("rules");
@@ -435,6 +506,27 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
       table = collected;
       saved = { ...saved, holdMods: serializeHoldMods(collected) };
       done.push("gc");
+    }
+  }
+
+  /* Keep the slots the draft references and the keyboard may still play, now that the keymap and rules are saved */
+  if (led && led.collect && sendLedCustom && ledSaved && ledTable) {
+    const draft = { layers: [...led.draftRefs.defaultLayers, ...layers], rules, combos: led.draftRefs.combos };
+    const collected = collectLedSlots(ledTable, draft, ledSaved);
+
+    if (collected !== ledTable) {
+      const written = await writeLedTable(sendLedCustom, collected, ledSaved);
+      ledSaved = written.saved;
+
+      if (written.error !== undefined) {
+        return outcome("ledGc", written.error);
+      }
+
+      ledTable = collected;
+
+      if (written.wrote) {
+        done.push("ledGc");
+      }
     }
   }
 

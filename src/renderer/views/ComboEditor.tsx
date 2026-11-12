@@ -44,6 +44,9 @@ import { ComboSaveIO, loadKeymapReplies, refSlotsOf, runComboSave } from "@Rende
 import { EMPTY_SUPERKEY_SAVED, SuperkeyMode, SuperkeySavedState } from "@Renderer/modules/HoldMods/layoutSave";
 import { unreadableBeforeBackup } from "@Renderer/modules/DualFunctionKeys/previewReads";
 import { collectBlock } from "@Renderer/modules/MultiAction/preGcGate";
+import { EMPTY_LED_SAVED, LedSavedState, loadLedTable, protectedLedSlots, withLedBaseline } from "@Renderer/modules/LedCustom/ledSave";
+import { withLedLabel } from "@Renderer/modules/LedCustom/ledLabel";
+import { LedCustomPicker } from "@Renderer/types/ledCustom";
 
 import { useDevice } from "@Renderer/DeviceContext";
 import Store from "@Renderer/utils/Store";
@@ -80,6 +83,17 @@ import {
 import { parseColormapRaw, parseKeymapRaw, parseMacrosRaw, parsePaletteRaw } from "../../api/parsers";
 import { decodeDualUse, readAltRepeatRules } from "../../api/parsers/altRepeat";
 import { writeUncached } from "../../api/parsers/holdMods";
+import {
+  LED_TYPE_UNUSED,
+  LedCustomSlot,
+  LedCustomState,
+  emptyLedTable,
+  encodeLedSlot,
+  ledSlotCode,
+  ledSlotOf,
+  ledSlotRefs,
+  writeLedCustom,
+} from "../../api/parsers/ledCustom";
 import {
   LayoutRefs,
   SkRef,
@@ -204,6 +218,11 @@ function ComboEditor(props: ComboEditorProps) {
   const skBaseline = useRef<SuperkeyDraft | null>(null);
   /* The serialized combos on the keyboard, null when unknown */
   const savedCombos = useRef<string | null>(null);
+  /* The custom LED effect slots, as edited and not yet saved */
+  const [ledTable, setLedTable] = useState<LedCustomSlot[]>(emptyLedTable());
+  const [ledState, setLedState] = useState<LedCustomState>("unsupported");
+  /* Remember what the keyboard may hold, so Save writes only changes and an edit never changes a slot a key on the keyboard plays */
+  const ledSaved = useRef<LedSavedState>(EMPTY_LED_SAVED);
   const [comboBreak, setComboBreak] = useState<ComboBreakState | null>(null);
   const [ruleBreak, setRuleBreak] = useState<RuleBreakState | null>(null);
   /* Hold the rules warning until the combo warning closes */
@@ -369,6 +388,24 @@ function ComboEditor(props: ComboEditorProps) {
       };
       skBaseline.current = nextSuperkeysState === "ready" ? { ...scanRefs, table: skTable } : null;
 
+      /* Read the LED table uncached, since the slots the keyboard's keys, rules and combos use are protected from reuse */
+      const ledLoad = await loadLedTable(currentDevice, Boolean(store.get("capabilities.ledCustom")));
+
+      if (ledLoad.state === "failed") {
+        log.error("[Combos] led.custom could not be read");
+      }
+
+      ledSaved.current =
+        ledLoad.state === "ready"
+          ? withLedBaseline(ledLoad.table, {
+              layers: [...scanRefs.defaultLayers, ...scanRefs.customLayers],
+              rules: nextRules,
+              combos: strict ?? [],
+            })
+          : EMPTY_LED_SAVED;
+      setLedTable(ledLoad.table);
+      setLedState(ledLoad.state);
+
       /* Colours, so the board reads exactly as it does in the Layout Editor.
        * The LED count has to be worked out the same way, or parseColormapRaw
        * chunks the blob into the wrong per-layer stride. */
@@ -403,15 +440,17 @@ function ComboEditor(props: ComboEditorProps) {
   /* Superkeys                                                               */
   /* ---------------------------------------------------------------------- */
 
-  /* Label Superkeys from their actions, so key faces follow every edit */
+  /* Label Superkeys from their actions, so key faces follow every edit. Name LED slot actions by their effect */
   const labelCtx = useMemo(
-    () =>
-      labelContext(
+    () => ({
+      ...labelContext(
         currentLanguageLayout,
         layerNames,
         macros.map(macro => macro.name ?? ""),
       ),
-    [currentLanguageLayout, layerNames, macros],
+      ledCustom: ledState === "ready" ? ledTable : undefined,
+    }),
+    [currentLanguageLayout, layerNames, macros, ledState, ledTable],
   );
 
   const keymapCodes = useMemo(
@@ -435,6 +474,49 @@ function ComboEditor(props: ComboEditorProps) {
 
   const draftTable = (): number[][] =>
     superkeys.slice(0, MAX_ACTIVE_SUPERKEYS).map(superkey => normalizeActions(superkey.actions));
+
+  /* Give out LED slots only when the table and every key, rule and combo that can use one are known */
+  const ledReady = ledState === "ready" && keymapKnown && combosKnown && rulesState !== "failed";
+
+  /* The LED slot references of the layout with these combos */
+  const ledDraftRefs = (list: ComboType[]) => ({
+    layers: [...(keymap.onlyCustom ? [] : keymapCodes.default), ...keymapCodes.custom],
+    rules: rulesState === "ready" ? rules : [],
+    combos: list,
+  });
+
+  /* Reload the LED table when App reads the capabilities again and they disagree with it, as after a firmware update. Skip the mount */
+  const seenLedRefresh = useRef(capabilitiesRefresh);
+
+  useEffect(() => {
+    if (capabilitiesRefresh === seenLedRefresh.current) {
+      return;
+    }
+
+    seenLedRefresh.current = capabilitiesRefresh;
+    const { currentDevice } = state;
+    const listed = Boolean(store.get("capabilities.ledCustom"));
+    const agrees = ledState !== "failed" && listed === (ledState !== "unsupported");
+
+    if (agrees || !currentDevice || saving.current) {
+      return;
+    }
+
+    const reload = async () => {
+      const loaded = await loadLedTable(currentDevice, listed);
+      const refs = ledDraftRefs(combos);
+      /* Protect the combos the keyboard held at load too, since they are not read again here */
+      const loadedCombos = ledSaved.current.comboRefs.map(slot => ({ action: ledSlotCode(slot) }));
+
+      ledSaved.current =
+        loaded.state === "ready" ? withLedBaseline(loaded.table, { ...refs, combos: [...refs.combos, ...loadedCombos] }) : EMPTY_LED_SAVED;
+      setLedTable(loaded.table);
+      setLedState(loaded.state);
+    };
+
+    reload().catch(error => log.warn("[Combos] led.custom reload failed", error));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capabilitiesRefresh, ledState, state]);
 
   /* Why Multi-action edits are off, or undefined. A new slot is safe only when every reference to the slots is known */
   const multiActionBlock = (): string | undefined => {
@@ -530,6 +612,7 @@ function ComboEditor(props: ComboEditorProps) {
         log.info(`[Combos] saving ${combos.length} combo(s)`);
         await writeUncached(currentDevice, "combos.map", serialized);
       },
+      writeLedCustom: table => writeLedCustom(currentDevice, table),
       storeNames,
       unreadableBeforeBackup: () =>
         unreadableBeforeBackup(currentDevice, {
@@ -537,6 +620,7 @@ function ComboEditor(props: ComboEditorProps) {
           hasQuickTap: Boolean(store.get("capabilities.quickTap")),
           perKey: false,
           superkeys: superkeysState !== "unsupported",
+          ledCustom: ledState !== "unsupported",
         }),
       /* Same as the other editors: a backup after every save. Lens reads the combos it badges from the newest backup */
       backup: async () => {
@@ -595,11 +679,18 @@ function ComboEditor(props: ComboEditorProps) {
           }
         : undefined;
 
+      /* Write the LED table and free its unused slots only when every reference to them is known */
+      const ledRefs = ledDraftRefs(combos);
+      const ledInput = ledReady
+        ? { table: ledTable, saved: ledSaved.current, collect: true, layers: ledRefs.layers, rules: ledRefs.rules }
+        : undefined;
+
       const outcome = await runComboSave(io, {
         combos,
         savedCombos: savedCombos.current,
         superkeys: superkeysInput,
-        rereadBeforeBackup: dualFunction || superkeysState !== "unsupported",
+        ledCustom: ledInput,
+        rereadBeforeBackup: dualFunction || superkeysState !== "unsupported" || ledState !== "unsupported",
         isVirtual,
       });
 
@@ -623,6 +714,15 @@ function ComboEditor(props: ComboEditorProps) {
 
       if (outcome.superkeys) {
         skSaved.current = outcome.superkeys.saved;
+      }
+
+      /* Keep what the keyboard may hold of the LED slots also after a failed step, and show the table without the freed slots */
+      if (outcome.ledCustom) {
+        ledSaved.current = outcome.ledCustom.saved;
+
+        if (outcome.ledCustom.table !== ledTable) {
+          setLedTable(outcome.ledCustom.table);
+        }
       }
 
       /* Show merged Superkeys as the keyboard now holds them, also when a later step failed */
@@ -1021,6 +1121,51 @@ function ComboEditor(props: ComboEditorProps) {
     );
   };
 
+  /* Give the selected combo's result a slot with these settings. Never change a slot another key, rule, combo or the keyboard uses */
+  const onComboLedSelect = (settings: LedCustomSlot): boolean => {
+    const current = combos[selected];
+
+    if (savePending() || !current || !ledReady) {
+      return false;
+    }
+
+    const others = combos.map((each, index) => (index === selected ? { ...each, action: 0 } : each));
+    const used = ledSlotRefs(ledDraftRefs(others));
+    const encoded = encodeLedSlot(settings, ledTable, used, protectedLedSlots(ledSaved.current));
+
+    if ("error" in encoded) {
+      toast.warn(<ToastMessage title={i18n.editor.ledCustom.title} content={i18n.editor.ledCustom.capacity} />, { autoClose: 4000 });
+      return false;
+    }
+
+    if (encoded.table !== ledTable) {
+      setLedTable(encoded.table);
+      setModified(true);
+      startContext();
+    }
+
+    onActionKeySelect(encoded.code);
+    return true;
+  };
+
+  /* The custom LED effect block for the selected combo's result, only while every slot reference is known */
+  const comboLedCustom = (): LedCustomPicker | undefined => {
+    const current = combos[selected];
+
+    if (!current || !ledReady) {
+      return undefined;
+    }
+
+    const slot = ledSlotOf(current.action);
+    const entry = slot === null ? undefined : ledTable[slot];
+
+    return {
+      current: entry !== undefined && entry.type !== LED_TYPE_UNUSED ? entry : null,
+      onSelect: onComboLedSelect,
+      disabledReason: isSaving ? i18n.editor.multiAction.saving : undefined,
+    };
+  };
+
   /* The Multi-action tab for the selected combo's result. Keyboards without Superkeys have none, since a result can't be dual-function */
   const comboMultiAction = (): MultiActionProps | undefined => {
     const current = combos[selected];
@@ -1117,11 +1262,16 @@ function ComboEditor(props: ComboEditorProps) {
         return { ...key, faceSlots };
       }
 
+      /* Label a custom LED effect key from the draft table */
+      if (key && ledSlotOf(key.keyCode) !== null) {
+        return withLedLabel(key, ledState === "ready" ? ledTable : null);
+      }
+
       if (!key || typeof key.label !== "string" || /\p{L}/u.test(key.label)) return key;
       const name = key.extraLabel === "MACRO" ? macros[key.keyCode - 53852]?.name : undefined;
       return name ? { ...key, label: name.substring(0, 5) } : key;
     },
-    [macros, superkeys, labelCtx],
+    [macros, superkeys, labelCtx, ledTable, ledState],
   );
 
   const layerData = useMemo((): KeyType[] => {
@@ -1464,6 +1614,7 @@ function ComboEditor(props: ComboEditorProps) {
               allowAutoshift={false}
               fullMouse
               multiAction={comboMultiAction()}
+              ledCustom={comboLedCustom()}
             />
           </>
         ) : (

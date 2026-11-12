@@ -4,7 +4,17 @@ import { SuperkeyDraft } from "../../../api/parsers/multiAction";
 import { serializeCombos } from "../../../api/parsers/combos";
 import { SuperkeyWriteFormat, serializeSuperkeyTable } from "../../../api/parsers/superkeys";
 import { EMPTY_SUPERKEY_SAVED, SuperkeySavedState } from "../HoldMods/layoutSave";
-import { ComboSaveInput, ComboSuperkeyInput, loadKeymapReplies, readKeymapReplies, refSlotsOf, runComboSave } from "./comboSave";
+import { LedCustomSlot, emptyLedTable, serializeLedCustom } from "../../../api/parsers/ledCustom";
+import { EMPTY_LED_SAVED, withLedBaseline } from "../LedCustom/ledSave";
+import {
+  ComboLedInput,
+  ComboSaveInput,
+  ComboSuperkeyInput,
+  loadKeymapReplies,
+  readKeymapReplies,
+  refSlotsOf,
+  runComboSave,
+} from "./comboSave";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -638,5 +648,114 @@ describe("loadKeymapReplies", () => {
     expect(loaded.known).toBe(false);
     expect(loaded.custom).toEqual([[4, 5]]);
     expect(loaded.onlyCustom).toBe(true);
+  });
+});
+
+describe("runComboSave custom LED effects", () => {
+  const SLOT_0 = 17155;
+  const SLOT_1 = 17156;
+  const red: LedCustomSlot = { type: 1, r: 255, g: 0, b: 0, speed: 0 };
+  const off: LedCustomSlot = { type: 6, r: 0, g: 0, b: 0, speed: 0 };
+
+  const ledTable = (entries: Record<number, LedCustomSlot>): LedCustomSlot[] => {
+    const table = emptyLedTable();
+    Object.entries(entries).forEach(([slot, settings]) => {
+      table[Number(slot)] = settings;
+    });
+    return table;
+  };
+
+  const ledIO = (fail: Fail & { led?: boolean } = {}) => {
+    const { io, steps } = mockIO(fail);
+    const writeLedCustom = vi.fn(async (table: LedCustomSlot[]) => {
+      steps.push(`led ${serializeLedCustom(table)}`);
+
+      if (fail.led) {
+        throw new Error("led.custom write failed");
+      }
+    });
+    return { io: { ...io, writeLedCustom }, steps };
+  };
+
+  /* The keyboard's only combo sends slot 0 */
+  const ledInput = (table: LedCustomSlot[], stored: LedCustomSlot[], overrides: Partial<ComboLedInput> = {}): ComboLedInput => ({
+    table,
+    saved: withLedBaseline(stored, { layers: [[A]], rules: [], combos: [combo(0, SLOT_0)] }),
+    collect: true,
+    layers: [[A]],
+    rules: [],
+    ...overrides,
+  });
+
+  test("writes led.custom before combos.map and frees the old slot after it", async () => {
+    const { io, steps } = ledIO();
+    const stored = ledTable({ 0: red });
+    const combos = [combo(0, SLOT_1)];
+
+    const outcome = await runComboSave(
+      io,
+      input({
+        combos,
+        savedCombos: serializeCombos([combo(0, SLOT_0)]),
+        ledCustom: ledInput(ledTable({ 0: red, 1: off }), stored),
+      }),
+    );
+
+    expect(steps).toEqual(["led 2 1 255 0 0 0 6 0 0 0 0", "combos 1", "led 2 0 0 0 0 0 6 0 0 0 0", "names 1 -", "backup"]);
+    expect(outcome).toMatchObject({ kind: "saved", done: ["ledTable", "combos", "ledGc", "backup"] });
+    expect(outcome.kind !== "blocked" && outcome.ledCustom).toEqual({
+      table: ledTable({ 1: off }),
+      saved: { ...EMPTY_LED_SAVED, table: "2 0 0 0 0 0 6 0 0 0 0", comboRefs: [1] },
+    });
+  });
+
+  test("keeps the slots the keymap and rules use", async () => {
+    const { io, steps } = ledIO();
+    const stored = ledTable({ 0: red, 1: off });
+
+    await runComboSave(
+      io,
+      input({
+        combos: [],
+        savedCombos: serializeCombos([combo(0, SLOT_0)]),
+        ledCustom: ledInput(stored, stored, { layers: [[SLOT_0]], rules: [{ output: SLOT_1 }] }),
+      }),
+    );
+
+    expect(steps).toEqual(["combos 0", "names 0 -", "backup"]);
+  });
+
+  test("protects the slot of a failed combos write", async () => {
+    const { io, steps } = ledIO({ combos: true });
+    const stored = ledTable({ 0: red });
+
+    const outcome = await runComboSave(
+      io,
+      input({
+        combos: [combo(0, SLOT_1)],
+        savedCombos: serializeCombos([combo(0, SLOT_0)]),
+        ledCustom: ledInput(ledTable({ 0: red, 1: off }), stored),
+      }),
+    );
+
+    expect(steps).toEqual(["led 2 1 255 0 0 0 6 0 0 0 0", "combos 1"]);
+    expect(outcome.kind !== "blocked" && outcome.ledCustom?.saved).toMatchObject({ comboRefs: [0], uncertainCombos: [1] });
+  });
+
+  test("stops before combos.map when the table write fails", async () => {
+    const { io, steps } = ledIO({ led: true });
+
+    const outcome = await runComboSave(
+      io,
+      input({
+        combos: [combo(0, SLOT_1)],
+        savedCombos: serializeCombos([combo(0, SLOT_0)]),
+        ledCustom: ledInput(ledTable({ 0: red, 1: off }), ledTable({ 0: red })),
+      }),
+    );
+
+    expect(steps).toEqual(["led 2 1 255 0 0 0 6 0 0 0 0"]);
+    expect(outcome).toMatchObject({ kind: "failed", failed: "ledTable" });
+    expect(outcome.kind !== "blocked" && outcome.ledCustom?.saved.table).toBeNull();
   });
 });

@@ -13,12 +13,15 @@ import {
   superkeyRefs,
 } from "../../../api/parsers/multiAction";
 import { SuperkeyWriteFormat, serializeSuperkeyTable } from "../../../api/parsers/superkeys";
+import { LedCustomSlot, emptyLedTable, serializeLedCustom } from "../../../api/parsers/ledCustom";
+import { EMPTY_LED_SAVED, protectedLedSlots, withLedBaseline } from "../LedCustom/ledSave";
 import {
   EMPTY_HOLD_SAVED,
   EMPTY_SUPERKEY_SAVED,
   HoldSavedState,
   LayoutSaveIO,
   LayoutSaveInput,
+  LedSaveInput,
   SuperkeySaveInput,
   SuperkeySavedState,
   keymapSaveKey,
@@ -1022,5 +1025,146 @@ describe("runLayoutSave stale-row clean-up (Q6)", () => {
     expect(writes).toEqual([`superkeys ${JSON.stringify([FULL_A])}`, `keymap ${SK(0)}|1`]);
     expect(io.writeSuperkeys).toHaveBeenCalledWith([FULL_A], "padded", 3);
     expect(outcome.superkeys?.saved).toMatchObject({ storedRows: 1, table: serializeSuperkeyTable([FULL_A], "padded", 3) });
+  });
+});
+
+describe("runLayoutSave custom LED effects", () => {
+  const SLOT_0 = 17155;
+  const SLOT_1 = 17156;
+  const SLOT_2 = 17157;
+  const red: LedCustomSlot = { type: 1, r: 255, g: 0, b: 0, speed: 0 };
+  const layersType: LedCustomSlot = { type: 5, r: 0, g: 0, b: 0, speed: 0 };
+  const off: LedCustomSlot = { type: 6, r: 0, g: 0, b: 0, speed: 0 };
+
+  const ledTable = (entries: Record<number, LedCustomSlot>): LedCustomSlot[] => {
+    const table = emptyLedTable();
+    Object.entries(entries).forEach(([slot, settings]) => {
+      table[Number(slot)] = settings;
+    });
+    return table;
+  };
+
+  /* Record the LED table writes next to the others, failing on demand */
+  const ledIO = (fail: { led?: boolean; keymap?: boolean; rules?: boolean } = {}) => {
+    const { io, writes } = mockIO({ keymap: fail.keymap, rules: fail.rules });
+    const writeLedCustom = vi.fn(async (table: LedCustomSlot[]) => {
+      writes.push(`led ${serializeLedCustom(table)}`);
+
+      if (fail.led) {
+        throw new Error("led.custom write failed");
+      }
+    });
+    return { io: { ...io, writeLedCustom }, writes };
+  };
+
+  /* The keyboard holds slot 0 on its keymap and slot 2 in a combo, with `table` stored */
+  const ledInput = (table: LedCustomSlot[], stored: LedCustomSlot[], collect = true): LedSaveInput => ({
+    table,
+    saved: withLedBaseline(stored, { layers: [[SLOT_0]], rules: [], combos: [{ action: SLOT_2 }] }),
+    collect,
+    draftRefs: { defaultLayers: [], combos: [{ action: SLOT_2 }] },
+  });
+
+  test("writes the table before the keymap and frees the old slot after it", async () => {
+    const { io, writes } = ledIO();
+    const stored = ledTable({ 0: red, 2: off });
+    // The key moved from slot 0 to the new slot 1
+    const draft = ledTable({ 0: red, 1: layersType, 2: off });
+
+    const outcome = await runLayoutSave(io, input({ layers: [[SLOT_1]], saved: loaded([[SLOT_0]]), ledCustom: ledInput(draft, stored) }));
+
+    expect(writes).toEqual([
+      "led 3 1 255 0 0 0 5 0 0 0 0 6 0 0 0 0",
+      `keymap ${SLOT_1}|1`,
+      "led 3 0 0 0 0 0 5 0 0 0 0 6 0 0 0 0",
+    ]);
+    expect(outcome.done).toEqual(["ledTable", "keymap", "ledGc"]);
+    expect(outcome.ledCustom).toEqual({
+      table: ledTable({ 1: layersType, 2: off }),
+      saved: {
+        ...EMPTY_LED_SAVED,
+        table: "3 0 0 0 0 0 5 0 0 0 0 6 0 0 0 0",
+        keymapRefs: [1],
+        comboRefs: [2],
+      },
+    });
+  });
+
+  test("writes no table when nothing changed", async () => {
+    const { io, writes } = ledIO();
+    const stored = ledTable({ 0: red, 2: off });
+
+    const outcome = await runLayoutSave(io, input({ layers: [[SLOT_0]], saved: loaded([[SLOT_0]]), ledCustom: ledInput(stored, stored) }));
+
+    expect(writes).toEqual([]);
+    expect(outcome.done).toEqual([]);
+  });
+
+  test("keeps slots a rule output uses", async () => {
+    const { io, writes } = ledIO();
+    const stored = ledTable({ 0: red, 1: layersType, 2: off });
+
+    await runLayoutSave(
+      io,
+      input({ layers: [[4]], rules: [rule(SLOT_1)], saved: loaded([[SLOT_0]]), ledCustom: ledInput(stored, stored) }),
+    );
+
+    expect(writes).toEqual([`keymap 4|1`, `rules 1 1 0 6 ${SLOT_1}`, "led 3 0 0 0 0 0 5 0 0 0 0 6 0 0 0 0"]);
+  });
+
+  test("frees nothing without collect", async () => {
+    const { io, writes } = ledIO();
+    const stored = ledTable({ 0: red, 2: off });
+
+    await runLayoutSave(io, input({ layers: [[4]], saved: loaded([[SLOT_0]]), ledCustom: ledInput(stored, stored, false) }));
+
+    expect(writes).toEqual(["keymap 4|1"]);
+  });
+
+  test("stops before the keymap when the table write fails and forgets the stored table", async () => {
+    const { io, writes } = ledIO({ led: true });
+    const stored = ledTable({ 0: red });
+
+    const outcome = await runLayoutSave(
+      io,
+      input({ layers: [[SLOT_1]], saved: loaded([[SLOT_0]]), ledCustom: ledInput(ledTable({ 0: red, 1: off }), stored) }),
+    );
+
+    expect(writes).toEqual(["led 2 1 255 0 0 0 6 0 0 0 0"]);
+    expect(outcome.failed).toBe("ledTable");
+    expect(outcome.ledCustom?.saved.table).toBeNull();
+    expect(outcome.ledCustom?.saved.keymapRefs).toEqual([0]);
+  });
+
+  test("protects the slots of a failed keymap write", async () => {
+    const { io } = ledIO({ keymap: true });
+    const stored = ledTable({ 0: red });
+
+    const outcome = await runLayoutSave(
+      io,
+      input({ layers: [[SLOT_1]], saved: loaded([[SLOT_0]]), ledCustom: ledInput(ledTable({ 0: red, 1: off }), stored) }),
+    );
+
+    expect(outcome.failed).toBe("keymap");
+    expect(protectedLedSlots(outcome.ledCustom?.saved ?? EMPTY_LED_SAVED)).toEqual(new Set([0, 1, 2]));
+  });
+
+  test("protects the slots of a failed rules write", async () => {
+    const { io } = ledIO({ rules: true });
+    const stored = ledTable({ 0: red, 1: off });
+
+    const outcome = await runLayoutSave(
+      io,
+      input({ layers: [[SLOT_0]], rules: [rule(SLOT_1)], saved: loaded([[SLOT_0]]), ledCustom: ledInput(stored, stored) }),
+    );
+
+    expect(outcome.failed).toBe("rules");
+    expect(outcome.ledCustom?.saved.uncertainRules).toEqual([1]);
+  });
+
+  test("needs writeLedCustom with an LED input", async () => {
+    const { io } = mockIO();
+
+    await expect(runLayoutSave(io, input({ ledCustom: ledInput(emptyLedTable(), emptyLedTable()) }))).rejects.toThrow("writeLedCustom");
   });
 });

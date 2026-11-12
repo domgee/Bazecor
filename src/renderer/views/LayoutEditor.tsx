@@ -60,6 +60,7 @@ import {
   LayoutSaveInput,
   LayoutSaveMode,
   LayoutSaveStep,
+  LedSaveInput,
   SuperkeyMode,
   SuperkeySaveInput,
   SuperkeySavedState,
@@ -100,6 +101,16 @@ import {
 } from "@Renderer/modules/DualFunctionKeys/overrideTable";
 import { backupAfterSave } from "@Renderer/modules/KeyOverrides/backupAfterSave";
 import { DualFunctionGlobalPreview, DualFunctionKeysState } from "@Renderer/types/dualFunctionKeys";
+import { LedCustomPicker } from "@Renderer/types/ledCustom";
+import {
+  EMPTY_LED_SAVED,
+  LedSavedState,
+  ledRefSlots,
+  loadLedTable,
+  protectedLedSlots,
+  withLedBaseline,
+} from "@Renderer/modules/LedCustom/ledSave";
+import { withLedLabel } from "@Renderer/modules/LedCustom/ledLabel";
 
 // Components
 import LayerSelector from "@Renderer/components/organisms/Select/LayerSelector";
@@ -219,6 +230,19 @@ import {
   writePerKeyOverrides,
 } from "../../api/parsers/dualFunction";
 import { readQuickTapTerm } from "../../api/parsers/quickTap";
+import {
+  LED_TYPE_UNUSED,
+  LedCustomSlot,
+  LedCustomState,
+  emptyLedTable,
+  encodeLedSlot,
+  importLedCustom,
+  isLedSlotCode,
+  ledCustomExport,
+  ledSlotOf,
+  ledSlotRefs,
+  writeLedCustom,
+} from "../../api/parsers/ledCustom";
 
 const store = Store.getStore();
 const uniqueSuperkeysStore: UniqueSuperkeysStore = {
@@ -441,6 +465,11 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const perKeySaved = useRef<string | null>(null);
   /* The options the keyboard last held as far as the editor knows, which fix the slider bounds also after a failed write */
   const perKeyStored = useRef<PerKeyOverride[]>([]);
+  /* The custom LED effect slots, as edited and not yet saved */
+  const [ledTable, setLedTable] = useState<LedCustomSlot[]>(emptyLedTable());
+  const [ledState, setLedState] = useState<LedCustomState>("unsupported");
+  /* Remember what the keyboard may hold, so Save writes only changes and an edit never changes a slot a key on the keyboard plays */
+  const ledSaved = useRef<LedSavedState>(EMPTY_LED_SAVED);
 
   const [modified, setModified] = useState(false);
   const [modeselect, setModeselect] = useState<ModeType>("keyboard");
@@ -485,15 +514,17 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const layoutEditorContainerRef = useRef(null);
   const keyboardAreaRef = useRef<HTMLDivElement>(null);
 
-  /* Label Superkeys from their actions, so key faces and names follow every edit */
+  /* Label Superkeys from their actions, so key faces and names follow every edit. Name LED slot actions by their effect */
   const labelCtx = useMemo(
-    () =>
-      labelContext(
+    () => ({
+      ...labelContext(
         currentLanguageLayout,
         (layerNames ?? []).map((layer: LayerType) => layer?.name ?? ""),
         (macros ?? []).map(macro => macro.name ?? ""),
       ),
-    [currentLanguageLayout, layerNames, macros],
+      ledCustom: ledState === "ready" ? ledTable : undefined,
+    }),
+    [currentLanguageLayout, layerNames, macros, ledState, ledTable],
   );
 
   const onLayerNameChange = (newName: string) => {
@@ -690,6 +721,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     /* The keyboard holds these rules, so their Superkey slots stay protected and count for clashes already on the keyboard */
     const keepSavedRules = (rules: AltRepeatRule[]) => {
       skSaved.current = { ...skSaved.current, ruleRefs: refSlotsOf({ rules }), uncertainRules: [] };
+      ledSaved.current = { ...ledSaved.current, ruleRefs: ledRefSlots({ layers: [], rules }), uncertainRules: [] };
 
       if (skBaseline.current) {
         skBaseline.current = { ...skBaseline.current, rules };
@@ -1000,6 +1032,24 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         setCombosState(nextCombosState);
         setStrictCombos(nextStrictCombos);
 
+        /* Read the LED table uncached, since the slots the keyboard's keys use are protected from reuse. Loading the rules adds theirs */
+        const ledLoad = await loadLedTable(currentDevice, Boolean(store.get("capabilities.ledCustom")));
+
+        if (ledLoad.state === "failed") {
+          log.error("[LayoutEditor] led.custom could not be read");
+        }
+
+        ledSaved.current =
+          ledLoad.state === "ready"
+            ? withLedBaseline(ledLoad.table, {
+                layers: [...scanRefs.defaultLayers, ...scanRefs.customLayers],
+                rules: [],
+                combos: nextStrictCombos,
+              })
+            : EMPTY_LED_SAVED;
+        setLedTable(ledLoad.table);
+        setLedState(ledLoad.state);
+
         await loadAltRepeatRules(currentDevice);
         await loadHoldMods(currentDevice, device);
         const perKeyLoad = await loadPerKey(currentDevice);
@@ -1044,6 +1094,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             hasQuickTap: Boolean(store.get("capabilities.quickTap")),
             perKey: !perKeyLoad.perKeyOk,
             superkeys: nextSuperkeysState === "failed",
+            ledCustom: ledLoad.state === "failed",
           });
 
           if (unreadable !== null) {
@@ -1505,6 +1556,80 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     return encoded.code;
   };
 
+  /* Give out LED slots only when the table and every key, rule and combo that can use one are known */
+  const ledReady = ledState === "ready" && keymapKnown && combosState !== "failed" && altRepeatState !== "failed";
+
+  /* The LED slot references of a draft with these custom layers and rules, default layers and combos included */
+  const ledDraftRefs = (custom: number[][], rules: AltRepeatRule[]) => ({
+    layers: [...(keymap.onlyCustom ? [] : draftCodes(keymap.default)), ...custom],
+    rules,
+    combos: combosState === "ready" ? strictCombos : [],
+  });
+
+  const showLedToast = (content: string) => {
+    toast.warn(<ToastMessage title={i18n.editor.ledCustom.title} content={content} icon={<IconArrowDownWithLine />} />, {
+      autoClose: 4000,
+      icon: "",
+    });
+  };
+
+  /* Give the selected cell a slot with these settings. Never change a slot another key or the keyboard uses */
+  const onCellLedSelect = (settings: LedCustomSlot): boolean => {
+    if (savePending() || !ledReady) {
+      return false;
+    }
+
+    const customIdx = keymap.onlyCustom ? currentLayer : currentLayer - keymap.default.length;
+    const custom = draftCodes(keymap.custom);
+
+    if (currentKeyIndex === -1 || custom[customIdx]?.[currentKeyIndex] === undefined) {
+      return false;
+    }
+
+    const others = custom.map((codes, l) => (l === customIdx ? codes.map((code, p) => (p === currentKeyIndex ? 0 : code)) : codes));
+    const used = ledSlotRefs(ledDraftRefs(others, altRepeatRules));
+    const encoded = encodeLedSlot(settings, ledTable, used, protectedLedSlots(ledSaved.current));
+
+    if ("error" in encoded) {
+      showLedToast(i18n.editor.ledCustom.capacity);
+      return false;
+    }
+
+    if (encoded.table !== ledTable) {
+      setLedTable(encoded.table);
+      setModified(true);
+      startContext();
+    }
+
+    onKeyChange(encoded.code);
+    return true;
+  };
+
+  /* Fit the slot keys of an import into the table. Return the remap, or null when the table is unknown and the import must stop */
+  const fitLedImport = (
+    importedCodes: number[],
+    others: { custom: number[][]; rules: AltRepeatRule[] },
+    fileEntries: unknown,
+  ): { table: LedCustomSlot[]; remap: Map<number, number> } | null => {
+    if (!importedCodes.some(isLedSlotCode) || ledState === "unsupported") {
+      return { table: ledTable, remap: new Map() };
+    }
+
+    if (!ledReady) {
+      showLedToast(i18n.editor.ledCustom.loadFailed);
+      return null;
+    }
+
+    const used = ledSlotRefs(ledDraftRefs(others.custom, others.rules));
+    const fitted = importLedCustom(ledTable, used, protectedLedSlots(ledSaved.current), importedCodes, fileEntries);
+
+    if (fitted.emptied) {
+      showLedToast(i18n.editor.ledCustom.importEmptied);
+    }
+
+    return fitted;
+  };
+
   /**
    * Verify that colors in keyboard button and in color palette is equal
    * @param {number} colorIdx Number of palette index
@@ -1781,6 +1906,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       superkeys: i18n.editor.multiAction.saveFailed,
       skgc: i18n.editor.multiAction.gcFailed,
       perKey: i18n.editor.multiAction.perKeyFailed,
+      ledTable: i18n.editor.ledCustom.saveFailed,
+      ledGc: i18n.editor.ledCustom.saveFailed,
     };
 
     return messages[step] ?? i18n.editor.holdMods.saveFailed;
@@ -1936,6 +2063,15 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         };
       }
 
+      /* Write the LED table and free its unused slots only when every reference to them is known */
+      const ledInput: LedSaveInput | undefined = ledReady
+        ? {
+            table: ledTable,
+            saved: ledSaved.current,
+            collect: true,
+            draftRefs: { defaultLayers: refs.defaultLayers, combos: refs.combos },
+          }
+        : undefined;
       const saveInput: LayoutSaveInput = {
         mode: holdSaveMode(),
         layers: custom,
@@ -1947,6 +2083,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         savedRules: savedAltRepeat.current,
         superkeys: superkeysInput,
         perKey: perKeyState === "ready" ? { list: perKeyList, saved: perKeySaved.current } : undefined,
+        ledCustom: ledInput,
       };
       const saved = await runLayoutSave(
         {
@@ -1959,6 +2096,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           writeRules: rules => writeAltRepeatRules(currentDevice, rules, firmwareLayerCount(keymap), keysPerLayer()),
           writeSuperkeys: (table, format, storedRows) => writeSuperkeyTable(currentDevice, table, format, storedRows),
           writePerKey: list => writePerKeyOverrides(currentDevice, list),
+          writeLedCustom: table => writeLedCustom(currentDevice, table),
         },
         saveInput,
       );
@@ -1970,6 +2108,15 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
       if (saved.perKeySaved !== undefined) {
         perKeySaved.current = saved.perKeySaved;
+      }
+
+      /* Keep what the keyboard may hold of the LED slots also after a failed step, and show the table without the freed slots */
+      if (saved.ledCustom) {
+        ledSaved.current = saved.ledCustom.saved;
+
+        if (saved.ledCustom.table !== ledTable) {
+          setLedTable(saved.ledCustom.table);
+        }
       }
 
       if (saved.done.includes("perKey") && saveInput.perKey) {
@@ -2065,6 +2212,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             hasQuickTap: Boolean(store.get("capabilities.quickTap")),
             perKey: perKeyState === "failed",
             superkeys: superkeysState !== "unsupported",
+            ledCustom: ledState !== "unsupported",
           });
 
           if (unreadable !== null) {
@@ -2492,6 +2640,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     altRepeat?: AltRepeatLayerEntry[];
     holdMods?: unknown;
     superkeys?: unknown;
+    ledCustom?: unknown;
   }): boolean => {
     if (savePending()) {
       return false;
@@ -2650,6 +2799,39 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       }
     }
 
+    let nextLedTable: LedCustomSlot[] | null = null;
+
+    /* Give the imported LED keys slots with the file's settings, keeping the slots the other layers, their rules and the keyboard use */
+    if (replacesLayer) {
+      const customIdx = keymap.onlyCustom ? currentLayer : currentLayer - keymap.default.length;
+      const rules = nextRules ?? altRepeatRules;
+      const importedCodes = cleanKeymap.map(key => key.keyCode).concat(rules.filter(rule => rule.layer === currentLayer).map(rule => rule.output));
+      const fitted = fitLedImport(
+        importedCodes,
+        {
+          custom: draftCodes(keymap.custom).map((codes, idx) => (idx === customIdx ? [] : codes)),
+          rules: rules.filter(rule => rule.layer !== currentLayer),
+        },
+        data.ledCustom,
+      );
+
+      if (fitted === null) {
+        return false;
+      }
+
+      if (fitted.remap.size > 0) {
+        cleanKeymap = cleanKeymap.map(key => (fitted.remap.has(key.keyCode) ? keymapDB.parse(fitted.remap.get(key.keyCode)) : key));
+
+        if (rules.some(rule => rule.layer === currentLayer && fitted.remap.has(rule.output))) {
+          nextRules = rules.map(rule =>
+            rule.layer === currentLayer && fitted.remap.has(rule.output) ? { ...rule, output: fitted.remap.get(rule.output) } : rule,
+          );
+        }
+      }
+
+      nextLedTable = fitted.table === ledTable ? null : fitted.table;
+    }
+
     const lNames = layerNames.slice();
     if (data.layerNames !== null) {
       if (data.layerName && currentLayer) {
@@ -2697,6 +2879,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
     if (nextSuperkeys !== null) {
       setSuperkeys(withGeneratedNames(nextSuperkeys, labelCtx));
+    }
+
+    if (nextLedTable !== null) {
+      setLedTable(nextLedTable);
     }
 
     setModified(true);
@@ -2884,6 +3070,31 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             nextSuperkeys = remapped.table === table ? null : remapped.table;
           }
 
+          /* Give the imported LED keys slots with the file's settings, keeping the slots the kept rules and the keyboard use */
+          const ledFitted = fitLedImport(
+            draftCodes(importedKeymap.custom)
+              .flat()
+              .concat((nextRules ?? []).map(rule => rule.output)),
+            { custom: [], rules: nextRules === null ? altRepeatRules : [] },
+            layers.ledCustom,
+          );
+
+          if (ledFitted === null) {
+            return;
+          }
+
+          if (ledFitted.remap.size > 0) {
+            importedKeymap.custom = importedKeymap.custom.map(layer =>
+              layer.map(key => (ledFitted.remap.has(key.keyCode) ? keymapDB.parse(ledFitted.remap.get(key.keyCode)) : key)),
+            );
+
+            if (nextRules !== null) {
+              nextRules = nextRules.map(rule =>
+                ledFitted.remap.has(rule.output) ? { ...rule, output: ledFitted.remap.get(rule.output) } : rule,
+              );
+            }
+          }
+
           /* Show the keyboard's default layers, since a save never writes them */
           importedKeymap.default = keymap.default;
 
@@ -2902,6 +3113,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
           if (nextRules !== null) {
             replaceRules(nextRules);
+          }
+
+          if (ledFitted.table !== ledTable) {
+            setLedTable(ledFitted.table);
           }
 
           editHoldMods(fitted.table);
@@ -2979,6 +3194,12 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                   .map((key: KeyType) => key.keyCode)
                   .concat(altRepeatRules.filter(rule => rule.layer === currentLayer).map(rule => rule.output)),
               ),
+            }
+          : {}),
+        /* Carry the LED slot settings, so an import gives the keys slots with the same effects */
+        ...(ledReady
+          ? {
+              ledCustom: ledCustomExport(ledTable, (localLayerData ?? []).map((key: KeyType) => key.keyCode).concat(layerRuleOutputs)),
             }
           : {}),
         /* Carry the Superkey definitions, so an import gives the keys their own copies */
@@ -3202,12 +3423,18 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         return { ...key, label: superkeyFace(superkeys?.[slot]?.actions, slot, labelCtx), faceSlots };
       });
     }
+
+    /* Label custom LED effect keys from the draft table */
+    if (localLayerData !== undefined) {
+      const table = ledState === "ready" ? ledTable : null;
+      localLayerData = localLayerData.map(key => withLedLabel(key, table));
+    }
     // log.info("SAVING USEFFECT!!:", localLayerData, localIsReadOnly, localShowDefaults, cLayer);
     setLayerData(localLayerData);
     setIsReadOnly(localIsReadOnly);
     setShowDefaults(localShowDefaults);
     setCurrentLayer(cLayer);
-  }, [keymap, currentLayer, macros, superkeys, labelCtx]);
+  }, [keymap, currentLayer, macros, superkeys, labelCtx, ledTable, ledState]);
 
   useEffect(() => {
     setAltRepeatTab(-1);
@@ -3257,6 +3484,40 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
     loadHoldMods(currentDevice, currentDevice.device.info.product);
   }, [capabilitiesRefresh, holdModsState, state, loadHoldMods, holdSync]);
+
+  /* Reload the LED table when App reads the capabilities again and they disagree with it, or while its last load failed */
+  const seenLedRefresh = useRef(capabilitiesRefresh);
+
+  useEffect(() => {
+    if (capabilitiesRefresh === seenLedRefresh.current) {
+      return;
+    }
+
+    seenLedRefresh.current = capabilitiesRefresh;
+    const { currentDevice } = state;
+    const listed = Boolean(store.get("capabilities.ledCustom"));
+    const agrees = ledState !== "failed" && listed === (ledState !== "unsupported");
+
+    if (agrees || !currentDevice || currentDevice.isClosed || saving.current) {
+      return;
+    }
+
+    const reload = async () => {
+      const loaded = await loadLedTable(currentDevice, listed);
+
+      /* Protect the slots of the draft and of the keymap the hold table last read, since the keymap is not read again here */
+      const layers = [...ledDraftRefs(draftCodes(keymap.custom), altRepeatRules).layers, holdSaved.current.keymapCodes];
+      ledSaved.current =
+        loaded.state === "ready"
+          ? withLedBaseline(loaded.table, { layers, rules: altRepeatRules, combos: combosState === "ready" ? strictCombos : [] })
+          : EMPTY_LED_SAVED;
+      setLedTable(loaded.table);
+      setLedState(loaded.state);
+    };
+
+    reload().catch(error => log.warn("[LayoutEditor] led.custom reload failed", error));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capabilitiesRefresh, ledState, state]);
 
   /* Retry a load that could not read the keyboard or the table once each time a key is picked, so the row shows without a rescan */
   useEffect(() => {
@@ -3579,6 +3840,22 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     return multiActionFor(cellCode, "cell", onMultiActionChange);
   };
 
+  /* The custom LED effect block for the selected cell, only while every slot reference is known */
+  const cellLedCustom = (): LedCustomPicker | undefined => {
+    if (!ledReady || isReadOnly || currentKeyIndex === -1 || currentKeyIndex >= ledIndexStart) {
+      return undefined;
+    }
+
+    const slot = ledSlotOf(defaultKeyCode);
+    const entry = slot === null ? undefined : ledTable[slot];
+
+    return {
+      current: entry !== undefined && entry.type !== LED_TYPE_UNUSED ? entry : null,
+      onSelect: onCellLedSelect,
+      disabledReason: isSaving ? i18n.editor.multiAction.saving : undefined,
+    };
+  };
+
   /* The Multi-action tab for the selected previous-key tab. Keyboards without Superkeys have none, since a tab can't hold a dual-function key */
   const ruleMultiAction = (): MultiActionProps | undefined => {
     if (selectedRule === null || superkeysState === "unsupported") {
@@ -3734,6 +4011,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                     keepHold={cellHoldProps.keepHold}
                     holdMods={cellHoldProps.holdMods}
                     multiAction={cellMultiAction()}
+                    ledCustom={cellLedCustom()}
                   />
                 )}
                 {/* Offer the combo picker without Autoshift, since a rule output runs like a combo action. Layer hold needs v1.2.3 */}
