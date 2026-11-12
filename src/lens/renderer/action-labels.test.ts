@@ -394,6 +394,16 @@ describe("comboOutputLabel", () => {
     expect(comboOutputLabel(53853, ctx())).toBe("M2");
   });
 
+  test("LedSlot_ItsEffect", () => {
+    const ledCustom = [{ type: 2, r: 0, g: 0, b: 0, speed: 40 }];
+
+    expect(comboOutputLabel(17155, ctx("us", "mac", { ledCustom }))).toBe("LED Rainbow");
+  });
+
+  test("LedSlotWithoutTable_SlotNumber", () => {
+    expect(comboOutputLabel(17156, ctx())).toBe("LED SLOT 2");
+  });
+
   test("Superkey_ItsName", () => {
     expect(comboOutputLabel(53981, ctx("us", "mac", { superkeyNames: ["", "Nav"] }))).toBe("Nav");
   });

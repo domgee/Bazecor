@@ -2,6 +2,13 @@ import type { LensCombo, LensMacroAction, PaletteColor } from "../shared/types";
 import { MACRO_STEP, parseMacroBytes, rawToBytes, stepToAction, walkMacroSteps } from "../../api/parsers/macroSteps";
 import type { MacroStep } from "../../api/parsers/macroSteps";
 import { COMBO_LAYER_ANY } from "../shared/types";
+import { parseLedCustomRaw } from "../../api/parsers/ledCustom";
+import type { LedCustomSlot } from "../../api/parsers/ledCustom";
+
+/* `led.custom` wire format, as in Bazecor src/api/parsers/ledCustom.ts. Empty for a missing or malformed reply */
+export function parseLedCustom(raw: string): LedCustomSlot[] {
+  return parseLedCustomRaw(raw) ?? [];
+}
 
 export function parseKeymap(raw: string, keysPerLayer: number): number[][] {
   const nums = raw.trim().split(/\s+/).map(Number);

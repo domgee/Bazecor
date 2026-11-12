@@ -2,7 +2,8 @@
 import type { FunctionIconName, LensMacroAction } from "../shared/types";
 import type { SymbolOverrides } from "./layouts";
 import { MACRO_STEP } from "../../api/parsers/macroSteps";
-import { decodeKey, macroIndex, superkeyIndex } from "./keycodes";
+import { decodeKey, ledCustomLabel, macroIndex, superkeyIndex } from "./keycodes";
+import type { LedCustomSlot } from "../../api/parsers/ledCustom";
 
 /* Short text for Superkey actions and macros on the expanded Lens key faces */
 
@@ -33,6 +34,8 @@ export interface LabelContext {
   macroNames: string[];
   superkeyNames: string[];
   modStyle: ModStyle;
+  /* The custom LED effect slots, so slot keys read as their effect */
+  ledCustom?: ReadonlyArray<LedCustomSlot>;
 }
 
 export interface CompactLabel {
@@ -233,6 +236,11 @@ export function compactActionLabel(code: number, ctx: LabelContext): CompactLabe
   const macro = macroIndex(code);
   if (macro !== null) {
     return { text: ctx.macroNames[macro] || `M${macro + 1}` };
+  }
+
+  const led = ledCustomLabel(code, ctx.ledCustom);
+  if (led !== null) {
+    return { text: `LED ${led.subtitle}` };
   }
 
   const d = decodeKey(code, ctx.overrides, ctx.layerNames, ctx.macroNames, ctx.symbols);

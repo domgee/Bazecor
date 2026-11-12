@@ -1,3 +1,5 @@
+import type { LedCustomSlot } from "../../api/parsers/ledCustom";
+
 export interface PaletteColor {
   r: number;
   g: number;
@@ -46,6 +48,8 @@ export interface KeyboardModel {
   layerNames: string[];
   /** Combos from `combos.map`. Empty on firmware without the Combos plugin. */
   combos: LensCombo[];
+  /** Custom LED effect slots from `led.custom`, 16 entries. Missing or empty on firmware without them */
+  ledCustom?: LedCustomSlot[];
 }
 
 /** Reference to the backup folder Lens reads the keyboard model from. */

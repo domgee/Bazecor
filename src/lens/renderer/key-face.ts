@@ -1,5 +1,5 @@
 import type { DecodedKey, KeyboardModel } from "../shared/types";
-import { decodeKey, layoutOverrides, superkeyIndex, symbolOverrides } from "./keycodes";
+import { decodeKey, layoutOverrides, ledCustomLabel, superkeyIndex, symbolOverrides } from "./keycodes";
 import { macroDisplayNames, modStyleFor, superkeySlotLabels } from "./action-labels";
 import type { LabelContext, ModStyle, SlotLabels } from "./action-labels";
 
@@ -35,6 +35,7 @@ export function faceContext(
     macroNames: model.macroNames ?? [],
     superkeyNames: model.superkeyNames ?? [],
     modStyle: options.modStyle ?? modStyleFor(typeof navigator === "undefined" ? "" : navigator.userAgent),
+    ledCustom: model.ledCustom ?? [],
   };
 
   return {
@@ -53,6 +54,12 @@ export function keyFace(code: number, ctx: FaceContext): KeyFace {
       label: { primary: "SUPER", subtitle: ctx.superkeyNames[sk] || `SK${sk + 1}`, hold: "" },
       slots: ctx.expandSuperkeys ? superkeySlotLabels(ctx.superkeys[sk], ctx) : null,
     };
+  }
+
+  const led = ledCustomLabel(code, ctx.ledCustom);
+
+  if (led !== null) {
+    return { label: led, slots: null };
   }
 
   return { label: decodeKey(code, ctx.overrides, ctx.layerNames, ctx.macroNames, ctx.symbols), slots: null };

@@ -1,5 +1,7 @@
 import type { DecodedKey, FunctionIconName } from "../shared/types";
 import type { SymbolOverrides } from "./layouts";
+import { LED_CUSTOM_FIRST, LED_CUSTOM_LAST, ledSlotOf, ledTypeName } from "../../api/parsers/ledCustom";
+import type { LedCustomSlot } from "../../api/parsers/ledCustom";
 
 /* Firmware keycode → display label decoding for the Lens overlay.
  *
@@ -285,6 +287,13 @@ function modBitsToArray(modByte: number): string[] {
   return mods;
 }
 
+/** The face of a custom LED effect slot from its table entry, or null when the code is no slot key or its slot is unused. */
+export function ledCustomLabel(code: number, table: ReadonlyArray<LedCustomSlot> | undefined): DecodedKey | null {
+  const slot = ledSlotOf(code);
+  const name = slot === null ? null : ledTypeName(table?.[slot]?.type ?? 0);
+  return name === null ? null : { primary: "LED", subtitle: name, hold: "" };
+}
+
 export function superkeyIndex(code: number): number | null {
   if (code >= SUPERKEY_MIN && code <= SUPERKEY_MAX) return code - SUPERKEY_MIN;
   return null;
@@ -380,6 +389,11 @@ export function decodeKey(
   if (dualMod) return dualMod;
 
   if (code >= SUPERKEY_MIN && code <= SUPERKEY_MAX) return { primary: `SK${code - SUPERKEY_MIN + 1}`, hold: "" };
+
+  // Custom LED effect slots without their table, as Bazecor's static labels
+  if (code >= LED_CUSTOM_FIRST && code <= LED_CUSTOM_LAST) {
+    return { primary: "LED", subtitle: `SLOT ${code - LED_CUSTOM_FIRST + 1}`, hold: "" };
+  }
 
   if (code >= AUTOSHIFT_MIN && code <= AUTOSHIFT_MAX) {
     const base = baseLabelFor(code - AUTOSHIFT_MIN, layout);

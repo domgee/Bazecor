@@ -11,6 +11,7 @@ import {
   parseNames,
   parseCombos,
   parseMacros,
+  parseLedCustom,
 } from "./parsers";
 
 interface BazecorNeuronLayer {
@@ -90,6 +91,7 @@ export function parseBackupToModel(backupRaw: string, product: string, keyboardT
     macros: parseMacros(macrosRaw),
     layerNames,
     combos: parseCombos(combosRaw),
+    ledCustom: parseLedCustom(getCommandData(backup, "led.custom")),
   };
 }
 

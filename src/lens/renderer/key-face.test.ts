@@ -129,3 +129,25 @@ describe("decodeKey", () => {
     expect(decodeKey(53594)).toEqual({ primary: "REPEAT", hold: "" });
   });
 });
+
+describe("custom LED effect slots", () => {
+  const SLOT_1 = 17155;
+  const SLOT_2 = 17156;
+  const ledCustom = [{ type: 1, r: 255, g: 0, b: 0, speed: 0 }];
+
+  test("SlotWithSettings_LedOverItsEffect", () => {
+    const ctx = faceContext(createModel({ ledCustom }), "us", undefined);
+
+    expect(keyFace(SLOT_1, ctx)).toEqual({ label: { primary: "LED", subtitle: "Solid", hold: "" }, slots: null });
+  });
+
+  test("UnusedSlotOrNoTable_LedOverSlotNumber", () => {
+    const withTable = faceContext(createModel({ ledCustom }), "us", undefined);
+    const withoutTable = faceContext(createModel(), "us", undefined);
+
+    expect([keyFace(SLOT_2, withTable).label, keyFace(SLOT_1, withoutTable).label]).toEqual([
+      { primary: "LED", subtitle: "SLOT 2", hold: "" },
+      { primary: "LED", subtitle: "SLOT 1", hold: "" },
+    ]);
+  });
+});
