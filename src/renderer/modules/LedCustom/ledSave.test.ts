@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { emptyLedTable } from "../../../api/parsers/ledCustom";
 import { serializeCombos } from "../../../api/parsers/combos";
 import { serializeAltRepeat } from "../../../api/parsers/altRepeat";
-import { EMPTY_LED_SAVED, collectLedSlots, keyboardLedSources, loadLedTable, protectedLedSlots, withLedBaseline } from "./ledSave";
+import { EMPTY_LED_SAVED, collectLedSlots, keyboardLedSources, ledSlotsKnown, loadLedTable, protectedLedSlots, withLedBaseline } from "./ledSave";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -62,5 +62,22 @@ describe("keyboardLedSources", () => {
 
   test("gives nothing for unknown forms", () => {
     expect(keyboardLedSources(null, null)).toEqual({ combos: [], rules: [] });
+  });
+});
+
+describe("ledSlotsKnown", () => {
+  const known = { table: "ready" as const, keymap: true, combos: true, rules: true };
+
+  test("hands out slots only when the table and every reference are known", () => {
+    expect(ledSlotsKnown(known)).toBe(true);
+  });
+
+  test.each([
+    ["the table failed", { table: "failed" as const }],
+    ["the keymap is unknown", { keymap: false }],
+    ["a failed combos write left the combos unknown", { combos: false }],
+    ["a failed rules write left the rules unknown", { rules: false }],
+  ])("hands out none when %s", (_, change) => {
+    expect(ledSlotsKnown({ ...known, ...change })).toBe(false);
   });
 });

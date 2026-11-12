@@ -107,6 +107,7 @@ import {
   LedSavedState,
   keyboardLedSources,
   ledRefSlots,
+  ledSlotsKnown,
   loadLedTable,
   protectedLedSlots,
   withLedBaseline,
@@ -1558,7 +1559,12 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   };
 
   /* Give out LED slots only when the table and every key, rule and combo that can use one are known */
-  const ledReady = ledState === "ready" && keymapKnown && combosState !== "failed" && altRepeatState !== "failed";
+  const ledReady = ledSlotsKnown({
+    table: ledState,
+    keymap: keymapKnown,
+    combos: combosState !== "failed",
+    rules: altRepeatState !== "failed" && (altRepeatState !== "ready" || savedAltRepeat.current !== null),
+  });
 
   /* The LED slot references of a draft with these custom layers and rules, default layers and combos included */
   const ledDraftRefs = (custom: number[][], rules: AltRepeatRule[]) => ({

@@ -48,6 +48,7 @@ import {
   EMPTY_LED_SAVED,
   LedSavedState,
   keyboardLedSources,
+  ledSlotsKnown,
   loadLedTable,
   protectedLedSlots,
   withLedBaseline,
@@ -482,7 +483,12 @@ function ComboEditor(props: ComboEditorProps) {
     superkeys.slice(0, MAX_ACTIVE_SUPERKEYS).map(superkey => normalizeActions(superkey.actions));
 
   /* Give out LED slots only when the table and every key, rule and combo that can use one are known */
-  const ledReady = ledState === "ready" && keymapKnown && combosKnown && rulesState !== "failed";
+  const ledReady = ledSlotsKnown({
+    table: ledState,
+    keymap: keymapKnown,
+    combos: combosKnown && savedCombos.current !== null,
+    rules: rulesState !== "failed",
+  });
 
   /* The LED slot references of the layout with these combos */
   const ledDraftRefs = (list: ComboType[]) => ({

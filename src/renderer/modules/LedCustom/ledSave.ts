@@ -117,6 +117,11 @@ export const keyboardLedSources = (
   rules: parseAltRepeatRaw(savedRules) ?? [],
 });
 
+/** True when slots may be handed out: the table is loaded and every keymap, rule and combo that may use a slot is known. `rulesKnown` and
+ * `combosKnown` are false while a failed write leaves what the keyboard holds unknown, until the next successful write or load. */
+export const ledSlotsKnown = (known: { table: LedCustomState; keymap: boolean; combos: boolean; rules: boolean }): boolean =>
+  known.table === "ready" && known.keymap && known.combos && known.rules;
+
 /** The table and its state at an editor load. A table `help` lists that can not be read is "failed". */
 export const loadLedTable = async (
   device: LedCustomDevice,
