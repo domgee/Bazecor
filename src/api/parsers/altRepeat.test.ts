@@ -384,6 +384,16 @@ describe("altRepeatDefaultBlock", () => {
     expect(altRepeatDefaultBlock(code)).toBeNull();
   });
 
+  test("the Repeat key is blocked unless the firmware applies rules on it", () => {
+    expect(altRepeatDefaultBlock(53594, [], false, false)).toBe("repeatkey");
+    expect(altRepeatDefaultBlock(53594, [], false, true)).toBeNull();
+  });
+
+  test("the rest of the unsupported range stays blocked when the firmware applies rules on the Repeat key", () => {
+    expect(altRepeatDefaultBlock(53593, [], false, true)).toBe("unsupported");
+    expect(altRepeatDefaultBlock(53595, [], false, true)).toBe("unsupported");
+  });
+
   test("replacesTap is true for dual-function keys and Superkeys", () => {
     expect(replacesTap(49175)).toBe(true);
     expect(replacesTap(53980, [superkey([6, 224])])).toBe(true);

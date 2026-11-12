@@ -761,6 +761,7 @@ export const multiActionBreaks = (
   combos: ComboType[],
   rules: AltRepeatRule[],
   unique = false,
+  repeatKeyRules = false,
 ): MultiActionBreaks => {
   const superkeysBefore = asSuperkeys(before.table);
   const superkeysAfter = asSuperkeys(after.table);
@@ -792,9 +793,9 @@ export const multiActionBreaks = (
         }
       }
 
-      const blockAfter = altRepeatDefaultBlock(code, superkeysAfter, unique);
+      const blockAfter = altRepeatDefaultBlock(code, superkeysAfter, unique, repeatKeyRules);
 
-      if (blockAfter !== null && altRepeatDefaultBlock(previous, superkeysBefore, unique) === null) {
+      if (blockAfter !== null && altRepeatDefaultBlock(previous, superkeysBefore, unique, repeatKeyRules) === null) {
         const count = rulesAt(rules, layer, position).length;
         ruleCount += count;
 

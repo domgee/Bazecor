@@ -645,6 +645,26 @@ describe("multiActionBreaks", () => {
       });
     });
   });
+
+  test("a Repeat cell turned into a plain Superkey breaks its rules only when the firmware applies rules on the Repeat key", () => {
+    // 53594 is the Repeat key
+    const before = { customLayers: [[53594]], table: [IDLE], layerOffset: 1 };
+    const after = { customLayers: [[SK(0)]], table: [full(A)], layerOffset: 1 };
+    const cellRules = [rule(1, 0, B)];
+
+    expect(multiActionBreaks(before, after, [], cellRules, false, false)).toEqual({
+      comboIndexes: [],
+      comboReason: null,
+      ruleCount: 0,
+      ruleReason: null,
+    });
+    expect(multiActionBreaks(before, after, [], cellRules, false, true)).toEqual({
+      comboIndexes: [],
+      comboReason: null,
+      ruleCount: 1,
+      ruleReason: "superkey",
+    });
+  });
 });
 
 describe("reconcileDraft", () => {

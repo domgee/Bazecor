@@ -493,8 +493,13 @@ const tapReplays = (superkey: SuperkeysType | undefined): boolean => {
 const tapRuleSuperkey = (code: number, superkeys: SuperkeysType[], unique: boolean): boolean =>
   isDualFunctionSuperkeyCode(code, superkeys, unique) && tapReplays(superkeys[code - SUPERKEY_FIRST]);
 
-/** Why a key with this default cannot have previous-key rules, or null when it can. */
-export const altRepeatDefaultBlock = (code: number, superkeys: SuperkeysType[] = [], unique = false): AltRepeatBlock | null => {
+/** Why a key with this default cannot have previous-key rules, or null when it can. Pass `repeatKeyRules` when the firmware applies them on Repeat. */
+export const altRepeatDefaultBlock = (
+  code: number,
+  superkeys: SuperkeysType[] = [],
+  unique = false,
+  repeatKeyRules = false,
+): AltRepeatBlock | null => {
   if (code === TRANSPARENT) {
     return "transparent";
   }
@@ -513,7 +518,7 @@ export const altRepeatDefaultBlock = (code: number, superkeys: SuperkeysType[] =
 
   /* Check before the unsupported range, which holds the Repeat key */
   if (isRepeatKey(code)) {
-    return "repeatkey";
+    return repeatKeyRules ? null : "repeatkey";
   }
 
   if (code >= UNSUPPORTED_FIRST && code <= UNSUPPORTED_LAST) {

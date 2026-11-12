@@ -78,6 +78,12 @@
       "minFirmware": {
         "Sonsei": "1.2.11"
       }
+    },
+    "repeatKeyRules": {
+      "description": "Previous-key tabs on the Repeat key (Sonsei fork). Shown only together with capabilities.repeatKey and capabilities.altRepeat, which come from help. v1.2.17 stores the rules but never applies them.",
+      "minFirmware": {
+        "Sonsei": "1.2.18"
+      }
     }
   }
 }

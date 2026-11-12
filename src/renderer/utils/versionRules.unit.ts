@@ -93,6 +93,10 @@ describe("hasFirmwareFeature()", () => {
     { feature: "swapHandsSuperHold", product: "Sonsei", fw: "v1.2.11", expected: true },
     { feature: "swapHandsSuperHold", product: "Sonsei", fw: "v1.3.0", expected: true },
     { feature: "swapHandsSuperHold", product: "Defy", fw: "9.9.9", expected: false },
+    { feature: "repeatKeyRules", product: "Sonsei", fw: "v1.2.17", expected: false },
+    { feature: "repeatKeyRules", product: "Sonsei", fw: "v1.2.18", expected: true },
+    { feature: "repeatKeyRules", product: "Sonsei", fw: "v1.3.0", expected: true },
+    { feature: "repeatKeyRules", product: "Defy", fw: "9.9.9", expected: false },
   ] as const)("$feature on $product $fw -> $expected", async ({ feature, product, fw, expected }) => {
     const { hasFirmwareFeature } = await loadWithBazecor("1.11.0");
     expect(hasFirmwareFeature(feature, product, fw)).toBe(expected);
