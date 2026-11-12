@@ -27,10 +27,12 @@ const Harness = ({
   enabled = true,
   callbacks,
   onKeyClick,
+  onButtonClick,
 }: {
   enabled?: boolean;
   callbacks: Callbacks;
   onKeyClick: () => void;
+  onButtonClick: () => void;
 }) => {
   const areaRef = useRef<HTMLDivElement>(null);
   const handlers = useKeySwapDrag({ enabled, areaRef, ...callbacks });
@@ -46,6 +48,9 @@ const Harness = ({
         </g>
       </svg>
       <div data-testid="outside" />
+      <button type="button" data-testid="button" onClick={onButtonClick}>
+        Picker key
+      </button>
     </div>
   );
 };
@@ -66,11 +71,14 @@ const setup = (props: { enabled?: boolean; begin?: boolean } = {}) => {
     onCancel: vi.fn(),
   };
   const onKeyClick = vi.fn();
-  const view = render(<Harness enabled={props.enabled} callbacks={callbacks} onKeyClick={onKeyClick} />);
-  const rerender = (enabled: boolean) =>
-    view.rerender(<Harness enabled={enabled} callbacks={callbacks} onKeyClick={onKeyClick} />);
+  const onButtonClick = vi.fn();
+  const harness = (enabled?: boolean) => (
+    <Harness enabled={enabled} callbacks={callbacks} onKeyClick={onKeyClick} onButtonClick={onButtonClick} />
+  );
+  const view = render(harness(props.enabled));
+  const rerender = (enabled: boolean) => view.rerender(harness(enabled));
 
-  return { callbacks, onKeyClick, view, rerender };
+  return { callbacks, onKeyClick, onButtonClick, view, rerender };
 };
 
 const press = (x = 0) => {
@@ -280,6 +288,21 @@ describe("useKeySwapDrag", () => {
     fireEvent.click(screen.getByTestId("source"));
 
     expect(onKeyClick).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ["pointercancel", () => window.dispatchEvent(new TestPointerEvent("pointercancel", { pointerId: 1 }))],
+    ["blur", () => window.dispatchEvent(new Event("blur"))],
+  ])("a press off the keys after a drag ended by %s keeps its click", (_, end) => {
+    const { callbacks, onButtonClick } = setup();
+    startDrag();
+    act(end);
+
+    fireEvent.pointerDown(screen.getByTestId("button"), { clientX: 0, button: 0, buttons: 1, pointerId: 1 });
+    fireEvent.click(screen.getByTestId("button"));
+
+    expect(callbacks.onCancel).toHaveBeenCalledTimes(1);
+    expect(onButtonClick).toHaveBeenCalledTimes(1);
   });
 
   test("a plain click reaches the key", () => {

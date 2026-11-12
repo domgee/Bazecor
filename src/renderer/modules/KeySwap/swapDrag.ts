@@ -92,6 +92,8 @@ export interface SwapDrag {
   reset: () => void;
   /* True once after a drag, so the click that ends it does not select a key */
   consumeClick: () => boolean;
+  /* Drop a suppression no click used, as after a drag that ended outside the area */
+  clearClick: () => void;
   isDragging: () => boolean;
   isActive: () => boolean;
 }
@@ -214,6 +216,9 @@ export const createSwapDrag = (deps: SwapDragDeps): SwapDrag => {
       const consumed = suppressClick;
       suppressClick = false;
       return consumed;
+    },
+    clearClick: () => {
+      suppressClick = false;
     },
     isDragging: () => phase === "dragging",
     isActive: () => phase !== "idle",
@@ -373,6 +378,11 @@ export const createKeySwapDragController = (latest: { current: KeySwapDragOption
   const onPointerDown = (event: React.PointerEvent) => {
     const options = latest.current;
     const area = options.areaRef.current;
+
+    /* Clear on every press, since a press off the keys never reaches down() and would otherwise lose its click */
+    if (gesture === null) {
+      machine.clearClick();
+    }
 
     if (!options.enabled || gesture !== null || area === null || event.button !== 0 || event.pointerType === "touch") {
       return;
