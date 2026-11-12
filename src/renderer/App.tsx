@@ -56,6 +56,7 @@ import { hasRepeatKeyMarker } from "../hw/repeatkey";
 import { hasAltRepeatCommand } from "../api/parsers/altRepeat";
 import { hasHoldModsCommand } from "../api/parsers/holdMods";
 import { hasKeyOverridesCommand } from "../api/parsers/keyOverrides";
+import { hasLedCustomCommand } from "../api/parsers/ledCustom";
 import { hasConditionalLayersCommand } from "../api/parsers/conditionalLayers";
 import { hasQuickTapCommand } from "../api/parsers/quickTap";
 import { hasDualFunctionCommands } from "../api/parsers/dualFunction";
@@ -79,7 +80,7 @@ const store = Store.getStore();
 // The minimum FW per product for each capability lives in src/versionRules.json.
 // Also reads help for capabilities.layerHold, capabilities.holdMods, capabilities.altRepeat, capabilities.keyOverrides, capabilities.quickTap,
 // capabilities.dualFunction, capabilities.conditionalLayers, capabilities.swapHands, capabilities.macroUpgrade, capabilities.macroSteps,
-// capabilities.uniqueSuperkeys and capabilities.repeatKey, which official firmware of the same version lacks.
+// capabilities.uniqueSuperkeys, capabilities.repeatKey and capabilities.ledCustom, which official firmware of the same version lacks.
 // capabilities.uniqueSuperkeys is true or false only after a successful help read and "unknown" when help fails or replies nothing.
 const detectFirmwareCapabilities = async (currentDevice: Device) => {
   try {
@@ -102,7 +103,8 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
   }
 
   /* Detect Hold until layer change and its held modifiers table, previous-key rules, key overrides, quick tap, dual-function options,
-   * conditional layers, swap hands, the macro options, the highest macro step type, unique Superkeys and the Repeat key through help,
+   * conditional layers, swap hands, the macro options, the highest macro step type, unique Superkeys, the Repeat key and the custom LED
+   * effects through help,
    * because official firmware of the same version lacks them.
    * capabilities.holdMods is informational, since the Layout editor confirms the table with its own help read */
   try {
@@ -140,6 +142,9 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     const repeatKey = hasRepeatKeyMarker(help);
     store.set("capabilities.repeatKey", repeatKey);
     log.info(`[Capabilities] repeatKey -> available: ${repeatKey}`);
+    const ledCustom = hasLedCustomCommand(help);
+    store.set("capabilities.ledCustom", ledCustom);
+    log.info(`[Capabilities] ledCustom -> available: ${ledCustom}`);
     const macroSteps = await readMacroStepLimit(currentDevice, help);
     store.set("capabilities.macroSteps", macroSteps);
     log.info(`[Capabilities] macroSteps -> highest step: ${macroSteps}`);
@@ -155,6 +160,7 @@ const detectFirmwareCapabilities = async (currentDevice: Device) => {
     store.set("capabilities.swapHands", false);
     store.set("capabilities.macroUpgrade", false);
     store.set("capabilities.repeatKey", false);
+    store.set("capabilities.ledCustom", false);
     // Keep the Superkey mode unknown so a save never merges or skips the clash check on a guess
     store.set("capabilities.uniqueSuperkeys", "unknown");
     store.set("capabilities.macroSteps", MACRO_STEP_LIMIT_CLASSIC);

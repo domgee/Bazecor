@@ -240,6 +240,36 @@ describe("key overrides", () => {
   });
 });
 
+describe("custom LED effects", () => {
+  test("the Sonsei lists led.custom in help, erasable and empty", () => {
+    expect(SonseiWireless.virtual.help.data.split("\r\n")).toContain("led.custom");
+    expect(SonseiWireless.virtual["led.custom"].eraseable).toBe(true);
+    expect(SonseiWireless.virtual["led.custom"].data).toBe("0");
+  });
+
+  test.each([
+    ["Defy wireless", DefyWireless],
+    ["Raise 2 ANSI", Raise2ANSI],
+  ])("the %s does not", (_, template) => {
+    expect(template.virtual.help.data.split("\r\n")).not.toContain("led.custom");
+    expect(template.virtual["led.custom"]).toBeUndefined();
+  });
+
+  test("addMissingVirtualCommands adds it to a Sonsei file saved before it", () => {
+    const vk: VirtualType = JSON.parse(JSON.stringify(SonseiWireless));
+    delete vk.virtual["led.custom"];
+    vk.virtual.help.data = vk.virtual.help.data
+      .split("\r\n")
+      .filter(c => c !== "led.custom")
+      .join("\r\n");
+
+    const added = addMissingVirtualCommands(vk);
+
+    expect(added).toEqual(["led.custom"]);
+    expect(vk.virtual.help.data.split("\r\n")).toContain("led.custom");
+  });
+});
+
 describe("quick tap", () => {
   test("the Sonsei lists qukeys.quickTapTerm in help, erasable and off", () => {
     expect(SonseiWireless.virtual.help.data.split("\r\n")).toContain("qukeys.quickTapTerm");

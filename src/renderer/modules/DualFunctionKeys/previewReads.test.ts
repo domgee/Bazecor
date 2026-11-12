@@ -205,6 +205,22 @@ describe("preview reads", () => {
       expect(calls).toBe(2);
     });
 
+    test("block the backup while led.custom fails twice", async () => {
+      const { device, sent } = deviceWith({ "led.custom": "error" });
+
+      const unreadable = await unreadableBeforeBackup(device, { previews: false, hasQuickTap: false, perKey: false, ledCustom: true });
+
+      expect(unreadable).toBe("led.custom");
+      expect(sent).toEqual(["led.custom", "led.custom"]);
+    });
+
+    test("let the backup run when led.custom reads", async () => {
+      const { device, sent } = deviceWith({ "led.custom": "1 5 0 0 0 0" });
+
+      expect(await unreadableBeforeBackup(device, { previews: false, hasQuickTap: false, perKey: false, ledCustom: true })).toBeNull();
+      expect(sent).toEqual(["led.custom"]);
+    });
+
     test("read only qukeys.perKey when only its load failed", async () => {
       const { device, sent } = deviceWith(READABLE);
 

@@ -181,6 +181,64 @@ describe("Backup restore of the dual-function options", () => {
   });
 });
 
+describe("Backup restore of the custom LED effects", () => {
+  const LED_HELP = "keymap.custom\r\nled.custom";
+
+  test("Commands keeps led.custom in the backup", async () => {
+    const device = { command: async () => LED_HELP } as unknown as Device;
+
+    expect(await Backup.Commands(device)).toContain("led.custom");
+  });
+
+  test("restoreBackup clears the table for a backup that predates it", async () => {
+    const { device, keyboard } = sonsei({ help: LED_HELP, "led.custom": "1 1 255 0 0 0" });
+
+    const restored = await Backup.restoreBackup([], "neuron", [{ command: "keymap.custom", data: "1" }] as never, device);
+
+    expect(restored).toBe(true);
+    expect(keyboard["led.custom"]).toBe("0");
+  });
+
+  test("restoreBackup restores the backup's table", async () => {
+    const { device, keyboard } = sonsei({ help: LED_HELP, "led.custom": "1 1 255 0 0 0" });
+    const backup = [
+      { command: "keymap.custom", data: "1" },
+      { command: "led.custom", data: "2 0 0 0 0 0 5 0 0 0 0" },
+    ];
+
+    const restored = await Backup.restoreBackup([], "neuron", backup as never, device);
+
+    expect(restored).toBe(true);
+    expect(keyboard["led.custom"]).toBe("2 0 0 0 0 0 5 0 0 0 0");
+  });
+
+  test("restoreVirtual clears the table for a file that predates it", async () => {
+    const { device, keyboard } = sonsei({ help: LED_HELP, "led.custom": "1 1 255 0 0 0" });
+    const virtual = { device: { info: { product: "Sonsei" } }, virtual: { "keymap.custom": { data: "1", eraseable: true } } };
+
+    const restored = await Backup.restoreVirtual(virtual as never, device);
+
+    expect(restored).toBe(true);
+    expect(keyboard["led.custom"]).toBe("0");
+  });
+
+  test("restoreVirtual restores the file's table", async () => {
+    const { device, keyboard } = sonsei({ help: LED_HELP, "led.custom": "0" });
+    const virtual = {
+      device: { info: { product: "Sonsei" } },
+      virtual: {
+        "keymap.custom": { data: "1", eraseable: true },
+        "led.custom": { data: "1 2 0 0 0 120", eraseable: true },
+      },
+    };
+
+    const restored = await Backup.restoreVirtual(virtual as never, device);
+
+    expect(restored).toBe(true);
+    expect(keyboard["led.custom"]).toBe("1 2 0 0 0 120");
+  });
+});
+
 describe("Backup restore of macros with new steps", () => {
   const HELP = "keymap.custom\r\nmacros.map\r\nqukeys.dualFunction\r\nqukeys.perKey";
   const UPGRADED = "14 140 8 4 0 0";

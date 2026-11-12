@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { ALT_REPEAT_COMMAND } from "../parsers/altRepeat";
 import { KEY_OVERRIDES_COMMAND } from "../parsers/keyOverrides";
+import { LED_CUSTOM_COMMAND } from "../parsers/ledCustom";
 import { QUICK_TAP_COMMAND } from "../parsers/quickTap";
 import { CONDITIONAL_LAYERS_COMMAND } from "../parsers/conditionalLayers";
 import { DUAL_FUNCTION_COMMAND, PER_KEY_COMMAND } from "../parsers/dualFunction";
@@ -31,6 +32,24 @@ describe("restoreCommand", () => {
 
     expect(noCacheCommand.mock.calls).toEqual([[KEY_OVERRIDES_COMMAND, "1 42 8 1023 0 8 76 7 1"], [KEY_OVERRIDES_COMMAND]]);
     expect(sendPlain).not.toHaveBeenCalled();
+  });
+
+  test("validates the custom LED effects and reads them back, with no plain send", async () => {
+    const { device, noCacheCommand } = mockDevice();
+    const sendPlain = vi.fn(async () => "");
+
+    await restoreCommand(device, LED_CUSTOM_COMMAND, "2 0 0 0 0 0 1 255 0 0 0", () => 60, sendPlain, "unlisted");
+
+    expect(noCacheCommand.mock.calls).toEqual([[LED_CUSTOM_COMMAND, "2 0 0 0 0 0 1 255 0 0 0"], [LED_CUSTOM_COMMAND]]);
+    expect(sendPlain).not.toHaveBeenCalled();
+  });
+
+  test("rejects when the keyboard replies error to the custom LED effects write", async () => {
+    const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "error" : "0"));
+
+    await expect(
+      restoreCommand({ noCacheCommand }, LED_CUSTOM_COMMAND, "1 1 255 0 0 0", () => 60, vi.fn(), "unlisted"),
+    ).rejects.toThrow("rejected");
   });
 
   test("validates previous-key rules and reads them back, with no plain send", async () => {

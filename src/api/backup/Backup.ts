@@ -35,6 +35,7 @@ import {
 import { isLegacyCombosReply, upgradeLegacyCombosReply } from "../parsers/combos";
 import { needsAltRepeatClear, writeAltRepeatRules } from "../parsers/altRepeat";
 import { needsKeyOverridesClear, writeKeyOverrides } from "../parsers/keyOverrides";
+import { LED_CUSTOM_COMMAND, emptyLedTable, needsLedCustomClear, writeLedCustom } from "../parsers/ledCustom";
 import { needsConditionalLayersClear, writeConditionalLayers } from "../parsers/conditionalLayers";
 import { needsQuickTapClear, writeQuickTapTerm } from "../parsers/quickTap";
 import {
@@ -462,8 +463,8 @@ export default class Backup {
     // firmware's backup carries some, so only send what the target lists in `help`.
     data = await Backup.keepSupportedCommands(data, device);
     data = data.filter(c => typeof c.command === "string" && c.command.trim().length > 0);
-    /* Clear the rules, the key overrides, the conditional layers and the per-key dual-function overrides, and turn quick tap and the
-     * dual-function options off, when the backup predates them */
+    /* Clear the rules, the key overrides, the conditional layers, the custom LED effects and the per-key dual-function overrides, and turn
+     * quick tap and the dual-function options off, when the backup predates them */
     const supported = await Backup.supportedCommands(device);
     const holdModsTarget = holdModsTargetOf(supported);
     const clearAltRepeat = needsAltRepeatClear(
@@ -487,6 +488,10 @@ export default class Backup {
       supported,
     );
     const clearPerKey = needsPerKeyClear(
+      data.map(c => c.command),
+      supported,
+    );
+    const clearLedCustom = needsLedCustomClear(
       data.map(c => c.command),
       supported,
     );
@@ -584,6 +589,10 @@ export default class Backup {
           await writePerKeyOverrides(device, []);
         }
 
+        if (clearLedCustom) {
+          await writeLedCustom(device, emptyLedTable());
+        }
+
         if (holdModsData !== undefined) {
           Backup.addRestoreWarning(await restoreHoldMods(device, String(holdModsData).trim(), holdModsTarget));
         }
@@ -637,7 +646,8 @@ export default class Backup {
             log.info(`Skipping ${command}: not supported by the connected keyboard`);
           } else if (data[command].eraseable === true) {
             // eslint-disable-next-line no-await-in-loop
-            if (!(command.includes("wireless") || command.includes("led"))) {
+            /* Skip the LED and wireless settings of the file, but restore the custom LED effects the keymap's slot keys need */
+            if (command === LED_CUSTOM_COMMAND || !(command.includes("wireless") || command.includes("led"))) {
               let commandData = data[command].data.trim();
 
               if (command === "superkeys.map" && virtualProduct === "Raise2" && deviceProduct === "Raise") {
@@ -733,8 +743,8 @@ export default class Backup {
           }
         }
 
-        /* Clear the rules, the key overrides, the conditional layers and the per-key dual-function overrides, and turn quick tap and the
-         * dual-function options off, when the file predates them */
+        /* Clear the rules, the key overrides, the conditional layers, the custom LED effects and the per-key dual-function overrides, and
+         * turn quick tap and the dual-function options off, when the file predates them */
         if (needsAltRepeatClear(Object.keys(data), supported)) {
           await writeAltRepeatRules(device, [], 0, 0);
         }
@@ -757,6 +767,10 @@ export default class Backup {
 
         if (needsPerKeyClear(Object.keys(data), supported)) {
           await writePerKeyOverrides(device, []);
+        }
+
+        if (needsLedCustomClear(Object.keys(data), supported)) {
+          await writeLedCustom(device, emptyLedTable());
         }
 
         if (holdModsData !== undefined) {
