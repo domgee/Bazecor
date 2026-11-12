@@ -599,6 +599,7 @@ const English = {
       loadFailed:
         "The custom LED effects, or the keys, rules and combos that use them, could not be read. LED effect keys can't be added or imported until they load.",
       saveFailed: "The keyboard did not store the custom LED effects.",
+      exportRefused: "The custom LED effects could not be read, so this layer's LED effect keys can't be exported. Try again once they load.",
       importEmptied: "Some LED effect keys in the file had no settings or no room on this keyboard. They were imported as empty keys.",
     },
     altRepeat: {

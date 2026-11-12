@@ -2,7 +2,16 @@ import { describe, expect, test, vi } from "vitest";
 import { emptyLedTable } from "../../../api/parsers/ledCustom";
 import { serializeCombos } from "../../../api/parsers/combos";
 import { serializeAltRepeat } from "../../../api/parsers/altRepeat";
-import { EMPTY_LED_SAVED, collectLedSlots, keyboardLedSources, ledSlotsKnown, loadLedTable, protectedLedSlots, withLedBaseline } from "./ledSave";
+import {
+  EMPTY_LED_SAVED,
+  collectLedSlots,
+  keyboardLedSources,
+  ledSavedAfterWrites,
+  ledSlotsKnown,
+  loadLedTable,
+  protectedLedSlots,
+  withLedBaseline,
+} from "./ledSave";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -79,5 +88,25 @@ describe("ledSlotsKnown", () => {
     ["a failed rules write left the rules unknown", { rules: false }],
   ])("hands out none when %s", (_, change) => {
     expect(ledSlotsKnown({ ...known, ...change })).toBe(false);
+  });
+});
+
+describe("ledSavedAfterWrites", () => {
+  const before = { ...EMPTY_LED_SAVED, table: "1 6 0 0 0 0", keymapRefs: [0], ruleRefs: [3], uncertainKeymap: [1], uncertainRules: [4] };
+
+  test("takes the rule slots of a rules write that landed and clears their uncertainty", () => {
+    const after = ledSavedAfterWrites(before, { done: ["rules"], layers: [[17155]], rules: [{ output: 17161 }] }, []);
+
+    expect(after).toEqual({ ...before, ruleRefs: [6], uncertainRules: [] });
+  });
+
+  test("takes the keymap slots of a keymap write that landed, default layers included", () => {
+    const after = ledSavedAfterWrites(before, { done: ["keymap"], layers: [[17157]], rules: [] }, [[17156]]);
+
+    expect(after).toEqual({ ...before, keymapRefs: [1, 2], uncertainKeymap: [] });
+  });
+
+  test("keeps everything when neither write landed", () => {
+    expect(ledSavedAfterWrites(before, { done: ["table"], layers: [], rules: [] }, [])).toBe(before);
   });
 });

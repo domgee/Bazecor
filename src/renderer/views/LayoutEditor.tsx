@@ -107,6 +107,7 @@ import {
   LedSavedState,
   keyboardLedSources,
   ledRefSlots,
+  ledSavedAfterWrites,
   ledSlotsKnown,
   loadLedTable,
   protectedLedSlots,
@@ -2124,6 +2125,8 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         if (saved.ledCustom.table !== ledTable) {
           setLedTable(saved.ledCustom.table);
         }
+      } else if (ledState === "ready") {
+        ledSaved.current = ledSavedAfterWrites(ledSaved.current, saved, refs.defaultLayers);
       }
 
       if (saved.done.includes("perKey") && saveInput.perKey) {
@@ -3178,6 +3181,14 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     const info = currentDevice?.device.info;
     const layerRuleOutputs =
       altRepeatState === "ready" ? altRepeatRules.filter(rule => rule.layer === currentLayer).map(rule => rule.output) : [];
+    const layerCodes = (localLayerData ?? []).map((key: KeyType) => key.keyCode).concat(layerRuleOutputs);
+
+    /* Refuse the export, since a file without the settings of its LED keys would import them as empty keys */
+    if (ledState === "failed" && layerCodes.some(isLedSlotCode)) {
+      showLedToast(i18n.editor.ledCustom.exportRefused);
+      return;
+    }
+
     const data = JSON.stringify(
       {
         device: info,
@@ -3204,11 +3215,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             }
           : {}),
         /* Carry the LED slot settings, so an import gives the keys slots with the same effects */
-        ...(ledReady
-          ? {
-              ledCustom: ledCustomExport(ledTable, (localLayerData ?? []).map((key: KeyType) => key.keyCode).concat(layerRuleOutputs)),
-            }
-          : {}),
+        ...(ledState === "ready" ? { ledCustom: ledCustomExport(ledTable, layerCodes) } : {}),
         /* Carry the Superkey definitions, so an import gives the keys their own copies */
         ...(superkeysState === "ready"
           ? {

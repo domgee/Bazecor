@@ -117,6 +117,26 @@ export const keyboardLedSources = (
   rules: parseAltRepeatRaw(savedRules) ?? [],
 });
 
+/** The saved state after a layout save that ran without the LED table. Take the slots of each keymap or rules write that landed, since a
+ * removed reference must not stay protected until the next reload. */
+export const ledSavedAfterWrites = (
+  saved: LedSavedState,
+  outcome: { done: ReadonlyArray<string>; layers: number[][]; rules: ReadonlyArray<{ output: number }> },
+  defaultLayers: number[][],
+): LedSavedState => {
+  let next = saved;
+
+  if (outcome.done.includes("keymap") || outcome.done.includes("keymapAfterGc")) {
+    next = { ...next, keymapRefs: ledRefSlots({ layers: [...defaultLayers, ...outcome.layers] }), uncertainKeymap: [] };
+  }
+
+  if (outcome.done.includes("rules")) {
+    next = { ...next, ruleRefs: ledRefSlots({ layers: [], rules: outcome.rules }), uncertainRules: [] };
+  }
+
+  return next;
+};
+
 /** True when slots may be handed out: the table is loaded and every keymap, rule and combo that may use a slot is known. `rulesKnown` and
  * `combosKnown` are false while a failed write leaves what the keyboard holds unknown, until the next successful write or load. */
 export const ledSlotsKnown = (known: { table: LedCustomState; keymap: boolean; combos: boolean; rules: boolean }): boolean =>
