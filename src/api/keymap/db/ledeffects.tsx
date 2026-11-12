@@ -17,6 +17,17 @@
 
 import React from "react";
 import { IconLEDNextEffect, IconLEDPreviousEffect, IconLEDToggleEffect } from "@Renderer/components/atoms/icons";
+import { LED_CUSTOM_FIRST, MAX_LED_SLOTS } from "../../parsers/ledCustom";
+
+/* Static labels of the custom effect slots. The editors label them from the table, and these show where it is unknown */
+const LEDCustomKeys = Array.from({ length: MAX_LED_SLOTS }, (_, slot) => ({
+  code: LED_CUSTOM_FIRST + slot,
+  labels: {
+    top: "LED",
+    primary: `SLOT ${slot + 1}`,
+    verbose: `Custom effect ${slot + 1}`,
+  },
+}));
 
 const LEDEffectsTable = {
   groupName: "LED Effect",
@@ -45,6 +56,7 @@ const LEDEffectsTable = {
         verbose: "Toggle",
       },
     },
+    ...LEDCustomKeys,
   ],
 };
 

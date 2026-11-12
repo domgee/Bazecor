@@ -34,6 +34,7 @@ import { SegmentedKeyType } from "@Renderer/types/layout";
 import { MacrosType } from "@Renderer/types/macros";
 import { SuperkeysType } from "@Renderer/types/superkeys";
 import { HoldModsPicker } from "@Renderer/types/holdMods";
+import { LedCustomPicker } from "@Renderer/types/ledCustom";
 import Store from "@Renderer/utils/Store";
 import { KeymapDB } from "../../../api/keymap";
 import { Picker } from ".";
@@ -266,6 +267,8 @@ interface Props {
   fullMouse?: boolean;
   /* Show the Multi-action tab after Keys & Shortcuts */
   multiAction?: MultiActionProps;
+  /* Show the custom LED effect block. Only Layout editor cells and combo outputs pass it */
+  ledCustom?: LedCustomPicker;
 }
 
 interface State {
@@ -291,6 +294,7 @@ function KeyPickerKeyboard(props: Props) {
     holdMods,
     fullMouse = false,
     multiAction,
+    ledCustom,
   } = props;
   const prevProps = useRef(props);
 
@@ -593,7 +597,7 @@ function KeyPickerKeyboard(props: Props) {
             </TabsContent>
             <TabsContent value="tabMedia" key="tabMedia">
               <motion.div initial="hidden" animate="visible" key="tabKeys" variants={tabVariants}>
-                <MediaAndLightTab onAddSpecial={onKeySelect} keyCode={code} disabled={disable} />
+                <MediaAndLightTab onAddSpecial={onKeySelect} keyCode={code} disabled={disable} ledCustom={ledCustom} />
               </motion.div>
             </TabsContent>
             <TabsContent value="tabMouse" key="tabMouse">

@@ -6,6 +6,7 @@ import { isRepeatKey } from "../../../hw/repeatkey";
 import { isSwapHandsCode } from "../../../hw/swaphands";
 import { decodeDualUse } from "../../../api/parsers/altRepeat";
 import { SUPERKEY_CODES, SUPERKEY_FIRST } from "../../../api/parsers/superkeys";
+import { LED_CUSTOM_LAST } from "../../../api/parsers/ledCustom";
 
 const isSuperkeyKeyCode = (keyCode: number) => keyCode >= SUPERKEY_FIRST && keyCode < SUPERKEY_FIRST + SUPERKEY_CODES;
 
@@ -52,7 +53,8 @@ export const detectTab = (keyCode: number, currentTab: string | undefined, hasMu
     tab = "tabLayers";
   }
 
-  if (keyCode >= 17152 && keyCode <= 17154) {
+  /* Next, Previous, Toggle and the custom effect slots */
+  if (keyCode >= 17152 && keyCode <= LED_CUSTOM_LAST) {
     tab = "tabMedia";
   }
 

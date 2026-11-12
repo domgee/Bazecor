@@ -579,6 +579,27 @@ const English = {
       importRefused:
         "The file needs more choices of held modifiers than this keyboard has room for. Change or save the keys that use them first. Nothing was changed.",
     },
+    ledCustom: {
+      title: "Custom effect",
+      description: "Turns this effect on. Pressing the key again returns to the layer colors.",
+      type: "Effect",
+      types: {
+        solid: "Solid color",
+        rainbow: "Rainbow",
+        wave: "Rainbow wave",
+        stalker: "Stalker",
+        layers: "Layer colors",
+        off: "Off",
+      },
+      color: "Color",
+      speed: "Step delay {ms} ms, lower is faster",
+      assign: "Assign to key",
+      assigned: "Assigned",
+      capacity: "This keyboard holds 16 custom effects, and all of them are in use. Change or save the keys that use one first. Nothing was changed.",
+      loadFailed: "The custom LED effects could not be read. Saving is off until they load.",
+      saveFailed: "The keyboard did not store the custom LED effects.",
+      importEmptied: "Some LED effect keys in the file had no settings or no room on this keyboard. They were imported as empty keys.",
+    },
     altRepeat: {
       title: "Previous-key tabs",
       defaultTab: "Default",

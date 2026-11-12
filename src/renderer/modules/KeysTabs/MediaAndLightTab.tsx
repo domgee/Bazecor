@@ -5,6 +5,8 @@ import { i18n } from "@Renderer/i18n";
 import Heading from "@Renderer/components/atoms/Heading";
 import { Button } from "@Renderer/components/atoms/Button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@Renderer/components/atoms/Tooltip";
+import { LedCustomPicker as LedCustomPickerProps } from "@Renderer/types/ledCustom";
+import LedCustomPicker from "./LedCustomPicker";
 
 import {
   IconMediaPlayPause,
@@ -75,9 +77,11 @@ interface MediaAndLightTabProps {
 
   onAddSpecial: (event: any, value: number) => void;
   disabled?: boolean;
+  /* The custom effect block, shown only when passed */
+  ledCustom?: LedCustomPickerProps;
 }
 
-const MediaAndLightTab = ({ keyCode, onAddSpecial, disabled }: MediaAndLightTabProps) => {
+const MediaAndLightTab = ({ keyCode, onAddSpecial, disabled, ledCustom }: MediaAndLightTabProps) => {
   const handleAddSpecial = (special: number) => {
     onAddSpecial(special, 5);
   };
@@ -341,6 +345,7 @@ const MediaAndLightTab = ({ keyCode, onAddSpecial, disabled }: MediaAndLightTabP
                 </Tooltip>
               </TooltipProvider>
             </div>
+            {ledCustom && <LedCustomPicker {...ledCustom} />}
           </div>
         </div>
         <div className="buttonsRow py-2">

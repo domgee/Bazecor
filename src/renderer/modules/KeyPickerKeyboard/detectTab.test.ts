@@ -19,6 +19,8 @@ describe("detectTab", () => {
     [54631, undefined, "tabLayers"], // Last swap hands tap code
     [53594, "tabKeys", "tabLayers"], // Repeat key
     [53594, undefined, "tabLayers"], // Repeat key on open
+    [17155, "tabKeys", "tabMedia"], // First custom LED effect slot
+    [17170, undefined, "tabMedia"], // Last custom LED effect slot
   ])("keycode %i with %s open gives %s", (keyCode, currentTab, expected) => {
     expect(detectTab(keyCode, currentTab)).toBe(expected);
   });

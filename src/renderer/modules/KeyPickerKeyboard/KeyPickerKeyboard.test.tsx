@@ -221,3 +221,57 @@ describe("KeyPickerKeyboard Multi-action tab", () => {
     expect(tabNames(nested).filter(name => name === "Superkeys" || name === "Multi-action")).toEqual([]);
   });
 });
+
+describe("KeyPickerKeyboard custom LED effects", () => {
+  const SLOT_1 = 17155;
+  const red = { type: 1, r: 255, g: 0, b: 0, speed: 0 };
+
+  const renderWith = (props: { keyCode: number; actTab?: string; ledCustom?: { current: typeof red | null; onSelect: () => boolean } }) =>
+    render(
+      <ThemeProvider theme={Light}>
+        <KeyPickerKeyboard
+          onKeySelect={vi.fn()}
+          code={{ base: props.keyCode, modified: 0 }}
+          macros={[]}
+          superkeys={[]}
+          keyIndex={0}
+          actTab={props.actTab ?? "editor"}
+          selectedlanguage="en-US"
+          isWireless={false}
+          ledCustom={props.ledCustom}
+        />
+      </ThemeProvider>,
+    );
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  test("a slot key opens the Media and LED tab with the block and its settings", () => {
+    const onSelect = vi.fn(() => true);
+    renderWith({ keyCode: SLOT_1, ledCustom: { current: red, onSelect } });
+
+    expect(screen.getAllByRole("tab", { selected: true })[0].textContent?.trim()).toBe("Media & LED");
+    fireEvent.click(screen.getByRole("button", { name: "Assigned" }));
+
+    expect(onSelect).toHaveBeenCalledWith(red);
+  });
+
+  test("a key without a slot starts from a white solid color", () => {
+    const onSelect = vi.fn(() => true);
+    renderWith({ keyCode: 17152, ledCustom: { current: null, onSelect } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Assign to key" }));
+
+    expect(onSelect).toHaveBeenCalledWith({ type: 1, r: 255, g: 255, b: 255, speed: 0 });
+  });
+
+  test.each([
+    ["Layout editor cell without the table", "editor"],
+    ["previous-key rule output", "combo"],
+  ])("a %s gets no block", (_, actTab) => {
+    renderWith({ keyCode: SLOT_1, actTab });
+
+    expect(screen.queryByTestId("ledCustomPicker")).toBeNull();
+  });
+});
