@@ -1,7 +1,6 @@
 import React from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { wheelSwitchesTab } from "@Renderer/modules/MultiAction/MultiActionTab";
 import LayerDropList from "./LayerDropList";
 import { SwapListAnchor } from "./keySwap";
 import { KEY_SWAP_LAYER_ATTR } from "./swapDrag";
@@ -56,12 +55,5 @@ describe("LayerDropList", () => {
     expect(rows.map(row => row.getAttribute("title"))).toEqual(["Base", "No name"]);
     expect(within(rows[1]).queryByLabelText("Start")).not.toBeNull();
     expect(screen.queryByText("Hover a layer to show it. Drop on a key to swap.")).toBeNull();
-  });
-
-  test("keeps the picker's wheel switcher off on rows and header", () => {
-    render(<LayerDropList layers={layers} displayed={2} source={2} anchor={anchor} />);
-
-    expect(wheelSwitchesTab(screen.getAllByRole("option")[0], document)).toBe(false);
-    expect(wheelSwitchesTab(screen.getByText("Hover a layer to show it. Drop on a key to swap."), document)).toBe(false);
   });
 });

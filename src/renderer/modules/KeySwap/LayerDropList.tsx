@@ -17,7 +17,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { i18n } from "@Renderer/i18n";
-import { WHEEL_EXEMPT_ATTR } from "@Renderer/modules/MultiAction/MultiActionTab";
 import { SwapListAnchor } from "./keySwap";
 import { KEY_SWAP_LAYER_ATTR } from "./swapDrag";
 
@@ -50,7 +49,6 @@ const LayerDropList = ({ layers, displayed, source, anchor }: LayerDropListProps
     <div
       role="listbox"
       aria-label={i18n.editor.keySwap.title}
-      {...{ [WHEEL_EXEMPT_ATTR]: "" }}
       className="fixed z-[1000] flex flex-col rounded-md shadow-md overflow-hidden bg-[#ffffff] text-gray-600 dark:bg-gray-600 dark:text-gray-50"
       style={{ top: anchor.top, left: anchor.left, width: anchor.width, maxHeight: anchor.maxHeight }}
     >

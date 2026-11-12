@@ -47,8 +47,6 @@ const renderPicker = (props: {
   render(
     <ThemeProvider theme={Light}>
       <KeyPickerKeyboard
-        mouseWheel={0}
-        resetScroll={vi.fn()}
         onKeySelect={props.onKeySelect ?? vi.fn()}
         code={{ base: 0x2b, modified: props.modified ?? 0x9800 }}
         macros={[]}
@@ -125,8 +123,6 @@ describe("KeyPickerKeyboard Multi-action tab", () => {
     render(
       <ThemeProvider theme={Light}>
         <KeyPickerKeyboard
-          mouseWheel={0}
-          resetScroll={vi.fn()}
           onKeySelect={vi.fn()}
           code={{ base: props.keyCode, modified: 0 }}
           macros={[]}
@@ -214,38 +210,6 @@ describe("KeyPickerKeyboard Multi-action tab", () => {
     const { container } = renderWith({ keyCode: 4, actTab: "super", withMultiAction: true });
 
     expect(tabNames(container).filter(name => name === "Superkeys" || name === "Multi-action")).toEqual([]);
-  });
-
-  test("the wheel steps to the tab once it comes with a newly picked key", () => {
-    /* Hold the wheel like the Layout editor, which sets it back to 0 through resetScroll */
-    const Harness = ({ withMultiAction, keyIndex, wheel }: { withMultiAction: boolean; keyIndex: number; wheel: number }) => {
-      const [mouseWheel, setMouseWheel] = React.useState(wheel);
-      React.useEffect(() => setMouseWheel(wheel), [wheel]);
-      return (
-        <ThemeProvider theme={Light}>
-          <KeyPickerKeyboard
-            mouseWheel={mouseWheel}
-            resetScroll={() => setMouseWheel(0)}
-            onKeySelect={vi.fn()}
-            code={{ base: 4, modified: 0 }}
-            macros={[]}
-            superkeys={[]}
-            keyIndex={keyIndex}
-            actTab="editor"
-            selectedlanguage="en-US"
-            isWireless={false}
-            multiAction={withMultiAction ? multiAction : undefined}
-          />
-        </ThemeProvider>
-      );
-    };
-    const { rerender } = render(<Harness withMultiAction={false} keyIndex={0} wheel={0} />);
-
-    rerender(<Harness withMultiAction keyIndex={1} wheel={0} />);
-    rerender(<Harness withMultiAction keyIndex={1} wheel={1} />);
-
-    // The first selected tab is the outer picker's. The open tab also shows the nested picker
-    expect(screen.getAllByRole("tab", { selected: true })[0].textContent?.trim()).toBe("Multi-action");
   });
 
   test("a Superkey opens the tab, whose nested picker edits one action without the tab", () => {

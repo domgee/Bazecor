@@ -208,7 +208,7 @@ function NavigationMenu(props: NavigationMenuProps) {
         <div className="brand-image block mt-5 mb-8 mx-0 w-full text-center">
           <img alt="Dygma - Bazecor" src={DygmaLogo} className="block mx-auto my-0 w-10 aspect-square align-top" />
         </div>
-        <div className="navbar-nav flex flex-col flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden [scrollbar-width:thin]">
+        <div className="navbar-nav flex flex-wrap h-[inherit] justify-between">
           <div className="topMenu w-full flex flex-col gap-0.5">
             <AnimatePresence mode="popLayout">
               {connected && pages.keymap && (

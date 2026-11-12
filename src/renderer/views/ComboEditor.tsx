@@ -1461,8 +1461,6 @@ function ComboEditor(props: ComboEditorProps) {
               selectedlanguage={currentLanguageLayout}
               keyIndex={0}
               isWireless={isWireless}
-              mouseWheel={0}
-              resetScroll={() => {}}
               allowAutoshift={false}
               fullMouse
               multiAction={comboMultiAction()}

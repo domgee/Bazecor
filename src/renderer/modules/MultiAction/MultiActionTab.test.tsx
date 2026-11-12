@@ -9,8 +9,6 @@ import MultiActionTab, {
   MultiActionProps,
   hasCustomTiming,
   multiActionStatus,
-  WHEEL_EXEMPT_ATTR,
-  wheelSwitchesTab,
 } from "./MultiActionTab";
 
 vi.mock("electron-log/renderer", () => ({
@@ -313,46 +311,5 @@ describe("per-position options", () => {
     expect(hasCustomTiming(undefined)).toBe(false);
     expect(hasCustomTiming(perKeyProps())).toBe(false);
     expect(hasCustomTiming(perKeyProps({ override: { ...emptyOverride(POSITION), holdTimeout: 300 } }))).toBe(true);
-  });
-});
-
-describe("wheelSwitchesTab", () => {
-  afterEach(() => {
-    cleanup();
-  });
-
-  test("a wheel event switches the tab while no action picker is open", () => {
-    renderTab();
-
-    expect(wheelSwitchesTab(tile(0), document)).toBe(true);
-  });
-
-  test("a wheel event leaves the tab while an action picker is open", () => {
-    renderTab();
-
-    fireEvent.click(within(tile(2)).getByRole("button"));
-    const picked = screen.getByRole("button", { name: "pick B for action 2" });
-
-    expect(wheelSwitchesTab(picked, document)).toBe(false);
-    expect(wheelSwitchesTab(tile(0), document)).toBe(false);
-  });
-
-  test("a wheel event inside an exempt overlay leaves the tab", () => {
-    const overlay = document.createElement("div");
-    overlay.setAttribute(WHEEL_EXEMPT_ATTR, "");
-    overlay.innerHTML = "<span>Swap keys</span>";
-    document.body.appendChild(overlay);
-
-    expect(wheelSwitchesTab(overlay.firstElementChild, document)).toBe(false);
-    overlay.remove();
-  });
-
-  test("a wheel event in a select list leaves the tab", () => {
-    const list = document.createElement("div");
-    list.innerHTML = '<div role="option">A</div>';
-    document.body.appendChild(list);
-
-    expect(wheelSwitchesTab(list.firstElementChild, document)).toBe(false);
-    list.remove();
   });
 });

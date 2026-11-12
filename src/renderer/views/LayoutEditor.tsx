@@ -67,12 +67,7 @@ import {
   usedHoldCodes,
   withHoldBaseline,
 } from "@Renderer/modules/HoldMods/layoutSave";
-import {
-  MultiActionPerKey,
-  MultiActionProps,
-  MultiActionStorage,
-  wheelSwitchesTab,
-} from "@Renderer/modules/MultiAction/MultiActionTab";
+import { MultiActionPerKey, MultiActionProps, MultiActionStorage } from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, keyFaceSlots, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 import { collectBlock, gcInputsKnown } from "@Renderer/modules/MultiAction/preGcGate";
 import { loadKeymapReplies } from "@Renderer/modules/MultiAction/comboSave";
@@ -368,7 +363,6 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
   const bkp = new Backup();
 
-  const [mouseWheel, setMouseWheel] = useState(0);
   const [currentLayer, setCurrentLayer] = useState(0);
   const [previousLayer, setPreviousLayer] = useState(0);
   const [layerNames, setLayerNames] = useState([]);
@@ -3110,19 +3104,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     );
   };
 
-  const resetScroll = () => {
-    setMouseWheel(0);
-  };
-
-  const updateScroll = useCallback((e: WheelEvent) => {
-    // log.info("Scroll WHEEL event!", e);
-    const direction = e.deltaY > 0 ? 1 : -1;
-    if (wheelSwitchesTab(e.target as Element | null, document)) setMouseWheel(direction);
-  }, []);
-
   useEffect(() => {
-    window.addEventListener("mousewheel", updateScroll);
-
     // log.info("going to RUN INITIAL USE EFFECT just ONCE");
     const scanner = async () => {
       await scanKeyboard(currentLanguageLayout);
@@ -3137,10 +3119,6 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     if (!scanned.current) {
       scanner();
     }
-
-    return () => {
-      window.removeEventListener("mousewheel", updateScroll);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -3744,8 +3722,6 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                 )}
                 {selectedRule === null && (
                   <KeyPickerKeyboard
-                    mouseWheel={mouseWheel}
-                    resetScroll={resetScroll}
                     onKeySelect={onKeyChange}
                     code={code}
                     macros={macros}
@@ -3764,8 +3740,6 @@ const LayoutEditor = (props: LayoutEditorProps) => {
                 {selectedRule !== null && defaultBlock === null && (
                   <KeyPickerKeyboard
                     key={`ar-${currentLayer}-${currentKeyIndex}-${selectedRuleIdx}`}
-                    mouseWheel={mouseWheel}
-                    resetScroll={resetScroll}
                     onKeySelect={onRuleOutputChange}
                     code={keymapDB.keySegmentor(selectedRule.output)}
                     macros={macros}

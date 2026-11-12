@@ -245,8 +245,6 @@ width: -webkit-fill-available;
 `;
 
 interface Props {
-  mouseWheel: number;
-  resetScroll: () => void;
   onKeySelect: (keyCode: number) => void;
   code: SegmentedKeyType;
   macros: MacrosType[];
@@ -271,7 +269,6 @@ interface Props {
 }
 
 interface State {
-  tabs: string[];
   disable: boolean;
   currentTab: string;
   customModal: boolean;
@@ -288,8 +285,6 @@ function KeyPickerKeyboard(props: Props) {
     onKeySelect,
     isWireless,
     keyIndex,
-    mouseWheel,
-    resetScroll,
     allowAutoshift = true,
     allowLayerHold = false,
     keepHold = false,
@@ -298,10 +293,8 @@ function KeyPickerKeyboard(props: Props) {
     multiAction,
   } = props;
   const prevProps = useRef(props);
-  const overflowRef = React.createRef<HTMLElement>();
 
   const initialState: State = {
-    tabs: [],
     disable: true,
     currentTab: undefined,
     customModal: false,
@@ -322,26 +315,12 @@ function KeyPickerKeyboard(props: Props) {
     lensCapabilityRaw === true || lensCapabilityRaw === "true" || lensCapabilityRaw === 1 || lensCapabilityRaw === "1";
   log.info(`[Lens] KeyPickerKeyboard render -> capabilities.lens: ${lensCapabilityRaw}, showLayerLensTab: ${isLensAvailable}`);
 
-  const { tabs, disable, currentTab, customModal } = state;
+  const { disable, currentTab, customModal } = state;
   /* A nested picker edits one Superkey action, so it never offers Multi-action itself */
   const hasMultiAction = multiAction !== undefined && actTab !== "super";
 
-  const tabListFor = (withMultiAction: boolean) => {
-    const tabList = [];
-    tabList.push("tabKeys");
-    if (withMultiAction) tabList.push("tabMultiAction");
-    tabList.push("tabLayers");
-    tabList.push("tabMacro");
-    tabList.push("tabMedia");
-    tabList.push("tabMouse");
-    if (isWireless) tabList.push("tabWireless");
-    if (isLensAvailable) tabList.push("tabLayerLens");
-    return tabList;
-  };
-
   useEffect(() => {
     const lstate = { ...state };
-    lstate.tabs = tabListFor(hasMultiAction);
     // Enable editing by default in Superkeys context; otherwise depend on keyIndex
     lstate.disable = actTab === "super" ? false : keyIndex === -1;
     // Initialize current tab based on the initial key
@@ -351,7 +330,7 @@ function KeyPickerKeyboard(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* Keep the wheel's tab order in step when the Multi-action tab comes or goes */
+  /* Leave the Multi-action tab when it goes away */
   useEffect(() => {
     setState(previous => {
       let tab = previous.currentTab;
@@ -360,7 +339,7 @@ function KeyPickerKeyboard(props: Props) {
         tab = detectTab(code != null ? code.modified + code.base : -1, undefined, false);
       }
 
-      return { ...previous, tabs: tabListFor(hasMultiAction), currentTab: tab };
+      return { ...previous, currentTab: tab };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMultiAction]);
@@ -388,21 +367,6 @@ function KeyPickerKeyboard(props: Props) {
     prevProps.current = props;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props, code, keyIndex, state]);
-
-  useEffect(() => {
-    const elem = overflowRef.current;
-    const overflow = elem.scrollHeight > elem.offsetHeight;
-    if (!disable && mouseWheel !== 0 && !overflow) {
-      const step = mouseWheel === 1 ? 1 : -1;
-      resetScroll();
-      /* Step through the latest tab list, which an effect in the same commit may have changed */
-      setState(previous => {
-        const indexTab = previous.tabs.indexOf(previous.currentTab);
-        const futureTab = (indexTab + step + previous.tabs.length) % previous.tabs.length;
-        return { ...previous, currentTab: previous.tabs[futureTab] };
-      });
-    }
-  }, [state, mouseWheel, tabs, resetScroll, disable, overflowRef]);
 
   const changeTab = (tab: string) => {
     log.info("Check tab change value", tab);
@@ -477,8 +441,7 @@ function KeyPickerKeyboard(props: Props) {
             </div>
           </div>
           <div
-            className="keyBoardPickerWrapper w-full rounded-regular py-4 px-8 bg-gray-25 dark:bg-[#25273B] shadow-lg h-[370px] overflow-auto"
-            ref={overflowRef}
+            className="keyBoardPickerWrapper w-full rounded-regular py-4 px-8 bg-gray-25 dark:bg-[#25273B] shadow-lg min-h-[370px]"
           >
             <TabsContent value="tabKeys">
               <motion.div initial="hidden" animate="visible" key="tabKeys" variants={tabVariants}>
@@ -558,8 +521,6 @@ function KeyPickerKeyboard(props: Props) {
                       const slotCode = multiAction.actions[slot] === 1 ? 0 : multiAction.actions[slot];
                       return (
                         <KeyPickerKeyboard
-                          mouseWheel={0}
-                          resetScroll={() => {}}
                           onKeySelect={onSelect}
                           code={keymapDB.keySegmentor(slotCode)}
                           macros={macros}
