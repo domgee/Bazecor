@@ -596,7 +596,8 @@ const English = {
       assign: "Assign to key",
       assigned: "Assigned",
       capacity: "This keyboard holds 16 custom effects, and all of them are in use. Change or save the keys that use one first. Nothing was changed.",
-      loadFailed: "The custom LED effects could not be read. Saving is off until they load.",
+      loadFailed:
+        "The custom LED effects, or the keys, rules and combos that use them, could not be read. LED effect keys can't be added or imported until they load.",
       saveFailed: "The keyboard did not store the custom LED effects.",
       importEmptied: "Some LED effect keys in the file had no settings or no room on this keyboard. They were imported as empty keys.",
     },

@@ -1,6 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 import { emptyLedTable } from "../../../api/parsers/ledCustom";
-import { EMPTY_LED_SAVED, collectLedSlots, loadLedTable, protectedLedSlots, withLedBaseline } from "./ledSave";
+import { serializeCombos } from "../../../api/parsers/combos";
+import { serializeAltRepeat } from "../../../api/parsers/altRepeat";
+import { EMPTY_LED_SAVED, collectLedSlots, keyboardLedSources, loadLedTable, protectedLedSlots, withLedBaseline } from "./ledSave";
+
+vi.mock("electron-log/renderer", () => ({
+  default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
+}));
 
 const red = { type: 1, r: 255, g: 0, b: 0, speed: 0 };
 const off = { type: 6, r: 0, g: 0, b: 0, speed: 0 };
@@ -41,5 +47,20 @@ describe("collectLedSlots", () => {
     const saved = { ...EMPTY_LED_SAVED, uncertainKeymap: [2] };
 
     expect(collectLedSlots(table, { layers: [[17155]] }, saved)).toEqual([red, ...emptyLedTable().slice(1, 2), red, ...emptyLedTable().slice(3)]);
+  });
+});
+
+describe("keyboardLedSources", () => {
+  test("reads the combo and rule outputs the keyboard holds from their serialized forms", () => {
+    const combo = { id: 0, name: "", positions: [0, 1, 255, 255, 255, 255], layer: 0, flags: 1, action: 17157 };
+    const rule = { layer: 1, position: 2, previous: 4, output: 17160 };
+
+    const sources = keyboardLedSources(serializeCombos([combo]), serializeAltRepeat([rule]));
+
+    expect([sources.combos.map(each => each.action), sources.rules.map(each => each.output)]).toEqual([[17157], [17160]]);
+  });
+
+  test("gives nothing for unknown forms", () => {
+    expect(keyboardLedSources(null, null)).toEqual({ combos: [], rules: [] });
   });
 });

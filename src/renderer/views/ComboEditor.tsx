@@ -44,7 +44,14 @@ import { ComboSaveIO, loadKeymapReplies, refSlotsOf, runComboSave } from "@Rende
 import { EMPTY_SUPERKEY_SAVED, SuperkeyMode, SuperkeySavedState } from "@Renderer/modules/HoldMods/layoutSave";
 import { unreadableBeforeBackup } from "@Renderer/modules/DualFunctionKeys/previewReads";
 import { collectBlock } from "@Renderer/modules/MultiAction/preGcGate";
-import { EMPTY_LED_SAVED, LedSavedState, loadLedTable, protectedLedSlots, withLedBaseline } from "@Renderer/modules/LedCustom/ledSave";
+import {
+  EMPTY_LED_SAVED,
+  LedSavedState,
+  keyboardLedSources,
+  loadLedTable,
+  protectedLedSlots,
+  withLedBaseline,
+} from "@Renderer/modules/LedCustom/ledSave";
 import { withLedLabel } from "@Renderer/modules/LedCustom/ledLabel";
 import { LedCustomPicker } from "@Renderer/types/ledCustom";
 
@@ -89,7 +96,6 @@ import {
   LedCustomState,
   emptyLedTable,
   encodeLedSlot,
-  ledSlotCode,
   ledSlotOf,
   ledSlotRefs,
   writeLedCustom,
@@ -505,8 +511,8 @@ function ComboEditor(props: ComboEditorProps) {
     const reload = async () => {
       const loaded = await loadLedTable(currentDevice, listed);
       const refs = ledDraftRefs(combos);
-      /* Protect the combos the keyboard held at load too, since they are not read again here */
-      const loadedCombos = ledSaved.current.comboRefs.map(slot => ({ action: ledSlotCode(slot) }));
+      /* Protect the combos the keyboard holds too, since they are not read again here */
+      const { combos: loadedCombos } = keyboardLedSources(savedCombos.current, null);
 
       ledSaved.current =
         loaded.state === "ready" ? withLedBaseline(loaded.table, { ...refs, combos: [...refs.combos, ...loadedCombos] }) : EMPTY_LED_SAVED;

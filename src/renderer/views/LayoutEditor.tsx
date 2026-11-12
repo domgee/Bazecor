@@ -105,6 +105,7 @@ import { LedCustomPicker } from "@Renderer/types/ledCustom";
 import {
   EMPTY_LED_SAVED,
   LedSavedState,
+  keyboardLedSources,
   ledRefSlots,
   loadLedTable,
   protectedLedSlots,
@@ -3505,11 +3506,14 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     const reload = async () => {
       const loaded = await loadLedTable(currentDevice, listed);
 
-      /* Protect the slots of the draft and of the keymap the hold table last read, since the keymap is not read again here */
+      /* Protect the slots of the draft, of the keymap the hold table last read and of the rules the keyboard holds, since neither is read
+       * again here */
       const layers = [...ledDraftRefs(draftCodes(keymap.custom), altRepeatRules).layers, holdSaved.current.keymapCodes];
+      const held = keyboardLedSources(null, savedAltRepeat.current);
+      const rules = [...altRepeatRules, ...held.rules];
       ledSaved.current =
         loaded.state === "ready"
-          ? withLedBaseline(loaded.table, { layers, rules: altRepeatRules, combos: combosState === "ready" ? strictCombos : [] })
+          ? withLedBaseline(loaded.table, { layers, rules, combos: combosState === "ready" ? strictCombos : [] })
           : EMPTY_LED_SAVED;
       setLedTable(loaded.table);
       setLedState(loaded.state);

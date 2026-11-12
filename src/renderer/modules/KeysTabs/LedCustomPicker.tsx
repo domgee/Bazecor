@@ -52,10 +52,15 @@ const typeLabel = (type: number): string => {
   return names[type] ?? String(type);
 };
 
-/* Start a new type from its defaults, keeping the colour when there is one */
-const withType = (settings: LedCustomSlot, type: number): LedCustomSlot => {
+/** Start a new type from its defaults, keeping the colour when there is one */
+export const withType = (settings: LedCustomSlot, type: number): LedCustomSlot => {
   if (type === LED_TYPE_RAINBOW) {
     return { ...settings, type, speed: settings.type === LED_TYPE_RAINBOW ? settings.speed : RAINBOW_SPEED_DEFAULT };
+  }
+
+  /* Start Solid from white, since other types keep their colour at 0 */
+  if (type === LED_TYPE_SOLID && settings.type !== LED_TYPE_SOLID) {
+    return { ...settings, type, r: DEFAULT_SETTINGS.r, g: DEFAULT_SETTINGS.g, b: DEFAULT_SETTINGS.b };
   }
 
   return { ...settings, type };

@@ -25,6 +25,8 @@ import {
   readLedCustom,
   serializeLedCustom,
 } from "../../../api/parsers/ledCustom";
+import { parseCombosStrict } from "../../../api/parsers/combos";
+import { parseAltRepeatRaw } from "../../../api/parsers/altRepeat";
 
 /* What both editors' saves track of the custom LED effect slots. The table goes before the keymap, rules and combos that use it, and slots
  * nothing uses are freed after them. A slot the keyboard holds a key for, or may hold one for after a failed write, is protected, so an
@@ -105,6 +107,15 @@ export const writeLedTable = async (
 
   return { saved: { ...saved, table: serialized }, wrote: true };
 };
+
+/** The combos and rules the keyboard holds, from the serialized forms an editor keeps of them. Empty for an unknown or unreadable form */
+export const keyboardLedSources = (
+  savedCombos: string | null,
+  savedRules: string | null,
+): { combos: ReadonlyArray<{ action: number }>; rules: ReadonlyArray<{ output: number }> } => ({
+  combos: parseCombosStrict(savedCombos) ?? [],
+  rules: parseAltRepeatRaw(savedRules) ?? [],
+});
 
 /** The table and its state at an editor load. A table `help` lists that can not be read is "failed". */
 export const loadLedTable = async (
