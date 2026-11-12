@@ -206,13 +206,14 @@ export interface SwapInput {
   table: number[][];
   unique: boolean;
   repeatKeyRules: boolean;
+  repeatTapRules: boolean;
   /* Only when the Superkeys are read, to refuse what Save would refuse */
   superkeys?: SwapSuperkeyInput;
 }
 
 /** What a drop from `from` on `to` does: nothing, a refusal Save would also give, or the swapped draft with the combos it breaks. */
 export const planSwap = (input: SwapInput): SwapPlan => {
-  const { custom, rules, from, to, layerOffset, combos, table, unique, repeatKeyRules, superkeys } = input;
+  const { custom, rules, from, to, layerOffset, combos, table, unique, repeatKeyRules, repeatTapRules, superkeys } = input;
   const a = { layer: from.layer - layerOffset, position: from.position };
   const b = { layer: to.layer - layerOffset, position: to.position };
   const codeA = custom[a.layer]?.[a.position];
@@ -266,6 +267,7 @@ export const planSwap = (input: SwapInput): SwapPlan => {
     [],
     unique,
     repeatKeyRules,
+    repeatTapRules,
   );
 
   return { kind: "swap", after, movedRules, breaks, a, b };

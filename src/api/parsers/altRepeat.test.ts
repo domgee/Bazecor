@@ -436,6 +436,75 @@ describe("altRepeatDefaultBlock", () => {
     expect(replacesTap(53980, superkeys, true)).toBe(false);
     expect(altRepeatDefaultBlock(53980, superkeys)).toBe("superkey");
     expect(replacesTap(53980, superkeys)).toBe(false);
+    expect(altRepeatDefaultBlock(53980, superkeys, true, true, true)).toBe("superkey");
+    expect(replacesTap(53980, superkeys, true, true)).toBe(false);
+    expect(altRepeatDefaultBlock(53980, superkeys, false, true, true)).toBe("superkey");
+    expect(replacesTap(53980, superkeys, false, true)).toBe(false);
+  });
+});
+
+describe("a dual-function Superkey whose tap is the Repeat key", () => {
+  // 53594 is the Repeat key, a SYNTHETIC|RESERVED code that the firmware gives rules on a dual-function tap from v1.2.20
+  test.each([
+    [true], // Unique firmware
+    [false], // Legacy or unknown mode
+  ])("needs the firmware rule with a modifier hold, unique %s", unique => {
+    const superkeys = [superkey([53594, 224])];
+
+    expect(altRepeatDefaultBlock(53980, superkeys, unique)).toBe("repeattap");
+    expect(altRepeatDefaultBlock(53980, superkeys, unique, true)).toBe("repeattap");
+    expect(replacesTap(53980, superkeys, unique)).toBe(false);
+    expect(altRepeatDefaultBlock(53980, superkeys, unique, false, true)).toBeNull();
+    expect(replacesTap(53980, superkeys, unique, true)).toBe(true);
+  });
+
+  test.each([
+    [17450, true], // Layer Shift 0, unique
+    [17450, false], // Layer Shift 0, legacy
+    [17457, true], // Layer Shift 7, unique
+    [17457, false], // Layer Shift 7, legacy
+    [0x11e2, true], // Right Alt with Ctrl, unique
+    [0x11e2, false], // Right Alt with Ctrl, legacy
+  ])("allows tabs with hold %i, unique %s", (hold, unique) => {
+    const superkeys = [superkey([53594, hold])];
+
+    expect(altRepeatDefaultBlock(53980, superkeys, unique)).toBe("repeattap");
+    expect(altRepeatDefaultBlock(53980, superkeys, unique, false, true)).toBeNull();
+    expect(replacesTap(53980, superkeys, unique, true)).toBe(true);
+  });
+
+  test.each([[17458], [17459]])("allows tabs with Layer Shift hold %i on unique firmware only", hold => {
+    const superkeys = [superkey([53594, hold])];
+
+    expect(altRepeatDefaultBlock(53980, superkeys, true, false, true)).toBeNull();
+    expect(replacesTap(53980, superkeys, true, true)).toBe(true);
+    expect(altRepeatDefaultBlock(53980, superkeys, false, false, true)).toBe("superkey");
+    expect(replacesTap(53980, superkeys, false, true)).toBe(false);
+  });
+
+  test.each([
+    [[53594, 17492]], // Layer Lock hold
+    [[53594]], // No hold
+    [[53594, 224, 4]], // Complex Superkey
+  ])("stays blocked as a Superkey for %j", actions => {
+    const superkeys = [superkey(actions)];
+
+    [true, false].forEach(unique => {
+      expect(altRepeatDefaultBlock(53980, superkeys, unique, true, true)).toBe("superkey");
+      expect(replacesTap(53980, superkeys, unique, true)).toBe(false);
+    });
+  });
+
+  test("stays blocked in slot 70, which the unique firmware does not run", () => {
+    const superkeys = Array.from({ length: 71 }, () => superkey([53594, 224]));
+
+    expect(altRepeatDefaultBlock(53980 + 70, superkeys, true, true, true)).toBe("superkey");
+    expect(altRepeatDefaultBlock(53980 + 69, superkeys, true, true, true)).toBeNull();
+  });
+
+  test("leaves the plain Repeat key to the Repeat key rule", () => {
+    expect(altRepeatDefaultBlock(53594, [], false, false, true)).toBe("repeatkey");
+    expect(altRepeatDefaultBlock(53594, [], false, true, false)).toBeNull();
   });
 });
 

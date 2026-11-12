@@ -762,6 +762,7 @@ export const multiActionBreaks = (
   rules: AltRepeatRule[],
   unique = false,
   repeatKeyRules = false,
+  repeatTapRules = false,
 ): MultiActionBreaks => {
   const superkeysBefore = asSuperkeys(before.table);
   const superkeysAfter = asSuperkeys(after.table);
@@ -793,9 +794,9 @@ export const multiActionBreaks = (
         }
       }
 
-      const blockAfter = altRepeatDefaultBlock(code, superkeysAfter, unique, repeatKeyRules);
+      const blockAfter = altRepeatDefaultBlock(code, superkeysAfter, unique, repeatKeyRules, repeatTapRules);
 
-      if (blockAfter !== null && altRepeatDefaultBlock(previous, superkeysBefore, unique, repeatKeyRules) === null) {
+      if (blockAfter !== null && altRepeatDefaultBlock(previous, superkeysBefore, unique, repeatKeyRules, repeatTapRules) === null) {
         const count = rulesAt(rules, layer, position).length;
         ruleCount += count;
 

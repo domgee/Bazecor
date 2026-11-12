@@ -665,6 +665,41 @@ describe("multiActionBreaks", () => {
       ruleReason: "superkey",
     });
   });
+
+  describe("on a dual-function Superkey whose tap is the Repeat key", () => {
+    // 53594 is the Repeat key
+    const cellRules = [rule(1, 0, B)];
+
+    test("a letter tap turned into a Repeat tap breaks the rules only when the firmware lacks rules on that tap", () => {
+      const before = { customLayers: [[SK(0)]], table: [tapHold(A, CTRL)], layerOffset: 1 };
+      const after = { ...before, table: [tapHold(53594, CTRL)] };
+
+      expect(multiActionBreaks(before, after, [], cellRules, true, true, false)).toEqual({
+        comboIndexes: [],
+        comboReason: null,
+        ruleCount: 1,
+        ruleReason: "repeattap",
+      });
+      expect(multiActionBreaks(before, after, [], cellRules, true, true, true)).toEqual({
+        comboIndexes: [],
+        comboReason: null,
+        ruleCount: 0,
+        ruleReason: null,
+      });
+    });
+
+    test("a Layer Lock hold breaks the rules also when the firmware has rules on that tap", () => {
+      const before = { customLayers: [[SK(0)]], table: [tapHold(53594, CTRL)], layerOffset: 1 };
+      const after = { ...before, table: [tapHold(53594, 17492)] };
+
+      expect(multiActionBreaks(before, after, [], cellRules, true, true, true)).toEqual({
+        comboIndexes: [],
+        comboReason: null,
+        ruleCount: 1,
+        ruleReason: "superkey",
+      });
+    });
+  });
 });
 
 describe("reconcileDraft", () => {

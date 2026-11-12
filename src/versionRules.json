@@ -84,6 +84,12 @@
       "minFirmware": {
         "Sonsei": "1.2.18"
       }
+    },
+    "repeatKeyTapRules": {
+      "description": "Previous-key tabs on a dual-function Superkey whose tap is the Repeat key (Sonsei fork). Shown only together with capabilities.repeatKey and capabilities.altRepeat, which come from help. Older firmware stores the rules but never applies them on that tap.",
+      "minFirmware": {
+        "Sonsei": "1.2.20"
+      }
     }
   }
 }

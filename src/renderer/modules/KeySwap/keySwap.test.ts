@@ -268,6 +268,7 @@ describe("planSwap", () => {
     table: [],
     unique: false,
     repeatKeyRules: false,
+    repeatTapRules: false,
     ...extra,
   });
 

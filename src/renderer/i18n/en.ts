@@ -628,6 +628,7 @@ const English = {
         capsword: "The CapsWord key can't have previous-key tabs.",
         swaphands: "Swap hands keys can't have previous-key tabs.",
         repeatkey: "Previous-key tabs on the Repeat key need firmware v1.2.18 or newer.",
+        repeattap: "Previous-key tabs on a Superkey whose tap is the Repeat key need firmware v1.2.20 or newer.",
         superkey: "Only Superkeys whose TAP types a key and whose HOLD is a modifier or layer shift can have previous-key tabs.",
         unsupported: "This key type can't have previous-key tabs.",
       },

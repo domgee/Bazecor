@@ -481,24 +481,35 @@ export const isDualFunctionSuperkeyCode = (code: number, superkeys: SuperkeysTyp
   return (!unique || slot < MAX_ACTIVE_SUPERKEYS) && playsAsDualFunction(superkeys[slot], unique);
 };
 
-/* AltRepeatDygma::replaysCell fires a rule on a dual-function cell only when the resolved tap is a plain or modified key, not a modifier */
-const tapReplays = (superkey: SuperkeysType | undefined): boolean => {
+/* AltRepeatDygma::replaysCell fires a rule on a dual-function cell only when the resolved tap is a plain or modified key, not a modifier.
+ * Firmware with `repeatTapRules` also fires it on a Repeat tap */
+const tapReplays = (superkey: SuperkeysType | undefined, repeatTapRules: boolean): boolean => {
   const tap = superkey?.actions[0] ?? 0;
   const keycode = tap & 0xff;
+
+  if (isRepeatKey(tap)) {
+    return repeatTapRules;
+  }
 
   return ((tap >> 8) & SYNTHETIC_OR_RESERVED) === 0 && keycode !== 0 && !isOnlyModifier(keycode);
 };
 
 /* A Superkey whose rules replace its tap, by the firmware's Superkey rule and the replay check */
-const tapRuleSuperkey = (code: number, superkeys: SuperkeysType[], unique: boolean): boolean =>
-  isDualFunctionSuperkeyCode(code, superkeys, unique) && tapReplays(superkeys[code - SUPERKEY_FIRST]);
+const tapRuleSuperkey = (code: number, superkeys: SuperkeysType[], unique: boolean, repeatTapRules: boolean): boolean =>
+  isDualFunctionSuperkeyCode(code, superkeys, unique) && tapReplays(superkeys[code - SUPERKEY_FIRST], repeatTapRules);
 
-/** Why a key with this default cannot have previous-key rules, or null when it can. Pass `repeatKeyRules` when the firmware applies them on Repeat. */
+/* A dual-function Superkey whose tap is the Repeat key, which firmware with `repeatTapRules` gives rules */
+const repeatTapSuperkey = (code: number, superkeys: SuperkeysType[], unique: boolean): boolean =>
+  isDualFunctionSuperkeyCode(code, superkeys, unique) && isRepeatKey(superkeys[code - SUPERKEY_FIRST]?.actions[0] ?? 0);
+
+/** Why a key with this default cannot have previous-key rules, or null when it can. Pass `repeatKeyRules` when the firmware applies them on
+ * Repeat, and `repeatTapRules` when it applies them on the Repeat tap of a dual-function Superkey. */
 export const altRepeatDefaultBlock = (
   code: number,
   superkeys: SuperkeysType[] = [],
   unique = false,
   repeatKeyRules = false,
+  repeatTapRules = false,
 ): AltRepeatBlock | null => {
   if (code === TRANSPARENT) {
     return "transparent";
@@ -525,16 +536,16 @@ export const altRepeatDefaultBlock = (
     return "unsupported";
   }
 
-  if (isSuperkeyCode(code) && !tapRuleSuperkey(code, superkeys, unique)) {
-    return "superkey";
+  if (isSuperkeyCode(code) && !tapRuleSuperkey(code, superkeys, unique, repeatTapRules)) {
+    return repeatTapSuperkey(code, superkeys, unique) ? "repeattap" : "superkey";
   }
 
   return null;
 };
 
 /** True when a rule on this default replaces only the tap and keeps the hold. */
-export const replacesTap = (code: number, superkeys: SuperkeysType[] = [], unique = false): boolean =>
-  (code >= DU_FIRST && code <= DU_LAST) || tapRuleSuperkey(code, superkeys, unique);
+export const replacesTap = (code: number, superkeys: SuperkeysType[] = [], unique = false, repeatTapRules = false): boolean =>
+  (code >= DU_FIRST && code <= DU_LAST) || tapRuleSuperkey(code, superkeys, unique, repeatTapRules);
 
 /* ------------------------------------------------------------------------ */
 /* Table operations. Each returns a new table and leaves its input alone    */

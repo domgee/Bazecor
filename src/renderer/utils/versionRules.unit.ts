@@ -97,6 +97,10 @@ describe("hasFirmwareFeature()", () => {
     { feature: "repeatKeyRules", product: "Sonsei", fw: "v1.2.18", expected: true },
     { feature: "repeatKeyRules", product: "Sonsei", fw: "v1.3.0", expected: true },
     { feature: "repeatKeyRules", product: "Defy", fw: "9.9.9", expected: false },
+    { feature: "repeatKeyTapRules", product: "Sonsei", fw: "v1.2.19", expected: false },
+    { feature: "repeatKeyTapRules", product: "Sonsei", fw: "v1.2.20", expected: true },
+    { feature: "repeatKeyTapRules", product: "Sonsei", fw: "v1.3.0", expected: true },
+    { feature: "repeatKeyTapRules", product: "Defy", fw: "9.9.9", expected: false },
   ] as const)("$feature on $product $fw -> $expected", async ({ feature, product, fw, expected }) => {
     const { hasFirmwareFeature } = await loadWithBazecor("1.11.0");
     expect(hasFirmwareFeature(feature, product, fw)).toBe(expected);

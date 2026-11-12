@@ -205,6 +205,8 @@ function ComboEditor(props: ComboEditorProps) {
   /* How the firmware stores tap and hold Superkeys, read from the capabilities at load */
   const [superkeyMode, setSuperkeyMode] = useState<UniqueSuperkeysMode>("unknown");
   const uniqueSuperkeys = superkeyMode === "unique";
+  const repeatKeyRules = Boolean(store.get("capabilities.repeatKeyRules")) && Boolean(store.get("capabilities.repeatKey"));
+  const repeatTapRules = Boolean(store.get("capabilities.repeatKeyTapRules")) && Boolean(store.get("capabilities.repeatKey"));
 
   /* Follow the Superkey mode when App reads the capabilities again, as after a firmware update. Drafts stay as they are */
   useEffect(() => {
@@ -1106,6 +1108,8 @@ function ComboEditor(props: ComboEditorProps) {
       list,
       ruleList,
       uniqueSuperkeys,
+      repeatKeyRules,
+      repeatTapRules,
     );
     const defaults = keymap.onlyCustom
       ? null
@@ -1115,6 +1119,8 @@ function ComboEditor(props: ComboEditorProps) {
           list,
           ruleList,
           uniqueSuperkeys,
+          repeatKeyRules,
+          repeatTapRules,
         );
     const comboIndexes = [...new Set([...custom.comboIndexes, ...(defaults?.comboIndexes ?? [])])].sort((a, b) => a - b);
 
