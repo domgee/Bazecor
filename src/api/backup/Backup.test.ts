@@ -457,7 +457,7 @@ describe("Backup restore of partial layer holds", () => {
   });
 
   test("restoreBackup counts help as unreadable for the whole restore when it fails at the start", async () => {
-    // keepSupportedCommands and supportedCommands read help first, and every later read would list the table
+    // The restore reads help once at the start, and every later read would list the table
     const { device, keyboard, writes } = holdSonsei({ help: [new Error("timeout"), new Error("timeout"), HELP] });
 
     const restored = await Backup.restoreBackup(
@@ -494,6 +494,103 @@ describe("Backup restore of partial layer holds", () => {
     expect(keyboard["holdmods.map"]).toBe(OLD_TABLE);
     expect(keyboard["keymap.custom"]).toBe(`41 ${PLAIN}`);
     expect(Backup.takeRestoreWarnings()).toEqual([HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED]);
+  });
+});
+
+describe("Backup restore of the dominant layer", () => {
+  const DOMINANT_HELP = "keymap.custom\r\ndominant.map\r\ndominant.timeout";
+  const SET = { help: DOMINANT_HELP, "dominant.map": "1 3 2", "dominant.timeout": "120" };
+  const restoreBoth = [
+    [
+      "restoreBackup",
+      (device: Device, entries: { command: string; data: string }[]) =>
+        Backup.restoreBackup([], "neuron", entries as never, device),
+    ],
+    [
+      "restoreVirtual",
+      (device: Device, entries: { command: string; data: string }[]) =>
+        Backup.restoreVirtual(
+          {
+            device: { info: { product: "Sonsei" } },
+            virtual: Object.fromEntries(entries.map(e => [e.command, { data: e.data, eraseable: true }])),
+          } as never,
+          device,
+        ),
+    ],
+  ] as const;
+
+  const helpReads = (noCacheCommand: ReturnType<typeof vi.fn>) =>
+    noCacheCommand.mock.calls.filter(call => call[0] === "help").length;
+
+  test.each(restoreBoth)("%s reads help once", async (_, restore) => {
+    const { device, noCacheCommand } = sonsei(SET);
+
+    const restored = await restore(device, [
+      { command: "keymap.custom", data: "1" },
+      { command: "dominant.map", data: "1 51 1" },
+    ]);
+
+    expect(restored).toBe(true);
+    expect(helpReads(noCacheCommand)).toBe(1);
+  });
+
+  test.each(restoreBoth)(
+    "%s clears the map and resets the timeout on a listed target for a backup that predates them",
+    async (_, restore) => {
+      const { device, keyboard } = sonsei(SET);
+
+      const restored = await restore(device, [{ command: "keymap.custom", data: "1" }]);
+
+      expect(restored).toBe(true);
+      expect(keyboard["dominant.map"]).toBe("0");
+      expect(keyboard["dominant.timeout"]).toBe("60");
+    },
+  );
+
+  test.each(restoreBoth)("%s restores the backup's map and timeout and resets nothing", async (_, restore) => {
+    const { device, keyboard, noCacheCommand } = sonsei(SET);
+
+    const restored = await restore(device, [
+      { command: "keymap.custom", data: "1" },
+      { command: "dominant.map", data: "1 51 1" },
+      { command: "dominant.timeout", data: "80" },
+    ]);
+
+    expect(restored).toBe(true);
+    expect(keyboard["dominant.map"]).toBe("1 51 1");
+    expect(keyboard["dominant.timeout"]).toBe("80");
+    expect(noCacheCommand.mock.calls.filter(call => call.length > 1).map(call => call[0])).toEqual([
+      "dominant.map",
+      "dominant.timeout",
+    ]);
+  });
+
+  test.each(restoreBoth)("%s sends and resets nothing on a target that does not list them", async (_, restore) => {
+    const { device, noCacheCommand } = sonsei({ help: "keymap.custom" });
+
+    const restored = await restore(device, [
+      { command: "keymap.custom", data: "1" },
+      { command: "dominant.map", data: "1 51 1" },
+    ]);
+
+    expect(restored).toBe(true);
+    expect(noCacheCommand.mock.calls.some(call => String(call[0]).startsWith("dominant."))).toBe(false);
+  });
+
+  test.each(restoreBoth)("%s decides the resets from the backup before the filter removes a command", async (_, restore) => {
+    // List the map but not the timeout, so the filter drops the backup's timeout and the map stays as the backup has it
+    const { device, keyboard, noCacheCommand } = sonsei({ ...SET, help: "keymap.custom\r\ndominant.map" });
+
+    const restored = await restore(device, [
+      { command: "keymap.custom", data: "1" },
+      { command: "dominant.map", data: "1 51 1" },
+      { command: "dominant.timeout", data: "80" },
+    ]);
+
+    expect(restored).toBe(true);
+    expect(keyboard["dominant.map"]).toBe("1 51 1");
+    expect(keyboard["dominant.timeout"]).toBe("120");
+    expect(noCacheCommand.mock.calls.filter(call => call.length > 1).map(call => call[0])).toEqual(["dominant.map"]);
   });
 });
 

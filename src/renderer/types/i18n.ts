@@ -711,6 +711,11 @@ export interface Qukeys {
   quickTapTermTip2: string;
   quickTapTermTip3: string;
   quickTapTermTipDefault: string;
+  dominantTimeout: string;
+  dominantTimeoutReadError: string;
+  dominantTimeoutTip1: string;
+  dominantTimeoutTip2: string;
+  dominantTimeoutTipDefault: string;
   dualFunctionReadError: string;
   dualFunctionOff: string;
   decisionMode: string;

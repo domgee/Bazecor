@@ -16,7 +16,14 @@ import { FlashRaise } from "../../../api/flash";
 import { delay } from "../../../main/utils/delay";
 import Backup from "../../../api/backup";
 import restoreCommand from "../../../api/backup/restoreCommand";
-import { readHoldModsTarget } from "../../../api/parsers/holdMods";
+import { holdModsTargetOf } from "../../../api/parsers/holdMods";
+import {
+  DOMINANT_TIMEOUT_DEFAULT,
+  needsDominantClear,
+  needsDominantTimeoutReset,
+  writeDominantMap,
+  writeDominantTimeout,
+} from "../../../api/parsers/dominant";
 import * as Context from "./context";
 
 const stateUpdate = (stage: string, percentage: number, context: Context.ContextType) => {
@@ -85,12 +92,13 @@ const restoreSettings = async (
      * carries commands the flashed firmware does not know, and an unknown
      * command with a long argument list (combos.map) hangs older firmware, so
      * only what the keyboard lists in `help` is sent. A combos table in the old
-     * 4-key format also has to be converted for the new one. */
-    let commands = backup.backup;
-    if (device) commands = await Backup.keepSupportedCommands(commands, device);
+     * 4-key format also has to be converted for the new one. Read help once,
+     * so the filter, the restore and the resets agree on it. */
+    const supported = device ? await Backup.supportedCommands(device) : null;
+    const original = backup.backup.map(c => c.command);
+    let commands = Backup.keepSupportedIn(backup.backup, supported);
     commands = await Backup.adaptCombosToDevice(commands, device);
-    /* Classify help once, so the keymap, the rules and the held modifiers table agree on it */
-    const holdModsTarget = device ? await readHoldModsTarget(device) : "unreadable";
+    const holdModsTarget = holdModsTargetOf(supported);
     for (let i = 0; i < commands.length; i += 1) {
       const val = commands[i].data;
       log.info(`Going to send ${commands[i].command} to keyboard`);
@@ -109,6 +117,7 @@ const restoreSettings = async (
           keysPerLayer,
           () => target.command(`${command} ${val}`.trim()),
           holdModsTarget,
+          supported,
         );
 
         // Log what was skipped, because this flow has no toast
@@ -119,6 +128,16 @@ const restoreSettings = async (
 
       stateUpd("restore", (i / commands.length) * 90);
     }
+
+    /* Clear the dominant layers and reset their timeout when the backup predates them */
+    if (device && needsDominantClear(original, supported)) {
+      await writeDominantMap(device, []);
+    }
+
+    if (device && needsDominantTimeoutReset(original, supported)) {
+      await writeDominantTimeout(device, DOMINANT_TIMEOUT_DEFAULT);
+    }
+
     await device?.command("led.mode 0");
     stateUpd("restore", 100);
     await DeviceTools.disconnect(selected as Device);

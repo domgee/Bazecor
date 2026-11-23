@@ -7,6 +7,7 @@ import { CONDITIONAL_LAYERS_COMMAND } from "../parsers/conditionalLayers";
 import { DUAL_FUNCTION_COMMAND, PER_KEY_COMMAND } from "../parsers/dualFunction";
 import { MACROS_COMMAND, MACROS_NOT_RESTORED } from "../parsers/macros";
 import { HOLD_MODS_COMMAND, HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED } from "../parsers/holdMods";
+import { DOMINANT_MAP_COMMAND, DOMINANT_NOT_RESTORED, DOMINANT_TIMEOUT_COMMAND } from "../parsers/dominant";
 import restoreCommand from "./restoreCommand";
 
 /* A keyboard that stores each table it is sent and replies with it */
@@ -28,7 +29,7 @@ describe("restoreCommand", () => {
     const { device, noCacheCommand } = mockDevice();
     const sendPlain = vi.fn(async () => "");
 
-    await restoreCommand(device, KEY_OVERRIDES_COMMAND, "1 42 8 1023 0 8 76 7 1", () => 60, sendPlain, "unlisted");
+    await restoreCommand(device, KEY_OVERRIDES_COMMAND, "1 42 8 1023 0 8 76 7 1", () => 60, sendPlain, "unlisted", null);
 
     expect(noCacheCommand.mock.calls).toEqual([[KEY_OVERRIDES_COMMAND, "1 42 8 1023 0 8 76 7 1"], [KEY_OVERRIDES_COMMAND]]);
     expect(sendPlain).not.toHaveBeenCalled();
@@ -38,7 +39,7 @@ describe("restoreCommand", () => {
     const { device, noCacheCommand } = mockDevice();
     const sendPlain = vi.fn(async () => "");
 
-    await restoreCommand(device, LED_CUSTOM_COMMAND, "2 0 0 0 0 0 1 255 0 0 0", () => 60, sendPlain, "unlisted");
+    await restoreCommand(device, LED_CUSTOM_COMMAND, "2 0 0 0 0 0 1 255 0 0 0", () => 60, sendPlain, "unlisted", null);
 
     expect(noCacheCommand.mock.calls).toEqual([[LED_CUSTOM_COMMAND, "2 0 0 0 0 0 1 255 0 0 0"], [LED_CUSTOM_COMMAND]]);
     expect(sendPlain).not.toHaveBeenCalled();
@@ -48,7 +49,7 @@ describe("restoreCommand", () => {
     const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "error" : "0"));
 
     await expect(
-      restoreCommand({ noCacheCommand }, LED_CUSTOM_COMMAND, "1 1 255 0 0 0", () => 60, vi.fn(), "unlisted"),
+      restoreCommand({ noCacheCommand }, LED_CUSTOM_COMMAND, "1 1 255 0 0 0", () => 60, vi.fn(), "unlisted", null),
     ).rejects.toThrow("rejected");
   });
 
@@ -56,7 +57,7 @@ describe("restoreCommand", () => {
     const { device, noCacheCommand } = mockDevice();
     const sendPlain = vi.fn(async () => "");
 
-    await restoreCommand(device, ALT_REPEAT_COMMAND, "1 0 23 6 14", () => 60, sendPlain, "unlisted");
+    await restoreCommand(device, ALT_REPEAT_COMMAND, "1 0 23 6 14", () => 60, sendPlain, "unlisted", null);
 
     expect(noCacheCommand.mock.calls).toEqual([[ALT_REPEAT_COMMAND, "1 0 23 6 14"], [ALT_REPEAT_COMMAND]]);
     expect(sendPlain).not.toHaveBeenCalled();
@@ -66,7 +67,7 @@ describe("restoreCommand", () => {
     const { device, noCacheCommand } = mockDevice();
     const sendPlain = vi.fn(async () => "");
 
-    await restoreCommand(device, CONDITIONAL_LAYERS_COMMAND, "1 6 3", () => 60, sendPlain, "unlisted");
+    await restoreCommand(device, CONDITIONAL_LAYERS_COMMAND, "1 6 3", () => 60, sendPlain, "unlisted", null);
 
     expect(noCacheCommand.mock.calls).toEqual([[CONDITIONAL_LAYERS_COMMAND, "1 6 3"], [CONDITIONAL_LAYERS_COMMAND]]);
     expect(sendPlain).not.toHaveBeenCalled();
@@ -76,7 +77,7 @@ describe("restoreCommand", () => {
     const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "error" : "0"));
 
     await expect(
-      restoreCommand({ noCacheCommand }, CONDITIONAL_LAYERS_COMMAND, "1 6 3", () => 60, vi.fn(), "unlisted"),
+      restoreCommand({ noCacheCommand }, CONDITIONAL_LAYERS_COMMAND, "1 6 3", () => 60, vi.fn(), "unlisted", null),
     ).rejects.toThrow("rejected");
   });
 
@@ -85,7 +86,7 @@ describe("restoreCommand", () => {
     const sendPlain = vi.fn(async () => "");
     const keysPerLayer = vi.fn(() => 60);
 
-    await restoreCommand(device, "keymap.custom", "1 2 3", keysPerLayer, sendPlain, "unlisted");
+    await restoreCommand(device, "keymap.custom", "1 2 3", keysPerLayer, sendPlain, "unlisted", null);
 
     expect(sendPlain).toHaveBeenCalledTimes(1);
     expect(noCacheCommand).not.toHaveBeenCalled();
@@ -96,7 +97,7 @@ describe("restoreCommand", () => {
     const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "error" : "0"));
 
     await expect(
-      restoreCommand({ noCacheCommand }, KEY_OVERRIDES_COMMAND, "1 42 8 1023 0 8 76 7 1", () => 60, vi.fn(), "unlisted"),
+      restoreCommand({ noCacheCommand }, KEY_OVERRIDES_COMMAND, "1 42 8 1023 0 8 76 7 1", () => 60, vi.fn(), "unlisted", null),
     ).rejects.toThrow();
   });
 
@@ -106,7 +107,7 @@ describe("restoreCommand", () => {
       throw new Error("port closed");
     });
 
-    await expect(restoreCommand(device, "keymap.custom", "1 2 3", () => 60, sendPlain, "unlisted")).rejects.toThrow(
+    await expect(restoreCommand(device, "keymap.custom", "1 2 3", () => 60, sendPlain, "unlisted", null)).rejects.toThrow(
       "port closed",
     );
   });
@@ -115,7 +116,7 @@ describe("restoreCommand", () => {
     const { device, noCacheCommand } = mockDevice();
     const sendPlain = vi.fn(async () => "");
 
-    await restoreCommand(device, QUICK_TAP_COMMAND, "120", () => 60, sendPlain, "unlisted");
+    await restoreCommand(device, QUICK_TAP_COMMAND, "120", () => 60, sendPlain, "unlisted", null);
 
     expect(noCacheCommand.mock.calls).toEqual([[QUICK_TAP_COMMAND, "120"], [QUICK_TAP_COMMAND]]);
     expect(sendPlain).not.toHaveBeenCalled();
@@ -124,9 +125,9 @@ describe("restoreCommand", () => {
   test("rejects when the keyboard replies error to the quick tap write", async () => {
     const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "error" : "0"));
 
-    await expect(restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, "120", () => 60, vi.fn(), "unlisted")).rejects.toThrow(
-      "rejected",
-    );
+    await expect(
+      restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, "120", () => 60, vi.fn(), "unlisted", null),
+    ).rejects.toThrow("rejected");
   });
 
   test("rejects when the quick tap write returns an Error", async () => {
@@ -134,18 +135,18 @@ describe("restoreCommand", () => {
       async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? new Error("timeout") : "0"),
     );
 
-    await expect(restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, "120", () => 60, vi.fn(), "unlisted")).rejects.toThrow(
-      "timeout",
-    );
+    await expect(
+      restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, "120", () => 60, vi.fn(), "unlisted", null),
+    ).rejects.toThrow("timeout");
   });
 
   test("rejects when the quick tap read-back differs", async () => {
     /* Accept the write but keep the stored 0 */
     const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "" : "0"));
 
-    await expect(restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, "120", () => 60, vi.fn(), "unlisted")).rejects.toThrow(
-      "did not store",
-    );
+    await expect(
+      restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, "120", () => 60, vi.fn(), "unlisted", null),
+    ).rejects.toThrow("did not store");
   });
 
   test.each([
@@ -155,9 +156,9 @@ describe("restoreCommand", () => {
     const noCacheCommand = vi.fn();
     const sendPlain = vi.fn();
 
-    await expect(restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, data, () => 60, sendPlain, "unlisted")).rejects.toThrow(
-      "Malformed",
-    );
+    await expect(
+      restoreCommand({ noCacheCommand }, QUICK_TAP_COMMAND, data, () => 60, sendPlain, "unlisted", null),
+    ).rejects.toThrow("Malformed");
     expect(noCacheCommand).not.toHaveBeenCalled();
     expect(sendPlain).not.toHaveBeenCalled();
   });
@@ -169,7 +170,7 @@ describe("restoreCommand", () => {
     const { device, noCacheCommand } = mockDevice();
     const sendPlain = vi.fn(async () => "");
 
-    await restoreCommand(device, command, data, () => 60, sendPlain, "unlisted");
+    await restoreCommand(device, command, data, () => 60, sendPlain, "unlisted", null);
 
     expect(noCacheCommand.mock.calls).toEqual([[command, data], [command]]);
     expect(sendPlain).not.toHaveBeenCalled();
@@ -181,7 +182,9 @@ describe("restoreCommand", () => {
   ])("rejects when the keyboard replies error to the %s write", async (command, data) => {
     const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? "error" : "0"));
 
-    await expect(restoreCommand({ noCacheCommand }, command, data, () => 60, vi.fn(), "unlisted")).rejects.toThrow("rejected");
+    await expect(restoreCommand({ noCacheCommand }, command, data, () => 60, vi.fn(), "unlisted", null)).rejects.toThrow(
+      "rejected",
+    );
   });
 
   test.each([
@@ -191,9 +194,74 @@ describe("restoreCommand", () => {
     const noCacheCommand = vi.fn();
     const sendPlain = vi.fn();
 
-    await expect(restoreCommand({ noCacheCommand }, command, data, () => 60, sendPlain, "unlisted")).rejects.toThrow("Malformed");
+    await expect(restoreCommand({ noCacheCommand }, command, data, () => 60, sendPlain, "unlisted", null)).rejects.toThrow(
+      "Malformed",
+    );
     expect(noCacheCommand).not.toHaveBeenCalled();
     expect(sendPlain).not.toHaveBeenCalled();
+  });
+
+  describe("dominant layer", () => {
+    const LISTED = new Set(["keymap.custom", DOMINANT_MAP_COMMAND, DOMINANT_TIMEOUT_COMMAND]);
+
+    test.each([
+      [DOMINANT_MAP_COMMAND, "2 3 1 51 2"],
+      [DOMINANT_TIMEOUT_COMMAND, "120"],
+    ])("validates %s and reads it back when the target lists it, with no plain send", async (command, data) => {
+      const { device, noCacheCommand } = mockDevice();
+      const sendPlain = vi.fn(async () => "");
+
+      const warning = await restoreCommand(device, command, data, () => 60, sendPlain, "unlisted", LISTED);
+
+      expect(warning).toBeUndefined();
+      expect(noCacheCommand.mock.calls).toEqual([[command, data], [command]]);
+      expect(sendPlain).not.toHaveBeenCalled();
+    });
+
+    test.each([
+      ["a target that does not list it", new Set(["keymap.custom"])],
+      ["an unreadable help", null],
+    ])("skips the entry with a warning on %s", async (_, supported) => {
+      const noCacheCommand = vi.fn();
+      const sendPlain = vi.fn();
+
+      const mapWarning = await restoreCommand(
+        { noCacheCommand },
+        DOMINANT_MAP_COMMAND,
+        "1 3 1",
+        () => 60,
+        sendPlain,
+        "unlisted",
+        supported,
+      );
+      const timeoutWarning = await restoreCommand(
+        { noCacheCommand },
+        DOMINANT_TIMEOUT_COMMAND,
+        "60",
+        () => 60,
+        sendPlain,
+        "unlisted",
+        supported,
+      );
+
+      expect([mapWarning, timeoutWarning]).toEqual([DOMINANT_NOT_RESTORED, DOMINANT_NOT_RESTORED]);
+      expect(noCacheCommand).not.toHaveBeenCalled();
+      expect(sendPlain).not.toHaveBeenCalled();
+    });
+
+    test.each([
+      [DOMINANT_MAP_COMMAND, "1 52 1"],
+      [DOMINANT_TIMEOUT_COMMAND, "300"],
+    ])("rejects a malformed %s entry without sending anything", async (command, data) => {
+      const noCacheCommand = vi.fn();
+      const sendPlain = vi.fn();
+
+      await expect(restoreCommand({ noCacheCommand }, command, data, () => 60, sendPlain, "unlisted", LISTED)).rejects.toThrow(
+        "Malformed",
+      );
+      expect(noCacheCommand).not.toHaveBeenCalled();
+      expect(sendPlain).not.toHaveBeenCalled();
+    });
   });
 
   describe("macros.map", () => {
@@ -209,7 +277,7 @@ describe("restoreCommand", () => {
       const { device, noCacheCommand } = helpDevice("macros.map");
       const sendPlain = vi.fn(async () => "");
 
-      const warning = await restoreCommand(device, MACROS_COMMAND, LEGACY, () => 60, sendPlain, "unlisted");
+      const warning = await restoreCommand(device, MACROS_COMMAND, LEGACY, () => 60, sendPlain, "unlisted", null);
 
       expect(warning).toBeUndefined();
       expect(sendPlain).toHaveBeenCalledTimes(1);
@@ -220,7 +288,7 @@ describe("restoreCommand", () => {
       const { device, noCacheCommand } = helpDevice("macros.map\r\nmacros.state");
       const sendPlain = vi.fn(async () => "");
 
-      const warning = await restoreCommand(device, MACROS_COMMAND, UPGRADED, () => 60, sendPlain, "unlisted");
+      const warning = await restoreCommand(device, MACROS_COMMAND, UPGRADED, () => 60, sendPlain, "unlisted", null);
 
       expect(warning).toBeUndefined();
       expect(sendPlain).toHaveBeenCalledTimes(1);
@@ -231,7 +299,7 @@ describe("restoreCommand", () => {
       const { device } = helpDevice("macros.map\r\nmacros.memory");
       const sendPlain = vi.fn(async () => "");
 
-      const warning = await restoreCommand(device, MACROS_COMMAND, UPGRADED, () => 60, sendPlain, "unlisted");
+      const warning = await restoreCommand(device, MACROS_COMMAND, UPGRADED, () => 60, sendPlain, "unlisted", null);
 
       expect(warning).toBe(MACROS_NOT_RESTORED);
       expect(sendPlain).not.toHaveBeenCalled();
@@ -250,7 +318,7 @@ describe("restoreCommand", () => {
         const { device, noCacheCommand } = stepsDevice("macros.map\r\nmacros.state");
         const sendPlain = vi.fn(async () => "");
 
-        const warning = await restoreCommand(device, MACROS_COMMAND, LAYER_OFF, () => 60, sendPlain, "unlisted");
+        const warning = await restoreCommand(device, MACROS_COMMAND, LAYER_OFF, () => 60, sendPlain, "unlisted", null);
 
         expect(warning).toBe(MACROS_NOT_RESTORED);
         expect(sendPlain).not.toHaveBeenCalled();
@@ -261,7 +329,7 @@ describe("restoreCommand", () => {
         const { device, noCacheCommand } = stepsDevice("macros.map\r\nmacros.state\r\nmacros.steps");
         const sendPlain = vi.fn(async () => "");
 
-        const warning = await restoreCommand(device, MACROS_COMMAND, LAYER_OFF, () => 60, sendPlain, "unlisted");
+        const warning = await restoreCommand(device, MACROS_COMMAND, LAYER_OFF, () => 60, sendPlain, "unlisted", null);
 
         expect(warning).toBeUndefined();
         expect(sendPlain).toHaveBeenCalledTimes(1);
@@ -272,7 +340,7 @@ describe("restoreCommand", () => {
         const { device, noCacheCommand } = stepsDevice("macros.map\r\nmacros.state\r\nmacros.steps");
         const sendPlain = vi.fn(async () => "");
 
-        const warning = await restoreCommand(device, MACROS_COMMAND, UPGRADED, () => 60, sendPlain, "unlisted");
+        const warning = await restoreCommand(device, MACROS_COMMAND, UPGRADED, () => 60, sendPlain, "unlisted", null);
 
         expect(warning).toBeUndefined();
         expect(sendPlain).toHaveBeenCalledTimes(1);
@@ -298,6 +366,7 @@ describe("restoreCommand", () => {
         () => 60,
         sendPlain,
         "unlisted",
+        null,
       );
 
       expect(warning).toBe(MACROS_NOT_RESTORED);
@@ -315,7 +384,7 @@ describe("restoreCommand", () => {
       const { device, noCacheCommand } = mockDevice();
       const sendPlain = vi.fn();
 
-      const warning = await restoreCommand(device, HOLD_MODS_COMMAND, `1 ${PARTIAL} 16`, () => 60, sendPlain, "listed");
+      const warning = await restoreCommand(device, HOLD_MODS_COMMAND, `1 ${PARTIAL} 16`, () => 60, sendPlain, "listed", null);
 
       expect(warning).toBeUndefined();
       expect(noCacheCommand.mock.calls).toEqual([[HOLD_MODS_COMMAND, `1 ${PARTIAL} 16`], [HOLD_MODS_COMMAND]]);
@@ -328,7 +397,7 @@ describe("restoreCommand", () => {
         const { device, noCacheCommand } = mockDevice();
         const sendPlain = vi.fn();
 
-        const warning = await restoreCommand(device, HOLD_MODS_COMMAND, `1 ${PARTIAL} 16`, () => 60, sendPlain, target);
+        const warning = await restoreCommand(device, HOLD_MODS_COMMAND, `1 ${PARTIAL} 16`, () => 60, sendPlain, target, null);
 
         expect(warning).toBe(HOLD_MODS_NOT_RESTORED);
         expect(noCacheCommand).not.toHaveBeenCalled();
@@ -340,7 +409,7 @@ describe("restoreCommand", () => {
       const { device, noCacheCommand } = mockDevice();
       const sendPlain = vi.fn();
 
-      const warning = await restoreCommand(device, "keymap.custom", `41 ${PARTIAL}`, () => 60, sendPlain, "listed");
+      const warning = await restoreCommand(device, "keymap.custom", `41 ${PARTIAL}`, () => 60, sendPlain, "listed", null);
 
       expect(warning).toBeUndefined();
       expect(noCacheCommand.mock.calls).toEqual([["keymap.custom", `41 ${PARTIAL}`]]);
@@ -355,9 +424,9 @@ describe("restoreCommand", () => {
         async (_cmd: string, ...args: string[]): Promise<unknown> => (args.length > 0 ? written : "0"),
       );
 
-      await expect(restoreCommand({ noCacheCommand }, "keymap.custom", "41 42", () => 60, vi.fn(), "listed")).rejects.toThrow(
-        message,
-      );
+      await expect(
+        restoreCommand({ noCacheCommand }, "keymap.custom", "41 42", () => 60, vi.fn(), "listed", null),
+      ).rejects.toThrow(message);
     });
 
     test.each([["unlisted"], ["unreadable"]] as const)(
@@ -366,7 +435,15 @@ describe("restoreCommand", () => {
         const { device, noCacheCommand } = mockDevice();
         const sendPlain = vi.fn();
 
-        const warning = await restoreCommand(device, "keymap.custom", `41 ${PARTIAL} ${LEGACY}`, () => 60, sendPlain, target);
+        const warning = await restoreCommand(
+          device,
+          "keymap.custom",
+          `41 ${PARTIAL} ${LEGACY}`,
+          () => 60,
+          sendPlain,
+          target,
+          null,
+        );
 
         expect(warning).toBe(HOLD_MODS_NORMALIZED);
         expect(noCacheCommand.mock.calls).toEqual([["keymap.custom", `41 ${PLAIN} ${LEGACY}`]]);
@@ -377,7 +454,15 @@ describe("restoreCommand", () => {
     test.each([["unlisted"], ["unreadable"]] as const)("makes partial hold outputs plain on an %s target", async target => {
       const { device, noCacheCommand } = mockDevice();
 
-      const warning = await restoreCommand(device, ALT_REPEAT_COMMAND, `1 2 23 ${PLAIN} ${PARTIAL}`, () => 60, vi.fn(), target);
+      const warning = await restoreCommand(
+        device,
+        ALT_REPEAT_COMMAND,
+        `1 2 23 ${PLAIN} ${PARTIAL}`,
+        () => 60,
+        vi.fn(),
+        target,
+        null,
+      );
 
       expect(warning).toBe(HOLD_MODS_NORMALIZED);
       expect(noCacheCommand.mock.calls).toEqual([[ALT_REPEAT_COMMAND, `1 2 23 ${PLAIN} ${PLAIN}`], [ALT_REPEAT_COMMAND]]);
@@ -386,7 +471,15 @@ describe("restoreCommand", () => {
     test("keeps partial hold outputs on a target that lists the table", async () => {
       const { device, noCacheCommand } = mockDevice();
 
-      const warning = await restoreCommand(device, ALT_REPEAT_COMMAND, `1 2 23 ${PLAIN} ${PARTIAL}`, () => 60, vi.fn(), "listed");
+      const warning = await restoreCommand(
+        device,
+        ALT_REPEAT_COMMAND,
+        `1 2 23 ${PLAIN} ${PARTIAL}`,
+        () => 60,
+        vi.fn(),
+        "listed",
+        null,
+      );
 
       expect(warning).toBeUndefined();
       expect(noCacheCommand.mock.calls).toEqual([[ALT_REPEAT_COMMAND, `1 2 23 ${PLAIN} ${PARTIAL}`], [ALT_REPEAT_COMMAND]]);

@@ -1048,6 +1048,12 @@ const English = {
       quickTapTermTip2: "While this is on, a tap followed quickly by a hold gives the tap key, not the modifier or layer.",
       quickTapTermTip3: "The keyboard never uses more than the hold timeout.",
       quickTapTermTipDefault: "Default value: Off",
+      dominantTimeout: "Dominant layer timeout",
+      dominantTimeoutReadError: "Could not read the dominant layer timeout",
+      dominantTimeoutTip1:
+        "A key with a dominant layer waits this long after its press. If its dominant layer turns on first, the key plays its action on that layer.",
+      dominantTimeoutTip2: "Another key press, the key's release or the end of the wait plays the key's normal action at once.",
+      dominantTimeoutTipDefault: "Default value: 60 ms",
       dualFunctionReadError: "Could not read the dual-function key options",
       dualFunctionOff: "Off",
       decisionMode: "Add Key on Tap - Decision mode",

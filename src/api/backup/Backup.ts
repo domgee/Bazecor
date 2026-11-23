@@ -46,6 +46,13 @@ import {
   writePerKeyOverrides,
 } from "../parsers/dualFunction";
 import { HOLD_MODS_COMMAND, holdModsTargetOf, restoreHoldMods, writeHoldMods } from "../parsers/holdMods";
+import {
+  DOMINANT_TIMEOUT_DEFAULT,
+  needsDominantClear,
+  needsDominantTimeoutReset,
+  writeDominantMap,
+  writeDominantTimeout,
+} from "../parsers/dominant";
 import restoreCommand from "./restoreCommand";
 import { fitPaletteToFormat } from "../parsers/palette";
 import { SUPERKEYS_COMMAND, fitSuperkeysForTarget } from "../parsers/superkeys";
@@ -461,40 +468,24 @@ export default class Backup {
     // arguments overflow its serial buffer (combos.map after a downgrade), and
     // every command after it times out. Another board's backup or a newer
     // firmware's backup carries some, so only send what the target lists in `help`.
-    data = await Backup.keepSupportedCommands(data, device);
-    data = data.filter(c => typeof c.command === "string" && c.command.trim().length > 0);
-    /* Clear the rules, the key overrides, the conditional layers, the custom LED effects and the per-key dual-function overrides, and turn
-     * quick tap and the dual-function options off, when the backup predates them */
+    // Read help once, so the filter and every reset below use the same list.
     const supported = await Backup.supportedCommands(device);
+    const original = data.map(c => c.command);
+    data = Backup.keepSupportedIn(data, supported);
+    data = data.filter(c => typeof c.command === "string" && c.command.trim().length > 0);
+    /* Clear the rules, the key overrides, the conditional layers, the custom LED effects, the per-key dual-function overrides and the
+     * dominant layers, and turn quick tap, the dual-function options and the dominant layer timeout to their defaults, when the backup
+     * predates them. Decide from the backup before the filter */
     const holdModsTarget = holdModsTargetOf(supported);
-    const clearAltRepeat = needsAltRepeatClear(
-      data.map(c => c.command),
-      supported,
-    );
-    const clearKeyOverrides = needsKeyOverridesClear(
-      data.map(c => c.command),
-      supported,
-    );
-    const clearQuickTap = needsQuickTapClear(
-      data.map(c => c.command),
-      supported,
-    );
-    const clearConditionalLayers = needsConditionalLayersClear(
-      data.map(c => c.command),
-      supported,
-    );
-    const clearDualFunction = needsDualFunctionClear(
-      data.map(c => c.command),
-      supported,
-    );
-    const clearPerKey = needsPerKeyClear(
-      data.map(c => c.command),
-      supported,
-    );
-    const clearLedCustom = needsLedCustomClear(
-      data.map(c => c.command),
-      supported,
-    );
+    const clearAltRepeat = needsAltRepeatClear(original, supported);
+    const clearKeyOverrides = needsKeyOverridesClear(original, supported);
+    const clearQuickTap = needsQuickTapClear(original, supported);
+    const clearConditionalLayers = needsConditionalLayersClear(original, supported);
+    const clearDualFunction = needsDualFunctionClear(original, supported);
+    const clearPerKey = needsPerKeyClear(original, supported);
+    const clearLedCustom = needsLedCustomClear(original, supported);
+    const clearDominant = needsDominantClear(original, supported);
+    const resetDominantTimeout = needsDominantTimeoutReset(original, supported);
     data = data.map(c => (typeof c.data === "string" ? { ...c, data: fitCommandToDevice(c.command, c.data, targetProduct) } : c));
     // Reorder to ensure superkeys are restored before keymap
     try {
@@ -561,6 +552,7 @@ export default class Backup {
             keysPerLayer,
             () => device.command(command, value),
             holdModsTarget,
+            supported,
           );
           Backup.addRestoreWarning(warning);
         }
@@ -591,6 +583,14 @@ export default class Backup {
 
         if (clearLedCustom) {
           await writeLedCustom(device, emptyLedTable());
+        }
+
+        if (clearDominant) {
+          await writeDominantMap(device, []);
+        }
+
+        if (resetDominantTimeout) {
+          await writeDominantTimeout(device, DOMINANT_TIMEOUT_DEFAULT);
         }
 
         if (holdModsData !== undefined) {
@@ -737,14 +737,16 @@ export default class Backup {
                 keysPerLayer,
                 () => device.command(command, sendData),
                 holdModsTarget,
+                supported,
               );
               Backup.addRestoreWarning(warning);
             }
           }
         }
 
-        /* Clear the rules, the key overrides, the conditional layers, the custom LED effects and the per-key dual-function overrides, and
-         * turn quick tap and the dual-function options off, when the file predates them */
+        /* Clear the rules, the key overrides, the conditional layers, the custom LED effects, the per-key dual-function overrides and the
+         * dominant layers, and turn quick tap, the dual-function options and the dominant layer timeout to their defaults, when the file
+         * predates them */
         if (needsAltRepeatClear(Object.keys(data), supported)) {
           await writeAltRepeatRules(device, [], 0, 0);
         }
@@ -771,6 +773,14 @@ export default class Backup {
 
         if (needsLedCustomClear(Object.keys(data), supported)) {
           await writeLedCustom(device, emptyLedTable());
+        }
+
+        if (needsDominantClear(Object.keys(data), supported)) {
+          await writeDominantMap(device, []);
+        }
+
+        if (needsDominantTimeoutReset(Object.keys(data), supported)) {
+          await writeDominantTimeout(device, DOMINANT_TIMEOUT_DEFAULT);
         }
 
         if (holdModsData !== undefined) {
@@ -877,11 +887,10 @@ export default class Backup {
   };
 
   /**
-   * Drops the commands `device` does not list in `help`. Keeps everything when
-   * `help` can't be read, rather than restoring nothing.
+   * Drops the commands `supported` does not list. Keeps everything when it is
+   * null, which means `help` can't be read, rather than restoring nothing.
    */
-  static keepSupportedCommands = async <T extends { command: string }>(data: T[], device: Device): Promise<T[]> => {
-    const supported = await Backup.supportedCommands(device);
+  static keepSupportedIn = <T extends { command: string }>(data: T[], supported: Set<string> | null): T[] => {
     if (!supported) return data;
     return data.filter(c => {
       if (supported.has(c.command)) return true;
@@ -889,6 +898,10 @@ export default class Backup {
       return false;
     });
   };
+
+  /** Drops the commands `device` does not list in `help`. See keepSupportedIn. */
+  static keepSupportedCommands = async <T extends { command: string }>(data: T[], device: Device): Promise<T[]> =>
+    Backup.keepSupportedIn(data, await Backup.supportedCommands(device));
 
   /** The keymap on `dev` before the restore, split into layers of the target
    * board's size, so the keys the source board lacks keep their current value

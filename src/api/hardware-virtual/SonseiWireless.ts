@@ -49,10 +49,11 @@ const SonseiWireless: VirtualType = {
   virtual: {
     ...DefyWireless.virtual,
     /* Only the Sonsei firmware has LayerHoldMods with its held modifiers table, AltRepeat, KeyOverrides, quick tap, dual-function options,
-     * conditional layers, swap hands, the macro upgrade, unique Superkeys, the Repeat key and custom LED effects. Help lines turn them on */
+     * conditional layers, swap hands, the macro upgrade, unique Superkeys, the Repeat key, custom LED effects and the dominant layer. Help
+     * lines turn them on */
     help: {
       ...DefyWireless.virtual.help,
-      data: `${DefyWireless.virtual.help.data}\r\nlayerhold.state\r\nholdmods.map\r\naltrepeat.map\r\nkeyoverrides.map\r\nqukeys.quickTapTerm\r\nqukeys.dualFunction\r\nqukeys.perKey\r\nconditional.map\r\nswaphands.state\r\nmacros.state\r\nmacros.steps\r\nsuperkeys.unique\r\nrepeatkey.state\r\nled.custom`,
+      data: `${DefyWireless.virtual.help.data}\r\nlayerhold.state\r\nholdmods.map\r\naltrepeat.map\r\nkeyoverrides.map\r\nqukeys.quickTapTerm\r\nqukeys.dualFunction\r\nqukeys.perKey\r\nconditional.map\r\nswaphands.state\r\nmacros.state\r\nmacros.steps\r\nsuperkeys.unique\r\nrepeatkey.state\r\nled.custom\r\ndominant.map\r\ndominant.timeout`,
     },
     "layerhold.state": {
       data: "0 0",
@@ -96,6 +97,14 @@ const SonseiWireless: VirtualType = {
     },
     "led.custom": {
       data: "0",
+      eraseable: true,
+    },
+    "dominant.map": {
+      data: "0",
+      eraseable: true,
+    },
+    "dominant.timeout": {
+      data: "60",
       eraseable: true,
     },
     "hardware.version": {

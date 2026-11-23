@@ -49,6 +49,8 @@ export interface KBDataPref {
   qukeysMinPrior: number;
   /** Quick tap term in ms, 0 = off. -1 = not read, which means the read failed when capabilities.quickTap is true. */
   qukeysQuickTapTerm: number;
+  /** Dominant layer timeout in ms. -1 = not read, which means the read failed when capabilities.dominantLayer is true. */
+  dominantTimeout: number;
   /** Global dual-function key options. Null = not read, which means the read failed when capabilities.dualFunction is true. */
   dualFunction: DualFunctionGlobals | null;
   SuperTimeout: number;

@@ -34,6 +34,13 @@ import {
 } from "../parsers/dualFunction";
 import { MACROS_COMMAND, restoreMacrosMap } from "../parsers/macros";
 import {
+  DOMINANT_MAP_COMMAND,
+  DOMINANT_NOT_RESTORED,
+  DOMINANT_TIMEOUT_COMMAND,
+  restoreDominantMap,
+  restoreDominantTimeout,
+} from "../parsers/dominant";
+import {
   HOLD_MODS_COMMAND,
   HOLD_MODS_NORMALIZED,
   plainHoldOutputs,
@@ -64,7 +71,8 @@ const restoreAltRepeatHolds = async (
  * term, the dual-function options, the custom LED effects and the held modifiers, whose rejection must fail the restore. Skip macros that
  * use steps the keyboard lacks. Check the keymap write on a target with the held modifiers table, and make partial holds plain on any other
  * target. Send the rest plain. `keysPerLayer` runs only for the previous-key rules, so a plain command never needs the keyboard's layout.
- * `holdModsTarget` is the target's `help` classified once per restore. Return a warning for the user when a command was skipped or changed. */
+ * `holdModsTarget` is the target's `help` classified once per restore. Send the dominant layer settings only when `supported`, the target's
+ * `help` read once per restore, lists them. Return a warning for the user when a command was skipped or changed. */
 export const restoreCommand = async (
   device: AltRepeatDevice,
   command: string,
@@ -72,7 +80,22 @@ export const restoreCommand = async (
   keysPerLayer: () => number,
   sendPlain: () => Promise<unknown>,
   holdModsTarget: HoldModsTarget,
+  supported: Set<string> | null,
 ): Promise<string | undefined> => {
+  if (command === DOMINANT_MAP_COMMAND || command === DOMINANT_TIMEOUT_COMMAND) {
+    if (!supported?.has(command)) {
+      return DOMINANT_NOT_RESTORED;
+    }
+
+    if (command === DOMINANT_MAP_COMMAND) {
+      await restoreDominantMap(device, data);
+    } else {
+      await restoreDominantTimeout(device, data);
+    }
+
+    return undefined;
+  }
+
   if (command === MACROS_COMMAND) {
     return restoreMacrosMap(device, data, sendPlain);
   }

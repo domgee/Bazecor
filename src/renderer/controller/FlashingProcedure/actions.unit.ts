@@ -242,6 +242,76 @@ describe("actions", () => {
     });
   });
 
+  describe("restoreSettings with the dominant layer", () => {
+    /* A keyboard that stores each table it is sent and replies with it */
+    const dominantKeyboard = (help: string) => {
+      const keyboard: Record<string, string> = { help, "dominant.map": "1 3 2", "dominant.timeout": "120" };
+      const reply = async (cmd: string, ...args: string[]): Promise<unknown> => {
+        if (args.length > 0) {
+          keyboard[cmd] = args.join(" ");
+          return "";
+        }
+
+        return keyboard[cmd] ?? "";
+      };
+      const noCacheCommand = vi.fn(reply);
+      const device = {
+        productId: "0001",
+        device: { info: { product: "Sonsei" }, keyboard: { rows: 5, columns: 12 } },
+        noCacheCommand,
+        command: vi.fn(async () => ""),
+      };
+      vi.mocked(DeviceTools.list).mockResolvedValue([device as any]);
+      vi.mocked(DeviceTools.connect).mockResolvedValue(device as any);
+      return { keyboard, noCacheCommand };
+    };
+
+    it("reads help once and resets the map and timeout on a listed target for a backup that predates them", async () => {
+      const { keyboard, noCacheCommand } = dominantKeyboard("keymap.custom\r\ndominant.map\r\ndominant.timeout");
+      context.backup = { backup: [{ command: "keymap.custom", data: "1" }] };
+
+      const result = await restoreDefies(context);
+
+      expect(result).toBe(true);
+      expect(noCacheCommand.mock.calls.filter(call => call[0] === "help")).toHaveLength(1);
+      expect(keyboard["dominant.map"]).toBe("0");
+      expect(keyboard["dominant.timeout"]).toBe("60");
+    });
+
+    it("restores the backup's map and resets nothing on a listed target", async () => {
+      const { keyboard } = dominantKeyboard("keymap.custom\r\ndominant.map\r\ndominant.timeout");
+      context.backup = {
+        backup: [
+          { command: "keymap.custom", data: "1" },
+          { command: "dominant.map", data: "1 51 1" },
+          { command: "dominant.timeout", data: "80" },
+        ],
+      };
+
+      const result = await restoreDefies(context);
+
+      expect(result).toBe(true);
+      expect(keyboard["dominant.map"]).toBe("1 51 1");
+      expect(keyboard["dominant.timeout"]).toBe("80");
+    });
+
+    it("sends and resets nothing on a target that does not list them", async () => {
+      const { noCacheCommand } = dominantKeyboard("keymap.custom");
+      context.backup = {
+        backup: [
+          { command: "keymap.custom", data: "1" },
+          { command: "dominant.map", data: "1 51 1" },
+        ],
+      };
+
+      const result = await restoreDefies(context);
+
+      expect(result).toBe(true);
+      expect(noCacheCommand.mock.calls.filter(call => call[0] === "help")).toHaveLength(1);
+      expect(noCacheCommand.mock.calls.some(call => String(call[0]).startsWith("dominant."))).toBe(false);
+    });
+  });
+
   describe("reconnect", () => {
     it("should enumerate serial and reconnect", async () => {
       vi.mocked(DeviceTools.enumerateSerial).mockResolvedValue({

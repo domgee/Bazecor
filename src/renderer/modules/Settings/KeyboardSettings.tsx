@@ -47,6 +47,7 @@ import {
   MODE_TIMEOUT_ONLY,
   NEUTRALIZER_OPTIONS,
 } from "../../../api/parsers/dualFunction";
+import { DOMINANT_TIMEOUT_MAX, DOMINANT_TIMEOUT_MIN } from "../../../api/parsers/dominant";
 
 const Styles = Styled.div`
 
@@ -217,6 +218,7 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
   const combos = Boolean(store.get("capabilities.combos"));
   const capsword = Boolean(store.get("capabilities.capsword"));
   const quickTap = Boolean(store.get("capabilities.quickTap"));
+  const dominantLayer = Boolean(store.get("capabilities.dominantLayer"));
   const dualFunctionCapable = Boolean(store.get("capabilities.dualFunction"));
   const qukeysTips = (points: string[], defaultTip?: string) => [
     ...points,
@@ -275,6 +277,14 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
       qukeysQuickTapTerm: value[0],
     }));
     setKbData({ ...localKBData, qukeysQuickTapTerm: value[0] });
+  };
+
+  const setDominantTimeout = (value: number[]) => {
+    setLocalKBData(data => ({
+      ...data,
+      dominantTimeout: value[0],
+    }));
+    setKbData({ ...localKBData, dominantTimeout: value[0] });
   };
 
   /* Keep a neutralizer the list lacks, such as one set through Focus, selectable as its keycode */
@@ -389,6 +399,7 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
     qukeysMinHold,
     qukeysMinPrior,
     qukeysQuickTapTerm,
+    dominantTimeout,
     dualFunction,
     SuperTimeout,
     SuperHoldstart,
@@ -699,6 +710,60 @@ function KeyboardSettings(props: KeyboardSettingsProps) {
                           step={5}
                           value={[Math.min(qukeysQuickTapTerm, 255)]}
                           onValueChange={setQuickTapTerm}
+                        />
+                      </div>
+                      <div className="flex max-w-12 p-0 text-center items-center">
+                        <span className="tagsfix">Longer</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              {dominantLayer && (
+                <div className="w-full">
+                  <div className="w-full flex gap-2">
+                    <div className="w-full">
+                      <Heading headingLevel={3} renderAs="paragraph-sm" className="flex items-center gap-2">
+                        {i18n.keyboardSettings.qukeys.dominantTimeout}
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger className="[&_svg]:text-purple-100 [&_svg]:dark:text-purple-200">
+                              <IconInformation />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <Heading headingLevel={4} renderAs="h4" className="text-gray-600 dark:text-gray-25 mb-3 leading-6">
+                                {i18n.keyboardSettings.qukeys.dominantTimeoutTip1}
+                              </Heading>
+                              <ul className="list-disc pl-4">
+                                <li className="text-left">{i18n.keyboardSettings.qukeys.dominantTimeoutTip2}</li>
+                                <li className="text-left">{i18n.keyboardSettings.qukeys.dominantTimeoutTipDefault}</li>
+                              </ul>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </Heading>
+                    </div>
+                    <div className="flex items-center text-right">
+                      {/* Show the failed read instead of a slider, so a save never writes a guessed timeout */}
+                      {dominantTimeout < 0 ? (
+                        <span className="tagsfix">{i18n.keyboardSettings.qukeys.dominantTimeoutReadError}</span>
+                      ) : (
+                        <span className="tagsfix whitespace-nowrap">{`${dominantTimeout} ms`}</span>
+                      )}
+                    </div>
+                  </div>
+                  {dominantTimeout >= 0 && (
+                    <div className="w-full flex gap-2">
+                      <div className="flex max-w-12 p-0 text-center items-center">
+                        <span className="tagsfix">Shorter</span>
+                      </div>
+                      <div className="w-full flex items-center p-0">
+                        <Slider
+                          min={DOMINANT_TIMEOUT_MIN}
+                          max={DOMINANT_TIMEOUT_MAX}
+                          step={5}
+                          value={[dominantTimeout]}
+                          onValueChange={setDominantTimeout}
                         />
                       </div>
                       <div className="flex max-w-12 p-0 text-center items-center">

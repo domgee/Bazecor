@@ -452,3 +452,39 @@ describe("unique Superkeys marker", () => {
     expect(vk.virtual.help.data.split("\r\n")).toContain("superkeys.unique");
   });
 });
+
+describe("dominant layer", () => {
+  const DOMINANT = ["dominant.map", "dominant.timeout"];
+
+  test("the Sonsei lists both commands in help, erasable, with an empty map and a 60 ms timeout", () => {
+    expect(SonseiWireless.virtual.help.data.split("\r\n")).toEqual(expect.arrayContaining(DOMINANT));
+    expect(SonseiWireless.virtual["dominant.map"]).toEqual({ data: "0", eraseable: true });
+    expect(SonseiWireless.virtual["dominant.timeout"]).toEqual({ data: "60", eraseable: true });
+  });
+
+  test.each([
+    ["Defy wireless", DefyWireless],
+    ["Raise 2 ANSI", Raise2ANSI],
+  ])("the %s lists neither", (_, template) => {
+    DOMINANT.forEach(command => {
+      expect(template.virtual.help.data.split("\r\n")).not.toContain(command);
+      expect(template.virtual[command]).toBeUndefined();
+    });
+  });
+
+  test("addMissingVirtualCommands adds both to a Sonsei file saved before them", () => {
+    const vk: VirtualType = JSON.parse(JSON.stringify(SonseiWireless));
+    DOMINANT.forEach(command => {
+      delete vk.virtual[command];
+    });
+    vk.virtual.help.data = vk.virtual.help.data
+      .split("\r\n")
+      .filter(c => !DOMINANT.includes(c))
+      .join("\r\n");
+
+    const added = addMissingVirtualCommands(vk);
+
+    expect(added).toEqual(DOMINANT);
+    expect(vk.virtual.help.data.split("\r\n")).toEqual(expect.arrayContaining(DOMINANT));
+  });
+});

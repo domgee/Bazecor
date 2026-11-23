@@ -69,6 +69,7 @@ import { Neuron } from "@Renderer/types/neurons";
 import Backup from "../../api/backup";
 import { delay } from "../../api/flash/delay";
 import { readQuickTapTerm, saveQuickTapTerm } from "../../api/parsers/quickTap";
+import { readDominantTimeout, saveDominantTimeout } from "../../api/parsers/dominant";
 import { readDualFunctionGlobals, saveDualFunctionGlobals } from "../../api/parsers/dualFunction";
 import { confirmBox } from "../utils/messageBox";
 
@@ -122,6 +123,7 @@ const initialKBData: KBDataPref = {
   qukeysMinHold: 0,
   qukeysMinPrior: 0,
   qukeysQuickTapTerm: -1,
+  dominantTimeout: -1,
   dualFunction: null,
   SuperTimeout: 0,
   SuperRepeat: 20,
@@ -261,6 +263,15 @@ const Preferences = (props: PreferencesProps) => {
         const term = await readQuickTapTerm(state.currentDevice);
         log.info("[QuickTap] read term ->", term);
         newKbData.qukeysQuickTapTerm = term ?? -1;
+      }
+
+      /* Reset the shared initialKBData. Keep -1 on a failed read to hide the slider, so a save never writes a guessed timeout */
+      newKbData.dominantTimeout = -1;
+
+      if (store.get("capabilities.dominantLayer")) {
+        const timeout = await readDominantTimeout(state.currentDevice);
+        log.info("[DominantLayer] read timeout ->", timeout);
+        newKbData.dominantTimeout = timeout ?? -1;
       }
 
       /* Reset the shared initialKBData. Keep null on a failed read to hide the options, so a save never turns them off */
@@ -583,6 +594,16 @@ const Preferences = (props: PreferencesProps) => {
 
         try {
           await saveQuickTapTerm(state.currentDevice, kbData.qukeysQuickTapTerm);
+        } catch (error) {
+          firstSaveError = firstSaveError ?? error;
+        }
+      }
+
+      if (store.get("capabilities.dominantLayer")) {
+        log.info(`[DominantLayer] saving timeout=${kbData.dominantTimeout}`);
+
+        try {
+          await saveDominantTimeout(state.currentDevice, kbData.dominantTimeout);
         } catch (error) {
           firstSaveError = firstSaveError ?? error;
         }
