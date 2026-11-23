@@ -114,6 +114,8 @@ const Style = Styled.div`
   align-items: center;
 }
 `;
+const BATTERY_POLL_INTERVAL_MS = 60 * 1000;
+
 interface BatteryStatusProps {
   disable: boolean;
 }
@@ -130,45 +132,35 @@ const BatteryStatus = ({ disable }: BatteryStatusProps) => {
 
   const intervalIdRef = useRef<NodeJS.Timeout | null>(null);
   const intervalIdAnimateRef = useRef<NodeJS.Timeout | null>(null);
-
-  const delay = (ms: number) =>
-    new Promise(res => {
-      setTimeout(res, ms);
-    });
+  const pollingRef = useRef(false);
 
   const getBatteryStatus = useCallback(async () => {
-    // Skip battery polling if device is in bootloader mode or disabled
-    if (state.currentDevice && !disable && !state.currentDevice.isSending && !state.currentDevice.device.bootloader) {
-      let left = "";
-      let right = "";
-      let leftStatus = "";
-      let rightStatus = "";
-      let savingMode = "";
-      // iterator values
-      let newReading = false;
-      let counter = 5;
-      // reading until we get a result != 4 or we try 5 times
-      while (newReading === false && counter > 0) {
-        /* eslint-disable no-await-in-loop */
-        left = await state.currentDevice.noCacheCommand("wireless.battery.left.level");
-        right = await state.currentDevice.noCacheCommand("wireless.battery.right.level");
-        leftStatus = await state.currentDevice.noCacheCommand("wireless.battery.left.status");
-        rightStatus = await state.currentDevice.noCacheCommand("wireless.battery.right.status");
-        savingMode = await state.currentDevice.noCacheCommand("wireless.battery.savingMode");
-        counter -= 1;
-        if (leftStatus !== "4" && rightStatus !== "4") {
-          newReading = true;
-        } else {
-          await delay(500);
-        }
-        /* eslint-enable no-await-in-loop */
+    // Skip battery polling if device is in bootloader mode or disabled, and while the window is hidden
+    if (
+      state.currentDevice &&
+      !disable &&
+      !document.hidden &&
+      !pollingRef.current &&
+      !state.currentDevice.isSending &&
+      !state.currentDevice.device.bootloader
+    ) {
+      pollingRef.current = true;
+      try {
+        // Read once per poll. Status 4 is final on a half that does not report, so retrying only adds radio traffic
+        const left = await state.currentDevice.noCacheCommand("wireless.battery.left.level");
+        const right = await state.currentDevice.noCacheCommand("wireless.battery.right.level");
+        const leftStatus = await state.currentDevice.noCacheCommand("wireless.battery.left.status");
+        const rightStatus = await state.currentDevice.noCacheCommand("wireless.battery.right.status");
+        const savingMode = await state.currentDevice.noCacheCommand("wireless.battery.savingMode");
+        setbLeft(parseInt(left, 10));
+        setbRight(parseInt(right, 10));
+        setsLeft(leftStatus?.includes("0x") ? 255 : parseInt(leftStatus, 10));
+        setsRight(rightStatus?.includes("0x") ? 255 : parseInt(rightStatus, 10));
+        setIsSavingMode(parseInt(savingMode, 10) > 0);
+        setLoading(false);
+      } finally {
+        pollingRef.current = false;
       }
-      setbLeft(parseInt(left, 10));
-      setbRight(parseInt(right, 10));
-      setsLeft(leftStatus?.includes("0x") ? 255 : parseInt(leftStatus, 10));
-      setsRight(rightStatus?.includes("0x") ? 255 : parseInt(rightStatus, 10));
-      setIsSavingMode(parseInt(savingMode, 10) > 0);
-      setLoading(false);
     }
   }, [disable, state.currentDevice]);
 
@@ -183,13 +175,29 @@ const BatteryStatus = ({ disable }: BatteryStatusProps) => {
     if (!disable) {
       intervalIdRef.current = setInterval(() => {
         getBatteryStatus();
-      }, 5 * 1000);
+      }, BATTERY_POLL_INTERVAL_MS);
     }
     // Return a cleanup function to clear the interval
     return () => {
       if (intervalIdRef.current) {
         clearInterval(intervalIdRef.current);
       }
+    };
+  }, [disable, getBatteryStatus]);
+
+  useEffect(() => {
+    // Refresh when the user returns to the window, so the slow interval never shows a stale level
+    const refreshWhenShown = () => {
+      if (!disable && !document.hidden) {
+        getBatteryStatus();
+      }
+    };
+
+    document.addEventListener("visibilitychange", refreshWhenShown);
+    window.addEventListener("focus", refreshWhenShown);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshWhenShown);
+      window.removeEventListener("focus", refreshWhenShown);
     };
   }, [disable, getBatteryStatus]);
 
