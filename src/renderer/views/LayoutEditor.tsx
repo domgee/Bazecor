@@ -24,6 +24,7 @@ import Styled from "styled-components";
 import { keyboardCanvasStyles } from "@Renderer/modules/KeyboardCanvas/keyboardCanvasStyles";
 import { comboBadgeStyles } from "@Renderer/modules/KeyboardCanvas/comboBadges";
 import { altRepeatBadgeStyles } from "@Renderer/modules/KeyboardCanvas/altRepeatBadges";
+import { dominantBadgeStyles } from "@Renderer/modules/KeyboardCanvas/dominantBadges";
 import { ComboType } from "@Renderer/types/combos";
 import { AltRepeatBlock, AltRepeatLayerEntry, AltRepeatRule, AltRepeatState } from "@Renderer/types/altRepeat";
 import { HoldModsEntry, HoldModsState } from "@Renderer/types/holdMods";
@@ -68,7 +69,12 @@ import {
   usedHoldCodes,
   withHoldBaseline,
 } from "@Renderer/modules/HoldMods/layoutSave";
-import { MultiActionPerKey, MultiActionProps, MultiActionStorage } from "@Renderer/modules/MultiAction/MultiActionTab";
+import {
+  MultiActionDominant,
+  MultiActionPerKey,
+  MultiActionProps,
+  MultiActionStorage,
+} from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, keyFaceSlots, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 import { collectBlock, gcInputsKnown } from "@Renderer/modules/MultiAction/preGcGate";
 import { loadKeymapReplies } from "@Renderer/modules/MultiAction/comboSave";
@@ -234,6 +240,16 @@ import {
 } from "../../api/parsers/dualFunction";
 import { readQuickTapTerm } from "../../api/parsers/quickTap";
 import {
+  DOMINANT_LAYER_MAX,
+  DominantEntry,
+  dominantAt,
+  dominantRefusal,
+  readDominantMap,
+  serializeDominantMap,
+  setDominant,
+  writeDominantMap,
+} from "../../api/parsers/dominant";
+import {
   LED_TYPE_UNUSED,
   LedCustomSlot,
   LedCustomState,
@@ -328,6 +344,7 @@ type AltRepeatBreakType = {
 type CombosState = "ready" | "unsupported" | "failed";
 
 const IDLE_ACTION = 1;
+const TRANSPARENT_CODE = 65535;
 
 /* The Superkey slots that the given layers, rules and combos reference */
 const refSlotsOf = (refs: Partial<LayoutRefs>): number[] =>
@@ -469,6 +486,13 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   const perKeySaved = useRef<string | null>(null);
   /* The options the keyboard last held as far as the editor knows, which fix the slider bounds also after a failed write */
   const perKeyStored = useRef<PerKeyOverride[]>([]);
+  /* The dominant layer per key position, set on layer 1 and saved with the layout */
+  const [dominantState, setDominantState] = useState<DualFunctionKeysState>("unsupported");
+  const [dominantList, setDominantList] = useState<DominantEntry[]>([]);
+  /* The serialized map on the keyboard, so Save writes only changes. Null after a failed write */
+  const dominantSaved = useRef<string | null>(null);
+  /* The map the keyboard last held as far as the editor knows, which Discard puts back */
+  const dominantStored = useRef<DominantEntry[]>([]);
   /* The custom LED effect slots, as edited and not yet saved */
   const [ledTable, setLedTable] = useState<LedCustomSlot[]>(emptyLedTable());
   const [ledState, setLedState] = useState<LedCustomState>("unsupported");
@@ -815,6 +839,32 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     return holdModsSettled ? "settled" : "pending";
   };
 
+  /* Read the dominant layer map. Return false when it could not be read, since its failed reply stays in the Device cache for the next backup */
+  const loadDominant = useCallback(async (currentDevice: DualFunctionDevice): Promise<boolean> => {
+    dominantSaved.current = null;
+    dominantStored.current = [];
+    setDominantList([]);
+
+    if (!store.get("capabilities.dominantLayer")) {
+      setDominantState("unsupported");
+      return true;
+    }
+
+    const read = await readDominantMap(currentDevice);
+
+    if (read === null) {
+      log.warn("[LayoutEditor] dominant.map could not be read");
+      setDominantState("failed");
+      return false;
+    }
+
+    dominantSaved.current = serializeDominantMap(read);
+    dominantStored.current = read;
+    setDominantList(read);
+    setDominantState("ready");
+    return true;
+  }, []);
+
   /* Read the per-key options and the global values their "Use global" choices show. Return false when a value could not be read, since
    * its failed reply stays in the Device cache for the next backup */
   const loadPerKey = useCallback(
@@ -1057,6 +1107,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         await loadAltRepeatRules(currentDevice);
         await loadHoldMods(currentDevice, device);
         const perKeyLoad = await loadPerKey(currentDevice);
+        const dominantOk = await loadDominant(currentDevice);
         setAltRepeatTab(-1);
 
         setScanningStep(9);
@@ -1099,6 +1150,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             perKey: !perKeyLoad.perKeyOk,
             superkeys: nextSuperkeysState === "failed",
             ledCustom: ledLoad.state === "failed",
+            dominant: !dominantOk,
           });
 
           if (unreadable !== null) {
@@ -1129,6 +1181,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       loadAltRepeatRules,
       loadHoldMods,
       loadPerKey,
+      loadDominant,
     ],
   );
 
@@ -1918,6 +1971,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       superkeys: i18n.editor.multiAction.saveFailed,
       skgc: i18n.editor.multiAction.gcFailed,
       perKey: i18n.editor.multiAction.perKeyFailed,
+      dominant: i18n.editor.multiAction.dominantFailed,
       ledTable: i18n.editor.ledCustom.saveFailed,
       ledGc: i18n.editor.ledCustom.saveFailed,
     };
@@ -1988,6 +2042,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
               hasQuickTap: Boolean(store.get("capabilities.quickTap")),
               perKey: perKeyState === "failed",
               superkeys: true,
+              dominant: dominantState === "failed",
             })) === null;
         }
 
@@ -2095,6 +2150,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         savedRules: savedAltRepeat.current,
         superkeys: superkeysInput,
         perKey: perKeyState === "ready" ? { list: perKeyList, saved: perKeySaved.current } : undefined,
+        dominant: dominantState === "ready" ? { list: dominantList, saved: dominantSaved.current } : undefined,
         ledCustom: ledInput,
       };
       const saved = await runLayoutSave(
@@ -2108,6 +2164,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
           writeRules: rules => writeAltRepeatRules(currentDevice, rules, firmwareLayerCount(keymap), keysPerLayer()),
           writeSuperkeys: (table, format, storedRows) => writeSuperkeyTable(currentDevice, table, format, storedRows),
           writePerKey: list => writePerKeyOverrides(currentDevice, list),
+          writeDominant: list => writeDominantMap(currentDevice, list),
           writeLedCustom: table => writeLedCustom(currentDevice, table),
         },
         saveInput,
@@ -2120,6 +2177,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
       if (saved.perKeySaved !== undefined) {
         perKeySaved.current = saved.perKeySaved;
+      }
+
+      if (saved.dominantSaved !== undefined) {
+        dominantSaved.current = saved.dominantSaved;
       }
 
       /* Keep what the keyboard may hold of the LED slots also after a failed step, and show the table without the freed slots */
@@ -2135,6 +2196,10 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
       if (saved.done.includes("perKey") && saveInput.perKey) {
         perKeyStored.current = saveInput.perKey.list;
+      }
+
+      if (saved.done.includes("dominant") && saveInput.dominant) {
+        dominantStored.current = saveInput.dominant.list;
       }
 
       /* Keep a baseline a load read during the save, and read the keyboard again before allocating */
@@ -2227,6 +2292,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             perKey: perKeyState === "failed",
             superkeys: superkeysState !== "unsupported",
             ledCustom: ledState !== "unsupported",
+            dominant: dominantState === "failed",
           });
 
           if (unreadable !== null) {
@@ -3784,6 +3850,51 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     };
   };
 
+  /* Edit the dominant layers of the key positions. They are saved with the layout */
+  const editDominant = (edit: (list: DominantEntry[]) => DominantEntry[]) => {
+    if (savePending() || dominantState !== "ready" || altRepeatState === "failed" || holdModsState === "failed") {
+      return;
+    }
+
+    setDominantList(list => edit(list));
+    setModified(true);
+    startContext();
+  };
+
+  /* The dominant layer of the selected cell, only on layer 1 with custom layers only, as the firmware arms nowhere else */
+  const dominantFor = (cellCode: number): MultiActionDominant | undefined => {
+    if (dominantState === "unsupported" || !keymap.onlyCustom || currentLayer !== 0 || isReadOnly) {
+      return undefined;
+    }
+
+    if (!VALID_POSITIONS.includes(currentKeyIndex)) {
+      return undefined;
+    }
+
+    const position = currentKeyIndex;
+    const layer = dominantAt(dominantList, position);
+    const lastLayer = Math.min(DOMINANT_LAYER_MAX, firmwareLayerCount(keymap) - 1);
+    let disabledReason: string | undefined;
+
+    if (dominantState === "failed") {
+      disabledReason = i18n.editor.multiAction.dominantUnreadable;
+    } else if (altRepeatState === "failed") {
+      disabledReason = i18n.editor.altRepeat.loadFailed;
+    } else if (holdModsState === "failed") {
+      disabledReason = i18n.editor.holdMods.loadFailed;
+    }
+
+    return {
+      layer,
+      layers: Array.from({ length: Math.max(0, lastLayer) }, (_, i) => i + 1),
+      refused: dominantRefusal(cellCode, superkeys ?? []),
+      transparent: layer !== null && keymap.custom[layer]?.[position]?.keyCode === TRANSPARENT_CODE,
+      disabled: isSaving,
+      disabledReason,
+      onChange: (next: number | null) => editDominant(list => setDominant(list, position, next)),
+    };
+  };
+
   /* The Multi-action tab for a key whose code is `keyCode` */
   const multiActionFor = (keyCode: number, context: "cell" | "rule", onChange: (actions: number[]) => void): MultiActionProps => {
     const table = draftTable();
@@ -3858,7 +3969,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       return undefined;
     }
 
-    return multiActionFor(cellCode, "cell", onMultiActionChange);
+    return { ...multiActionFor(cellCode, "cell", onMultiActionChange), dominant: dominantFor(cellCode) };
   };
 
   /* The custom LED effect block for the selected cell, only while every slot reference is known */
@@ -3923,6 +4034,14 @@ const LayoutEditor = (props: LayoutEditorProps) => {
        * key component. */}
       <style>{comboBadgeStyles(combos, currentLayer)}</style>
       <style>{altRepeatBadgeStyles(altRepeatRules, currentLayer)}</style>
+      <style>
+        {dominantBadgeStyles(dominantList, {
+          layer: currentLayer,
+          onlyCustom: keymap.onlyCustom,
+          layerZero: (keymap.custom[0] ?? []).map(key => key.keyCode),
+          superkeys: superkeys ?? [],
+        })}
+      </style>
       <style>{keySwapStyles(swapDrag?.source ?? null, currentLayer, swapHover)}</style>
       <motion.div
         className={`keyboard-editor h-[inherit] px-3 ${modeselect} ${modeselect === "color" ? "[&_.raiseKeyboard]:h-auto" : ""} singleViewMode ${
@@ -3980,6 +4099,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
             }
 
             log.info("cancelling context: ", props);
+            setDominantList(dominantStored.current);
             scanned.current = false;
             cancelContext();
           }}

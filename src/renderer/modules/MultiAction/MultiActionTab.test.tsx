@@ -5,8 +5,10 @@ import { ThemeProvider } from "styled-components";
 import Light from "@Renderer/theme/LightTheme";
 import { emptyOverride } from "@Renderer/modules/DualFunctionKeys/overrideTable";
 import MultiActionTab, {
+  MultiActionDominant,
   MultiActionPerKey,
   MultiActionProps,
+  dominantOptions,
   hasCustomTiming,
   multiActionStatus,
 } from "./MultiActionTab";
@@ -311,5 +313,67 @@ describe("per-position options", () => {
     expect(hasCustomTiming(undefined)).toBe(false);
     expect(hasCustomTiming(perKeyProps())).toBe(false);
     expect(hasCustomTiming(perKeyProps({ override: { ...emptyOverride(POSITION), holdTimeout: 300 } }))).toBe(true);
+  });
+});
+
+describe("dominant layer", () => {
+  const dominantProps = (props: Partial<MultiActionDominant> = {}): MultiActionDominant => ({
+    layer: null,
+    layers: [1, 2, 3],
+    refused: false,
+    transparent: false,
+    disabled: false,
+    onChange: vi.fn(),
+    ...props,
+  });
+
+  const optionTexts = () => [...screen.getByRole("combobox", { name: "Dominant layer" }).querySelectorAll("option")].map(o => o.textContent);
+
+  test("a cell shows the select with None and the layers as Bazecor numbers them, and the hint", () => {
+    renderTab({ dominant: dominantProps() });
+
+    expect(optionTexts()).toEqual(["None", "Layer 2", "Layer 3", "Layer 4"]);
+    expect(screen.getByText(/waits up to the dominant layer timeout in Preferences/)).toBeTruthy();
+  });
+
+  test.each([["rule" as const], ["combo" as const]])("a %s has no dominant layer select", context => {
+    renderTab({ context, dominant: dominantProps() });
+
+    expect(screen.queryByRole("combobox", { name: "Dominant layer" })).toBeNull();
+  });
+
+  test("a refused cell offers None only and says why", () => {
+    renderTab({ dominant: dominantProps({ refused: true }) });
+
+    expect(optionTexts()).toEqual(["None"]);
+    expect(screen.getByText(/changes the layer/)).toBeTruthy();
+  });
+
+  test("a refused cell with a stored layer keeps it listed but not selectable, so None clears it", () => {
+    expect(dominantOptions({ layer: 2, layers: [1, 2, 3], refused: true })).toEqual([2]);
+  });
+
+  test("onChange receives the firmware layer, or null for None", () => {
+    const onChange = vi.fn();
+    renderTab({ dominant: dominantProps({ layer: 1, onChange }) });
+    const select = screen.getByRole("combobox", { name: "Dominant layer" });
+
+    fireEvent.change(select, { target: { value: "2" } });
+    fireEvent.change(select, { target: { value: "" } });
+
+    expect(onChange.mock.calls).toEqual([[2], [null]]);
+  });
+
+  test("a Transparent cell on the chosen layer shows a notice", () => {
+    renderTab({ dominant: dominantProps({ layer: 1, transparent: true }) });
+
+    expect(screen.getByText("This key is Transparent on Layer 2, so the key acts as on this layer.")).toBeTruthy();
+  });
+
+  test("a failed load disables the select and says why", () => {
+    renderTab({ dominant: dominantProps({ disabledReason: "The dominant layers could not be read. Reload to edit them." }) });
+
+    expect((screen.getByRole("combobox", { name: "Dominant layer" }) as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.getByRole("alert").textContent).toBe("The dominant layers could not be read. Reload to edit them.");
   });
 });

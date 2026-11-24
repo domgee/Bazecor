@@ -221,6 +221,21 @@ describe("preview reads", () => {
       expect(sent).toEqual(["led.custom"]);
     });
 
+    test("block the backup while dominant.map can not be read", async () => {
+      const { device, sent } = deviceWith({ "dominant.map": "error" });
+
+      const unreadable = await unreadableBeforeBackup(device, { previews: false, hasQuickTap: false, perKey: false, dominant: true });
+
+      expect(unreadable).toBe("dominant.map");
+      expect(sent).toEqual(["dominant.map"]);
+    });
+
+    test("let the backup run when dominant.map reads", async () => {
+      const { device } = deviceWith({ "dominant.map": "1 15 1" });
+
+      expect(await unreadableBeforeBackup(device, { previews: false, hasQuickTap: false, perKey: false, dominant: true })).toBeNull();
+    });
+
     test("read only qukeys.perKey when only its load failed", async () => {
       const { device, sent } = deviceWith(READABLE);
 

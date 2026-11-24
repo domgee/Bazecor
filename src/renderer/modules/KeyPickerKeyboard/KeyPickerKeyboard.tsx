@@ -417,6 +417,11 @@ function KeyPickerKeyboard(props: Props) {
                         {i18n.editor.multiAction.customTiming}
                       </span>
                     )}
+                    {multiAction.context === "cell" && multiAction.dominant && multiAction.dominant.layer !== null && (
+                      <span className="multiActionDominantChip ml-1 rounded-full px-1.5 text-[9px] font-bold bg-orange-200/15 text-orange-200">
+                        {i18n.editor.multiAction.dominantChip.replace("{layer}", String(multiAction.dominant.layer + 1))}
+                      </span>
+                    )}
                   </TabsTrigger>
                 )}
                 <TabsTrigger value="tabLayers" variant="tab" className="text-sm [&_svg]:w-[20px] py-2" disabled={disable}>

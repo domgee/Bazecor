@@ -32,6 +32,18 @@ describe("KeyFaceLabel", () => {
     expect(container.querySelector("[data-slot]")).toBeNull();
   });
 
+  test("NoSlots_BadgeSpanInsideTheLabel", () => {
+    const container = renderFace({});
+
+    expect(container.querySelector(".keyContentLabel > .keyFaceBadge")).not.toBeNull();
+  });
+
+  test("Slots_BadgeSpanInsideTheLabel", () => {
+    const container = renderFace({ slots: [{ text: "A" }, { text: "⌃" }, null, null, null] });
+
+    expect(container.querySelector(".keyContentLabel > .keyFaceBadge")).not.toBeNull();
+  });
+
   test("FiveSlots_DrawnInLensPositionsInsideTheBadgeHost", () => {
     const container = renderFace({ slots: [{ text: "A" }, { text: "⌘" }, { text: "B" }, { text: "C" }, { text: "D" }] });
 

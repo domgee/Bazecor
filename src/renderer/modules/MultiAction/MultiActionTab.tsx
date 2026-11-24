@@ -52,6 +52,22 @@ export interface MultiActionPerKey {
   onClear: () => void;
 }
 
+/** The dominant layer of the selected physical key, set on the default layer. */
+export interface MultiActionDominant {
+  /* The firmware layer index, or null for none */
+  layer: number | null;
+  /* The firmware layer indexes the select offers */
+  layers: number[];
+  /* Offers None only, since the cell changes the layer */
+  refused: boolean;
+  /* The cell on the chosen layer is Transparent */
+  transparent: boolean;
+  /* Makes the select read-only, with the reason shown when given */
+  disabled: boolean;
+  disabledReason?: string;
+  onChange: (layer: number | null) => void;
+}
+
 /** True when the key position has options of its own. */
 export const hasCustomTiming = (perKey: MultiActionPerKey | undefined): boolean =>
   perKey !== undefined && !isOverrideEmpty(perKey.override);
@@ -75,6 +91,8 @@ export interface MultiActionProps {
   onChange: (actions: number[]) => void;
   /* Only for cells and previous-key tabs on keyboards with per-key dual-function options */
   perKey?: MultiActionPerKey;
+  /* Only for cells on the default layer of keyboards with dominant layers */
+  dominant?: MultiActionDominant;
 }
 
 interface MultiActionTabProps extends MultiActionProps {
@@ -92,6 +110,9 @@ const TILES = [
   { id: 3, icon: <IconKeys2Tap />, title: () => i18n.editor.superkeys.actions.doubleTapLabel },
   { id: 4, icon: <IconKeys2TapHold />, title: () => i18n.editor.superkeys.actions.doubleTapAndHoldLabel },
 ];
+
+const DOMINANT_SELECT_CLASS =
+  "rounded border border-gray-200 bg-white px-2 py-1 text-ssm font-medium text-gray-600 dark:border-gray-500 dark:bg-gray-700 dark:text-gray-25";
 
 const fill = (text: string, values: Record<string, string | number>) =>
   Object.entries(values).reduce((out, [key, value]) => out.split(`{${key}}`).join(String(value)), text);
@@ -119,6 +140,12 @@ export const multiActionStatus = (
   return actions[0] !== IDLE ? i18n.editor.multiAction.statusPlain : "";
 };
 
+/** The layers the dominant select lists. A refused cell lists only a stored layer, so None can clear it. */
+export const dominantOptions = ({ layer, layers, refused }: Pick<MultiActionDominant, "layer" | "layers" | "refused">): number[] => {
+  const offered = refused ? [] : layers;
+  return layer === null || offered.includes(layer) ? offered : [...offered, layer].sort((a, b) => a - b);
+};
+
 const MultiActionTab = ({
   mode,
   context,
@@ -132,6 +159,7 @@ const MultiActionTab = ({
   actionLabel = code => String(code),
   onChange,
   perKey,
+  dominant,
   disabled = false,
   renderPicker,
 }: MultiActionTabProps) => {
@@ -271,6 +299,41 @@ const MultiActionTab = ({
               />
             </>
           )}
+        </div>
+      )}
+      {dominant !== undefined && context === "cell" && (
+        <div className="multiActionDominant flex flex-col gap-2 border-t border-gray-100 dark:border-gray-600 pt-3">
+          <label className="flex items-center gap-3 text-ssm font-semibold text-gray-500 dark:text-gray-50">
+            {i18n.editor.multiAction.dominantTitle}
+            <select
+              aria-label={i18n.editor.multiAction.dominantTitle}
+              className={DOMINANT_SELECT_CLASS}
+              value={dominant.layer === null ? "" : String(dominant.layer)}
+              disabled={disabled || dominant.disabled || dominant.disabledReason !== undefined}
+              onChange={event => dominant.onChange(event.target.value === "" ? null : parseInt(event.target.value, 10))}
+            >
+              <option value="">{i18n.editor.multiAction.dominantNone}</option>
+              {dominantOptions(dominant).map(layer => (
+                <option key={`dominant-${layer}`} value={String(layer)} disabled={dominant.refused}>
+                  {fill(i18n.editor.multiAction.dominantLayer, { layer: layer + 1 })}
+                </option>
+              ))}
+            </select>
+          </label>
+          {dominant.disabledReason !== undefined && (
+            <p role="alert" className="text-ssm font-semibold text-red-200 dark:text-red-100">
+              {dominant.disabledReason}
+            </p>
+          )}
+          {dominant.refused && (
+            <p className="multiActionDominantRefused text-ssm text-gray-400 dark:text-gray-200">{i18n.editor.multiAction.dominantRefused}</p>
+          )}
+          {dominant.layer !== null && dominant.transparent && (
+            <p className="multiActionDominantTransparent text-ssm font-semibold text-purple-200 dark:text-purple-100">
+              {fill(i18n.editor.multiAction.dominantTransparent, { layer: dominant.layer + 1 })}
+            </p>
+          )}
+          <p className="text-ssm text-gray-400 dark:text-gray-200">{i18n.editor.multiAction.dominantHint}</p>
         </div>
       )}
     </div>

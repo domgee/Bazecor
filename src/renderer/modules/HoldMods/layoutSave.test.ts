@@ -4,6 +4,7 @@ import { HoldModsEntry } from "@Renderer/types/holdMods";
 import { encodeHold, serializeHoldMods } from "../../../api/parsers/holdMods";
 import { serializeAltRepeat } from "../../../api/parsers/altRepeat";
 import { PerKeyOverride, serializePerKeyOverrides } from "../../../api/parsers/dualFunction";
+import { DominantEntry, serializeDominantMap } from "../../../api/parsers/dominant";
 import {
   LayoutRefs,
   applyMultiAction,
@@ -413,9 +414,11 @@ type FailOn = boolean | number;
 const failsOn = (fail: FailOn | undefined, call: number) => fail === true || fail === call;
 
 /* A keyboard with Superkeys and per-key options. A number fails only that call of the write, counted from 1 */
-const mockSkIO = (fail: { holdMods?: FailOn; superkeys?: FailOn; keymap?: FailOn; rules?: FailOn; perKey?: FailOn } = {}) => {
+const mockSkIO = (
+  fail: { holdMods?: FailOn; superkeys?: FailOn; keymap?: FailOn; rules?: FailOn; perKey?: FailOn; dominant?: FailOn } = {},
+) => {
   const writes: string[] = [];
-  const calls = { holdMods: 0, superkeys: 0, keymap: 0, rules: 0, perKey: 0 };
+  const calls = { holdMods: 0, superkeys: 0, keymap: 0, rules: 0, perKey: 0, dominant: 0 };
   const io: LayoutSaveIO = {
     writeHoldMods: vi.fn(async (list: HoldModsEntry[]) => {
       calls.holdMods += 1;
@@ -457,6 +460,14 @@ const mockSkIO = (fail: { holdMods?: FailOn; superkeys?: FailOn; keymap?: FailOn
 
       if (failsOn(fail.perKey, calls.perKey)) {
         throw new Error("qukeys.perKey write failed");
+      }
+    }),
+    writeDominant: vi.fn(async (list: DominantEntry[]) => {
+      calls.dominant += 1;
+      writes.push(`dominant ${serializeDominantMap(list)}`);
+
+      if (failsOn(fail.dominant, calls.dominant)) {
+        throw new Error("dominant.map write failed");
       }
     }),
   };
@@ -519,6 +530,7 @@ describe("runLayoutSave without the Superkey and per-key members (P18)", () => {
     expect(Object.keys(outcome).sort()).toEqual(["done", "error", "failed", "layers", "rules", "saved", "savedRules", "table"]);
     expect(io.writeSuperkeys).not.toHaveBeenCalled();
     expect(io.writePerKey).not.toHaveBeenCalled();
+    expect(io.writeDominant).not.toHaveBeenCalled();
   });
 
   test("an IO without the new writers saves as today", async () => {
@@ -771,6 +783,68 @@ describe("runLayoutSave per-key options", () => {
 
     expect(writes).toEqual([]);
     expect(outcome.perKeySaved).toBe(serializePerKeyOverrides([OVERRIDE]));
+  });
+});
+
+describe("runLayoutSave dominant layers", () => {
+  const DOMINANT: DominantEntry = { position: 15, layer: 1 };
+
+  test("writes the map after the per-key options and before the unused entries", async () => {
+    const table = [
+      { code: PARTIAL, held: GUI },
+      { code: CAS_T_0, held: CTRL },
+    ];
+    const saved = { ...loaded([[PARTIAL]]), holdMods: serializeHoldMods(table) };
+    const { io, writes } = mockSkIO();
+
+    const outcome = await runLayoutSave(
+      io,
+      input({
+        layers: [[PARTIAL]],
+        table,
+        saved,
+        perKey: { list: [OVERRIDE], saved: "0" },
+        dominant: { list: [DOMINANT], saved: "0" },
+      }),
+    );
+
+    expect(writes).toEqual(["perkey 1 3 300 65535 255 3 3 3 3", "dominant 1 15 1", `holdmods 1 ${PARTIAL} ${GUI}`]);
+    expect(outcome.done).toEqual(["perKey", "dominant", "gc"]);
+    expect(outcome.dominantSaved).toBe("1 15 1");
+  });
+
+  test("an unchanged map is not written", async () => {
+    const { io, writes } = mockSkIO();
+
+    const outcome = await runLayoutSave(io, input({ dominant: { list: [DOMINANT], saved: "1 15 1" } }));
+
+    expect(writes).toEqual([]);
+    expect(outcome.done).toEqual([]);
+    expect(outcome.dominantSaved).toBe("1 15 1");
+  });
+
+  test("a failed write reports the dominant step, forgets the saved map and stops before the unused entries", async () => {
+    const table = [
+      { code: PARTIAL, held: GUI },
+      { code: CAS_T_0, held: CTRL },
+    ];
+    const saved = { ...loaded([[PARTIAL]]), holdMods: serializeHoldMods(table) };
+    const { io, writes } = mockSkIO({ dominant: true });
+
+    const outcome = await runLayoutSave(io, input({ layers: [[PARTIAL]], table, saved, dominant: { list: [DOMINANT], saved: "0" } }));
+
+    expect(writes).toEqual(["dominant 1 15 1"]);
+    expect(outcome.failed).toBe("dominant");
+    expect(outcome.dominantSaved).toBeNull();
+  });
+
+  test("a dominant input without writeDominant is refused before any write", async () => {
+    const { io, writes } = mockIO();
+
+    await expect(runLayoutSave(io, input({ layers: [[SK(0)]], dominant: { list: [DOMINANT], saved: "0" } }))).rejects.toThrow(
+      "A dominant layer save needs writeDominant",
+    );
+    expect(writes).toEqual([]);
   });
 });
 

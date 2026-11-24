@@ -23,6 +23,7 @@ import {
 import { QUICK_TAP_COMMAND, parseQuickTapTerm } from "../../../api/parsers/quickTap";
 import { ParsedSuperkeys, SUPERKEYS_COMMAND, parseSuperkeysTable } from "../../../api/parsers/superkeys";
 import { LED_CUSTOM_COMMAND, parseLedCustomRaw } from "../../../api/parsers/ledCustom";
+import { DOMINANT_MAP_COMMAND, parseDominantMap } from "../../../api/parsers/dominant";
 
 /* Decide whether the global settings the per-position options read for their previews can be backed up. A failed read leaves its reply in
  * the Device cache, and the backup after a save would record it */
@@ -111,11 +112,11 @@ export const rereadLedCustom = async (device: PreviewDevice) =>
   parseLedCustomRaw(await device.noCacheCommand(LED_CUSTOM_COMMAND)) ?? parseLedCustomRaw(await device.noCacheCommand(LED_CUSTOM_COMMAND));
 
 /** Read again uncached what a backup would record from a failed reply: the previews when `previews`, qukeys.perKey when `perKey`, since
- * its load failed, superkeys.map when `superkeys` and led.custom when `ledCustom`. Return the first command that still can not be read, or
- * null when the backup may run. */
+ * its load failed, superkeys.map when `superkeys`, led.custom when `ledCustom` and dominant.map when `dominant`. Return the first command
+ * that still can not be read, or null when the backup may run. */
 export const unreadableBeforeBackup = async (
   device: PreviewDevice,
-  checks: { previews: boolean; hasQuickTap: boolean; perKey: boolean; superkeys?: boolean; ledCustom?: boolean },
+  checks: { previews: boolean; hasQuickTap: boolean; perKey: boolean; superkeys?: boolean; ledCustom?: boolean; dominant?: boolean },
 ): Promise<string | null> => {
   if (checks.previews) {
     const unreadable = await rereadPreviews(device, checks.hasQuickTap);
@@ -135,6 +136,10 @@ export const unreadableBeforeBackup = async (
 
   if (checks.ledCustom && (await rereadLedCustom(device)) === null) {
     return LED_CUSTOM_COMMAND;
+  }
+
+  if (checks.dominant && parseDominantMap(await device.noCacheCommand(DOMINANT_MAP_COMMAND)) === null) {
+    return DOMINANT_MAP_COMMAND;
   }
 
   return null;

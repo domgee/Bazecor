@@ -31,7 +31,7 @@ interface KeyFaceLabelProps {
   silhouette?: boolean;
 }
 
-/** The label of a key face: the plain label, or the actions in the Layer Lens slots. The label div stays, since badges hang off it. */
+/** The label of a key face: the plain label, or the actions in the Layer Lens slots. The label div and its span stay, since badges hang off them. */
 function KeyFaceLabel({ x, y, width, height, centerExtra, centerPrimary, slots, silhouette = false }: KeyFaceLabelProps) {
   const halfW = silhouette ? Math.min(width / 2, SILHOUETTE_HALF_W) : width / 2;
 
@@ -48,6 +48,7 @@ function KeyFaceLabel({ x, y, width, height, centerExtra, centerPrimary, slots, 
             <li className="labelClass">{centerPrimary}</li>
           </ul>
         )}
+        <span className="keyFaceBadge" aria-hidden="true" />
       </div>
     </foreignObject>
   );

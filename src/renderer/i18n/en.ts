@@ -710,6 +710,16 @@ const English = {
       timingRuleNote: "These options belong to the physical key, not to this previous-key tab.",
       timingUnreadable: "The dual-function options of the key positions could not be read. Reload to edit them.",
       backupSkipped: "The layout is saved, but the backup was skipped because {0} could not be read.",
+      dominantTitle: "Dominant layer",
+      dominantNone: "None",
+      dominantLayer: "Layer {layer}",
+      dominantChip: "L{layer}",
+      dominantHint:
+        "After its press, this key waits up to the dominant layer timeout in Preferences. If the chosen layer turns on first, the key plays its action on that layer.",
+      dominantRefused: "This key changes the layer, so it can't have a dominant layer.",
+      dominantTransparent: "This key is Transparent on Layer {layer}, so the key acts as on this layer.",
+      dominantUnreadable: "The dominant layers could not be read. Reload to edit them.",
+      dominantFailed: "The keyboard did not store the dominant layers.",
     },
     keyOverrides: {
       title: "Key Overrides",

@@ -18,6 +18,7 @@ import { AltRepeatRule } from "@Renderer/types/altRepeat";
 import { HoldModsEntry } from "@Renderer/types/holdMods";
 import { serializeAltRepeat } from "../../../api/parsers/altRepeat";
 import { PerKeyOverride, serializePerKeyOverrides } from "../../../api/parsers/dualFunction";
+import { DominantEntry, serializeDominantMap } from "../../../api/parsers/dominant";
 import {
   HoldRefSkip,
   canonicalHoldSave,
@@ -44,8 +45,8 @@ import { LedSavedState, collectLedSlots, ledRefSlots, sortedUnion as sortedSlotU
  * the rules are stored. The saved state tracks what the keyboard may hold after each step, so a failed save never lets a later edit change
  * the meaning of a code the keyboard may still use.
  *
- * With Superkeys the order is table, superkeys.map, keymap, rules, per-key options, unused table entries, unused Superkeys. The keyboard
- * converts dual-function Superkeys only when the keymap is written, so every Superkey write is followed by a keymap write.
+ * With Superkeys the order is table, superkeys.map, keymap, rules, per-key options, dominant layers, unused table entries, unused Superkeys.
+ * The keyboard converts dual-function Superkeys only when the keymap is written, so every Superkey write is followed by a keymap write.
  *
  * The custom LED effects follow the same pattern. led.custom goes right after the held modifiers table and its unused slots are freed after
  * the unused table entries.
@@ -61,6 +62,7 @@ export type LayoutSaveStep =
   | "keymap"
   | "rules"
   | "perKey"
+  | "dominant"
   | "gc"
   | "ledGc"
   | "skgc"
@@ -125,6 +127,12 @@ export interface LedSaveInput {
 export interface PerKeySaveInput {
   list: PerKeyOverride[];
   /* The serialized overrides on the keyboard, null when unknown */
+  saved: string | null;
+}
+
+export interface DominantSaveInput {
+  list: DominantEntry[];
+  /* The serialized map on the keyboard, null when unknown */
   saved: string | null;
 }
 
@@ -202,6 +210,8 @@ export interface LayoutSaveIO {
   writeSuperkeys?: (table: number[][], format: SuperkeyWriteFormat, storedRows: number | null) => Promise<number | null>;
   /* Required with a per-key input */
   writePerKey?: (list: PerKeyOverride[]) => Promise<void>;
+  /* Required with a dominant layer input */
+  writeDominant?: (list: DominantEntry[]) => Promise<void>;
   /* Required with a custom LED effects input */
   writeLedCustom?: (table: LedCustomSlot[]) => Promise<void>;
 }
@@ -219,6 +229,7 @@ export interface LayoutSaveInput {
   savedRules: string | null;
   superkeys?: SuperkeySaveInput;
   perKey?: PerKeySaveInput;
+  dominant?: DominantSaveInput;
   /* Only when the table, the keymap, the rules and the combos are known */
   ledCustom?: LedSaveInput;
 }
@@ -238,6 +249,8 @@ export interface LayoutSaveOutcome {
   superkeys?: { table: number[][]; saved: SuperkeySavedState };
   /* Only with a per-key input */
   perKeySaved?: string | null;
+  /* Only with a dominant layer input */
+  dominantSaved?: string | null;
   /* Only with a custom LED effects input. The table the save ends with and the saved state, also after a failed step */
   ledCustom?: { table: LedCustomSlot[]; saved: LedSavedState };
 }
@@ -291,12 +304,12 @@ export const superkeyWriteNeeded = (format: SuperkeyWriteFormat, saved: Superkey
   return saved.storedRows === null ? !saved.cleanupDone : saved.storedRows !== table.length;
 };
 
-/** Write what changed in the order table, Superkeys, keymap, rules, per-key options, unused entries, unused Superkeys. Stop at the first
- * failed step and report the progress. */
+/** Write what changed in the order table, Superkeys, keymap, rules, per-key options, dominant layers, unused entries, unused Superkeys.
+ * Stop at the first failed step and report the progress. */
 export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): Promise<LayoutSaveOutcome> => {
   const sk = input.superkeys;
   const skReady = sk?.mode === "ready";
-  const { writeSuperkeys: sendSuperkeys, writePerKey: sendPerKey, writeLedCustom: sendLedCustom } = io;
+  const { writeSuperkeys: sendSuperkeys, writePerKey: sendPerKey, writeDominant: sendDominant, writeLedCustom: sendLedCustom } = io;
   const led = input.ledCustom;
 
   if (skReady && !sendSuperkeys) {
@@ -305,6 +318,10 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
 
   if (input.perKey && !sendPerKey) {
     throw new Error("A per-key save needs writePerKey");
+  }
+
+  if (input.dominant && !sendDominant) {
+    throw new Error("A dominant layer save needs writeDominant");
   }
 
   if (led && !sendLedCustom) {
@@ -321,6 +338,7 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
   let skSaved = sk?.saved;
   let skTable = sk?.prepared.table;
   let perKeySaved = input.perKey?.saved;
+  let dominantSaved = input.dominant?.saved;
   let ledSaved = led?.saved;
   let ledTable = led?.table;
   /* The LED slots the keymap this save writes holds, default layers included */
@@ -338,6 +356,7 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
     savedRules,
     ...(sk && skSaved && skTable ? { superkeys: { table: skTable, saved: skSaved } } : {}),
     ...(input.perKey ? { perKeySaved } : {}),
+    ...(input.dominant ? { dominantSaved } : {}),
     ...(ledSaved && ledTable ? { ledCustom: { table: ledTable, saved: ledSaved } } : {}),
   });
 
@@ -488,6 +507,23 @@ export const runLayoutSave = async (io: LayoutSaveIO, input: LayoutSaveInput): P
 
       perKeySaved = serializedPerKey;
       done.push("perKey");
+    }
+  }
+
+  if (input.dominant && sendDominant) {
+    const serializedDominant = serializeDominantMap(input.dominant.list);
+
+    if (serializedDominant !== dominantSaved) {
+      try {
+        await sendDominant(input.dominant.list);
+      } catch (error) {
+        /* Rewrite the map on the next save, whatever the draft is then */
+        dominantSaved = null;
+        return outcome("dominant", error);
+      }
+
+      dominantSaved = serializedDominant;
+      done.push("dominant");
     }
   }
 

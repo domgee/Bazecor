@@ -19,6 +19,7 @@ import { css } from "styled-components";
 import customCursor from "@Assets/base/cursorBucket.png";
 import { comboBadgeBaseStyles } from "./comboBadges";
 import { altRepeatBadgeBaseStyles } from "./altRepeatBadges";
+import { dominantBadgeBaseStyles } from "./dominantBadges";
 
 /**
  * Every rule the device SVGs need in order to render the way they do in the
@@ -338,4 +339,7 @@ export const keyboardCanvasStyles = css`
 
   /* The "A1" chip for keys with previous-key rules */
   ${altRepeatBadgeBaseStyles}
+
+  /* The "L2" chip for keys with a dominant layer */
+  ${dominantBadgeBaseStyles}
 `;
