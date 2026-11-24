@@ -13,7 +13,7 @@ import {
   heldMaskOf,
   holdCodeRefs,
   holdModsTargetOf,
-  hasPartialHoldsIn,
+  hasHoldModsDataIn,
   importHoldMods,
   restoreHoldModsTarget,
   layerHoldModsExport,
@@ -702,7 +702,7 @@ describe("importHoldMods", () => {
   });
 });
 
-describe("hasPartialHoldsIn", () => {
+describe("hasHoldModsDataIn", () => {
   test.each([
     ["a partial code in the keymap", [{ command: "keymap.custom", data: `41 ${PARTIAL}` }], true],
     ["a partial rule output", [{ command: "altrepeat.map", data: `1 2 23 ${0x182b} ${PARTIAL}` }], true],
@@ -713,11 +713,12 @@ describe("hasPartialHoldsIn", () => {
         { command: "holdmods.map", data: "0" },
         { command: "keymap.custom", data: "41 42" },
       ],
-      false,
+      true,
     ],
+    ["a plain keymap alone", [{ command: "keymap.custom", data: "41 42" }], false],
     ["other commands", [{ command: "palette", data: `${PARTIAL}` }], false],
   ])("returns %s", (_, entries, expected) => {
-    expect(hasPartialHoldsIn(entries)).toBe(expected);
+    expect(hasHoldModsDataIn(entries)).toBe(expected);
   });
 });
 

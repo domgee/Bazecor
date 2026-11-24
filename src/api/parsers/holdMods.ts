@@ -391,8 +391,8 @@ export interface HoldModsDevice {
   noCacheCommand(cmd: string, ...args: string[]): Promise<unknown>;
 }
 
-/** Return true when backup entries hold partial hold codes in the keymap or the rules, or a held modifiers table. */
-export const hasPartialHoldsIn = (entries: { command: string; data: unknown }[]): boolean =>
+/** Return true when backup entries hold partial hold codes in the keymap or the rules, or any held modifiers table, even an empty one. */
+export const hasHoldModsDataIn = (entries: { command: string; data: unknown }[]): boolean =>
   entries.some(({ command, data }) => {
     const raw = String(data ?? "");
 
@@ -405,11 +405,7 @@ export const hasPartialHoldsIn = (entries: { command: string; data: unknown }[])
       return rules !== null && plainHoldOutputs(rules) !== rules;
     }
 
-    if (command === HOLD_MODS_COMMAND) {
-      return (parseHoldModsRaw(raw)?.length ?? 0) > 0;
-    }
-
-    return false;
+    return command === HOLD_MODS_COMMAND;
   });
 
 /** Read `help` uncached and classify the target. A failed, empty or non-text reply is "unreadable". */
@@ -429,14 +425,14 @@ export const readHoldModsTarget = async (device: HoldModsDevice): Promise<HoldMo
   return hasHoldModsCommand(help) ? "listed" : "unlisted";
 };
 
-/** Classify the target from a restore's `help` snapshot. Read `help` again when the snapshot failed and the backup has partial holds, so
- * one failed read does not make them plain. */
+/** Classify the target from a restore's `help` snapshot. Read `help` again when the snapshot failed and the backup has partial holds or a
+ * held modifiers table, so one failed read neither makes them plain nor skips emptying the target's table. */
 export const restoreHoldModsTarget = async (
   device: HoldModsDevice | undefined,
   supported: Set<string> | null,
   entries: { command: string; data: unknown }[],
 ): Promise<HoldModsTarget> => {
-  if (supported !== null || device === undefined || !hasPartialHoldsIn(entries)) {
+  if (supported !== null || device === undefined || !hasHoldModsDataIn(entries)) {
     return holdModsTargetOf(supported);
   }
 

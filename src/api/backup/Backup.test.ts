@@ -500,6 +500,30 @@ describe("Backup restore of partial layer holds", () => {
     expect(Backup.takeRestoreWarnings()).toEqual([]);
   });
 
+  test("restoreBackup reads help again for an empty table and a plain keymap when the first read fails", async () => {
+    const { device, keyboard, writes } = holdSonsei({ help: [new Error("timeout"), HELP] });
+
+    const restored = await Backup.restoreBackup(
+      [],
+      "neuron",
+      [
+        { command: "keymap.custom", data: "41 42" },
+        { command: "holdmods.map", data: "0" },
+      ] as never,
+      device,
+    );
+
+    expect(restored).toBe(true);
+    // Empty the old table first, check the keymap write, then install the backup's empty table
+    expect(writes).toEqual([
+      ["holdmods.map", "0"],
+      ["keymap.custom", "41 42"],
+      ["holdmods.map", "0"],
+    ]);
+    expect(keyboard["holdmods.map"]).toBe("0");
+    expect(Backup.takeRestoreWarnings()).toEqual([]);
+  });
+
   test("restoreVirtual counts help as unreadable for the whole restore when it fails at the start", async () => {
     const { device, keyboard, writes } = holdSonsei({ help: [new Error("timeout"), HELP] });
     const virtual = {
