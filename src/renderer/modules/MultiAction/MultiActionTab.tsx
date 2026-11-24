@@ -32,6 +32,7 @@ import { KeyRole, OverridePatch } from "@Renderer/modules/DualFunctionKeys/overr
 import { DualFunctionGlobalPreview } from "@Renderer/types/dualFunctionKeys";
 import { KeyType } from "@Renderer/types/layout";
 import { PerKeyOverride, isOverrideEmpty } from "../../../api/parsers/dualFunction";
+import { DominantTarget } from "../../../api/parsers/dominant";
 
 /* The Multi-action tab edits the five Superkey actions of one key, saved as a plain key, a dual-function key or a Superkey */
 
@@ -60,8 +61,10 @@ export interface MultiActionDominant {
   layers: number[];
   /* Offers None only, since the cell changes the layer */
   refused: boolean;
-  /* The cell on the chosen layer is Transparent */
-  transparent: boolean;
+  /* How the firmware treats the cell on the chosen layer */
+  target: DominantTarget;
+  /* The layers whose cell is a swap hands key, which the firmware ignores */
+  swapLayers: number[];
   /* Makes the select read-only, with the reason shown when given */
   disabled: boolean;
   disabledReason?: string;
@@ -145,6 +148,10 @@ export const dominantOptions = ({ layer, layers, refused }: Pick<MultiActionDomi
   const offered = refused ? [] : layers;
   return layer === null || offered.includes(layer) ? offered : [...offered, layer].sort((a, b) => a - b);
 };
+
+/** True when the tab shows the dominant layer chip, which only a setting the firmware acts on gets. */
+export const showsDominantChip = (dominant: MultiActionDominant | undefined): boolean =>
+  dominant !== undefined && dominant.layer !== null && !dominant.refused && dominant.target === "active";
 
 const MultiActionTab = ({
   mode,
@@ -314,7 +321,7 @@ const MultiActionTab = ({
             >
               <option value="">{i18n.editor.multiAction.dominantNone}</option>
               {dominantOptions(dominant).map(layer => (
-                <option key={`dominant-${layer}`} value={String(layer)} disabled={dominant.refused}>
+                <option key={`dominant-${layer}`} value={String(layer)} disabled={dominant.refused || dominant.swapLayers.includes(layer)}>
                   {fill(i18n.editor.multiAction.dominantLayer, { layer: layer + 1 })}
                 </option>
               ))}
@@ -328,9 +335,12 @@ const MultiActionTab = ({
           {dominant.refused && (
             <p className="multiActionDominantRefused text-ssm text-gray-400 dark:text-gray-200">{i18n.editor.multiAction.dominantRefused}</p>
           )}
-          {dominant.layer !== null && dominant.transparent && (
-            <p className="multiActionDominantTransparent text-ssm font-semibold text-purple-200 dark:text-purple-100">
-              {fill(i18n.editor.multiAction.dominantTransparent, { layer: dominant.layer + 1 })}
+          {dominant.layer !== null && dominant.target !== "active" && (
+            <p className="multiActionDominantIgnored text-ssm font-semibold text-purple-200 dark:text-purple-100">
+              {fill(
+                dominant.target === "swap" ? i18n.editor.multiAction.dominantSwap : i18n.editor.multiAction.dominantTransparent,
+                { layer: dominant.layer + 1 },
+              )}
             </p>
           )}
           <p className="text-ssm text-gray-400 dark:text-gray-200">{i18n.editor.multiAction.dominantHint}</p>

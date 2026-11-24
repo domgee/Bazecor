@@ -49,6 +49,7 @@ const OSL_FIRST = 49161;
 const OSL_LAST = 49168;
 const DUL_FIRST = 51218;
 const DUL_LAST = 53266;
+const TRANSPARENT = 65535;
 
 /** The dominant layer of one matrix position, as the firmware layer index. */
 export interface DominantEntry {
@@ -185,6 +186,18 @@ export const dominantRefusal = (code: number, superkeys: SuperkeysType[]): boole
   }
 
   return isSwapHandsCode(code);
+};
+
+/** How the firmware treats the cell on the dominant layer. It ignores the entry for a Transparent or swap hands cell, so the key acts at once. */
+export type DominantTarget = "active" | "transparent" | "swap";
+
+/** Return how the firmware treats a dominant layer whose cell holds `code`. */
+export const dominantTarget = (code: number | undefined): DominantTarget => {
+  if (code === TRANSPARENT) {
+    return "transparent";
+  }
+
+  return code !== undefined && isSwapHandsCode(code) ? "swap" : "active";
 };
 
 /* ------------------------------------------------------------------------ */

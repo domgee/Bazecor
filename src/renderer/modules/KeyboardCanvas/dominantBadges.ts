@@ -15,7 +15,7 @@
  */
 
 import { SuperkeysType } from "@Renderer/types/superkeys";
-import { DominantEntry, dominantRefusal } from "../../../api/parsers/dominant";
+import { DominantEntry, dominantRefusal, dominantTarget } from "../../../api/parsers/dominant";
 
 /* Put an "L2" chip on the right edge, centred vertically, of every layer-1 key with a dominant layer. The other corners are taken by the
  * previous-key badge (top left), the combo badge (top right) and the modifier chips (bottom row). Both pseudo-elements of the label div are
@@ -53,13 +53,13 @@ export interface DominantBadgeView {
   /* The firmware layer the editor shows */
   layer: number;
   onlyCustom: boolean;
-  /* The key codes of firmware layer 0 by position */
-  layerZero: number[];
+  /* The key codes of every firmware layer by position */
+  layers: number[][];
   superkeys: SuperkeysType[];
 }
 
-/** The badge text per position, "L<n>" with the layer as Bazecor numbers it. Only on layer 0 with onlyCustom, and never on a cell the
- * firmware ignores the setting for. */
+/** The badge text per position, "L<n>" with the layer as Bazecor numbers it. Only on layer 0 with onlyCustom, and never on an entry the
+ * firmware ignores, for a layer-changing cell or a Transparent or swap hands cell on the dominant layer. */
 export const dominantBadgeLabels = (list: DominantEntry[], view: DominantBadgeView): Map<number, string> => {
   const labels = new Map<number, string>();
 
@@ -68,9 +68,9 @@ export const dominantBadgeLabels = (list: DominantEntry[], view: DominantBadgeVi
   }
 
   list.forEach(({ position, layer }) => {
-    const code = view.layerZero[position];
+    const code = view.layers[0]?.[position];
 
-    if (code !== undefined && !dominantRefusal(code, view.superkeys)) {
+    if (code !== undefined && !dominantRefusal(code, view.superkeys) && dominantTarget(view.layers[layer]?.[position]) === "active") {
       labels.set(position, `L${layer + 1}`);
     }
   });

@@ -13,10 +13,14 @@ afterEach(cleanup);
 
 const LAYER_SHIFT_1 = 17451;
 const A = 4;
+const TRANSPARENT = 65535;
+const SWAP_HANDS_MON = 54372;
 
-// Put A on every position except 7, which holds a Layer Shift
+// Put A on every position of layer 1 except 7, which holds a Layer Shift
 const layerZero = Array.from({ length: 60 }, (_, position) => (position === 7 ? LAYER_SHIFT_1 : A));
-const view = { layer: 0, onlyCustom: true, layerZero, superkeys: [] as SuperkeysType[] };
+// Make position 30 Transparent and position 31 a swap hands key on layer 2
+const layerOne = Array.from({ length: 60 }, (_, position) => [A, TRANSPARENT, SWAP_HANDS_MON][Math.max(0, position - 29)] ?? A);
+const view = { layer: 0, onlyCustom: true, layers: [layerZero, layerOne, layerOne, layerOne], superkeys: [] as SuperkeysType[] };
 
 describe("dominant layer badges", () => {
   test("label each key with its layer as Bazecor numbers it", () => {
@@ -45,6 +49,19 @@ describe("dominant layer badges", () => {
 
   test("skip a cell that changes the layer", () => {
     expect(dominantBadgeLabels([{ position: 7, layer: 1 }], view).size).toBe(0);
+  });
+
+  test("skip an entry whose dominant-layer cell is Transparent or a swap hands key", () => {
+    expect(
+      dominantBadgeLabels(
+        [
+          { position: 29, layer: 1 },
+          { position: 30, layer: 1 },
+          { position: 31, layer: 1 },
+        ],
+        view,
+      ),
+    ).toEqual(new Map([[29, "L2"]]));
   });
 
   test("style each key's badge span inside the scope", () => {

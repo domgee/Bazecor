@@ -717,7 +717,10 @@ const English = {
       dominantHint:
         "After its press, this key waits up to the dominant layer timeout in Preferences. If the chosen layer turns on first, the key plays its action on that layer.",
       dominantRefused: "This key changes the layer, so it can't have a dominant layer.",
-      dominantTransparent: "This key is Transparent on Layer {layer}, so the key acts as on this layer.",
+      dominantTransparent: "This key is Transparent on Layer {layer}, so the keyboard ignores the setting and the key acts at once.",
+      dominantSwap: "This key is a swap hands key on Layer {layer}, so the keyboard ignores the setting and the key acts at once.",
+      dominantKeymapUnknown: "The keymap could not be read. Reload to edit dominant layers.",
+      dominantSuperkeysUnknown: "The Superkeys could not be read, so this Superkey can't get a dominant layer. Reload to edit it.",
       dominantUnreadable: "The dominant layers could not be read. Reload to edit them.",
       dominantFailed: "The keyboard did not store the dominant layers.",
     },

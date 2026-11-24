@@ -8,6 +8,7 @@ import {
   dominantAt,
   dominantFilteredWarning,
   dominantRefusal,
+  dominantTarget,
   hasDominantCommands,
   isValidDominantTimeout,
   needsDominantClear,
@@ -213,6 +214,18 @@ describe("dominantRefusal", () => {
     ["a multi-action Superkey with no layer hold", SUPERKEY_MULTI_ACTION],
   ])("accepts %s", (_, code) => {
     expect(dominantRefusal(code, SUPERKEYS)).toBe(false);
+  });
+});
+
+describe("dominantTarget", () => {
+  test.each([
+    ["a letter", 21, "active"],
+    ["a cell outside the keymap", undefined, "active"],
+    ["Transparent", 65535, "transparent"],
+    ["the first swap hands key", 54372, "swap"],
+    ["the last swap tap key", 54631, "swap"],
+  ])("%s gives %s", (_, code, target) => {
+    expect(dominantTarget(code)).toBe(target);
   });
 });
 

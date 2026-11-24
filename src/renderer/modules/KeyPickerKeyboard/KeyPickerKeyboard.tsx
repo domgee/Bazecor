@@ -26,7 +26,7 @@ import MediaAndLightTab from "@Renderer/modules/KeysTabs/MediaAndLightTab";
 import MouseTab from "@Renderer/modules/KeysTabs/MouseTab";
 import WirelessTab from "@Renderer/modules/KeysTabs/WirelessTab";
 import LayerLensTab from "@Renderer/modules/KeysTabs/LayerLensTab";
-import MultiActionTab, { MultiActionProps, hasCustomTiming } from "@Renderer/modules/MultiAction/MultiActionTab";
+import MultiActionTab, { MultiActionProps, hasCustomTiming, showsDominantChip } from "@Renderer/modules/MultiAction/MultiActionTab";
 import CustomKeyCodeModal from "@Renderer/components/molecules/CustomModal/ModalCustomKeycode";
 import { Separator } from "@Renderer/components/atoms/Separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@Renderer/components/atoms/Tooltip";
@@ -417,9 +417,9 @@ function KeyPickerKeyboard(props: Props) {
                         {i18n.editor.multiAction.customTiming}
                       </span>
                     )}
-                    {multiAction.context === "cell" && multiAction.dominant && multiAction.dominant.layer !== null && (
+                    {multiAction.context === "cell" && multiAction.dominant && showsDominantChip(multiAction.dominant) && (
                       <span className="multiActionDominantChip ml-1 rounded-full px-1.5 text-[9px] font-bold bg-orange-200/15 text-orange-200">
-                        {i18n.editor.multiAction.dominantChip.replace("{layer}", String(multiAction.dominant.layer + 1))}
+                        {i18n.editor.multiAction.dominantChip.replace("{layer}", String((multiAction.dominant.layer ?? 0) + 1))}
                       </span>
                     )}
                   </TabsTrigger>

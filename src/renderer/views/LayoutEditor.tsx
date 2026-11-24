@@ -77,6 +77,7 @@ import {
 } from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, keyFaceSlots, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 import { collectBlock, gcInputsKnown } from "@Renderer/modules/MultiAction/preGcGate";
+import { dominantBlock, dominantRefreshAction } from "@Renderer/modules/MultiAction/dominantCell";
 import { loadKeymapReplies } from "@Renderer/modules/MultiAction/comboSave";
 import {
   SwapCell,
@@ -244,6 +245,7 @@ import {
   DominantEntry,
   dominantAt,
   dominantRefusal,
+  dominantTarget,
   readDominantMap,
   serializeDominantMap,
   setDominant,
@@ -344,7 +346,6 @@ type AltRepeatBreakType = {
 type CombosState = "ready" | "unsupported" | "failed";
 
 const IDLE_ACTION = 1;
-const TRANSPARENT_CODE = 65535;
 
 /* The Superkey slots that the given layers, rules and combos reference */
 const refSlotsOf = (refs: Partial<LayoutRefs>): number[] =>
@@ -3544,6 +3545,36 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     loadAltRepeatRules(currentDevice);
   }, [capabilitiesRefresh, altRepeatState, state, loadAltRepeatRules]);
 
+  /* Load the dominant layers when App reads the capabilities again and support appeared, or drop them when it went away. Keep an edited
+   * draft while support is unchanged */
+  const seenDominantRefresh = useRef(capabilitiesRefresh);
+
+  useEffect(() => {
+    if (capabilitiesRefresh === seenDominantRefresh.current) {
+      return;
+    }
+
+    seenDominantRefresh.current = capabilitiesRefresh;
+    const { currentDevice } = state;
+    const action = dominantRefreshAction(Boolean(store.get("capabilities.dominantLayer")), dominantState);
+
+    if (action === null || saving.current) {
+      return;
+    }
+
+    if (action === "unsupported") {
+      dominantSaved.current = null;
+      dominantStored.current = [];
+      setDominantList([]);
+      setDominantState("unsupported");
+      return;
+    }
+
+    if (currentDevice && !currentDevice.isClosed) {
+      loadDominant(currentDevice);
+    }
+  }, [capabilitiesRefresh, dominantState, state, loadDominant]);
+
   /* Follow the Superkey mode when App reads the capabilities again, as after a firmware update */
   useEffect(() => {
     setSuperkeyMode(uniqueSuperkeysMode(uniqueSuperkeysStore.get()));
@@ -3852,7 +3883,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
 
   /* Edit the dominant layers of the key positions. They are saved with the layout */
   const editDominant = (edit: (list: DominantEntry[]) => DominantEntry[]) => {
-    if (savePending() || dominantState !== "ready" || altRepeatState === "failed" || holdModsState === "failed") {
+    if (savePending() || dominantState !== "ready" || !keymapKnown || altRepeatState === "failed" || holdModsState === "failed") {
       return;
     }
 
@@ -3874,24 +3905,30 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     const position = currentKeyIndex;
     const layer = dominantAt(dominantList, position);
     const lastLayer = Math.min(DOMINANT_LAYER_MAX, firmwareLayerCount(keymap) - 1);
-    let disabledReason: string | undefined;
-
-    if (dominantState === "failed") {
-      disabledReason = i18n.editor.multiAction.dominantUnreadable;
-    } else if (altRepeatState === "failed") {
-      disabledReason = i18n.editor.altRepeat.loadFailed;
-    } else if (holdModsState === "failed") {
-      disabledReason = i18n.editor.holdMods.loadFailed;
-    }
+    const layers = Array.from({ length: Math.max(0, lastLayer) }, (_, i) => i + 1);
+    const codeAt = (l: number) => keymap.custom[l]?.[position]?.keyCode;
+    const disabledReason = dominantBlock({
+      state: dominantState,
+      keymapKnown,
+      superkeysFailed: superkeysState === "failed",
+      altRepeatFailed: altRepeatState === "failed",
+      holdModsFailed: holdModsState === "failed",
+      cellCode,
+    });
 
     return {
       layer,
-      layers: Array.from({ length: Math.max(0, lastLayer) }, (_, i) => i + 1),
+      layers,
       refused: dominantRefusal(cellCode, superkeys ?? []),
-      transparent: layer !== null && keymap.custom[layer]?.[position]?.keyCode === TRANSPARENT_CODE,
+      target: layer === null ? "active" : dominantTarget(codeAt(layer)),
+      swapLayers: [...layers, ...(layer === null ? [] : [layer])].filter(l => dominantTarget(codeAt(l)) === "swap"),
       disabled: isSaving,
       disabledReason,
-      onChange: (next: number | null) => editDominant(list => setDominant(list, position, next)),
+      onChange: (next: number | null) => {
+        if (disabledReason === undefined) {
+          editDominant(list => setDominant(list, position, next));
+        }
+      },
     };
   };
 
@@ -4038,7 +4075,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
         {dominantBadgeStyles(dominantList, {
           layer: currentLayer,
           onlyCustom: keymap.onlyCustom,
-          layerZero: (keymap.custom[0] ?? []).map(key => key.keyCode),
+          layers: keymap.custom.map(layerKeys => layerKeys.map(key => key.keyCode)),
           superkeys: superkeys ?? [],
         })}
       </style>

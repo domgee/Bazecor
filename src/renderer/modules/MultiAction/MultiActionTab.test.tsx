@@ -11,6 +11,7 @@ import MultiActionTab, {
   dominantOptions,
   hasCustomTiming,
   multiActionStatus,
+  showsDominantChip,
 } from "./MultiActionTab";
 
 vi.mock("electron-log/renderer", () => ({
@@ -321,7 +322,8 @@ describe("dominant layer", () => {
     layer: null,
     layers: [1, 2, 3],
     refused: false,
-    transparent: false,
+    target: "active",
+    swapLayers: [],
     disabled: false,
     onChange: vi.fn(),
     ...props,
@@ -365,9 +367,38 @@ describe("dominant layer", () => {
   });
 
   test("a Transparent cell on the chosen layer shows a notice", () => {
-    renderTab({ dominant: dominantProps({ layer: 1, transparent: true }) });
+    renderTab({ dominant: dominantProps({ layer: 1, target: "transparent" }) });
 
-    expect(screen.getByText("This key is Transparent on Layer 2, so the key acts as on this layer.")).toBeTruthy();
+    expect(
+      screen.getByText("This key is Transparent on Layer 2, so the keyboard ignores the setting and the key acts at once."),
+    ).toBeTruthy();
+  });
+
+  test("a swap hands cell on the chosen layer shows a notice", () => {
+    renderTab({ dominant: dominantProps({ layer: 1, target: "swap" }) });
+
+    expect(
+      screen.getByText("This key is a swap hands key on Layer 2, so the keyboard ignores the setting and the key acts at once."),
+    ).toBeTruthy();
+  });
+
+  test("a layer whose cell is a swap hands key is an inactive option, also when stored", () => {
+    renderTab({ dominant: dominantProps({ layer: 2, target: "swap", swapLayers: [2] }) });
+    const select = screen.getByRole("combobox", { name: "Dominant layer" }) as HTMLSelectElement;
+    const disabled = [...select.querySelectorAll("option")].filter(option => option.disabled).map(option => option.textContent);
+
+    expect(disabled).toEqual(["Layer 3"]);
+    expect(select.value).toBe("2");
+  });
+
+  test.each([
+    [{ layer: 1 }, true], // A layer the firmware acts on
+    [{ layer: null }, false], // None
+    [{ layer: 1, refused: true }, false], // A layer key
+    [{ layer: 1, target: "transparent" as const }, false], // A Transparent target
+    [{ layer: 1, target: "swap" as const }, false], // A swap hands target
+  ])("the tab chip shows only for a setting the firmware acts on (%o)", (props, shown) => {
+    expect(showsDominantChip(dominantProps(props))).toBe(shown);
   });
 
   test("a failed load disables the select and says why", () => {
