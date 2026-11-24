@@ -16,9 +16,10 @@ import { FlashRaise } from "../../../api/flash";
 import { delay } from "../../../main/utils/delay";
 import Backup from "../../../api/backup";
 import restoreCommand from "../../../api/backup/restoreCommand";
-import { holdModsTargetOf } from "../../../api/parsers/holdMods";
+import { restoreHoldModsTarget } from "../../../api/parsers/holdMods";
 import {
   DOMINANT_TIMEOUT_DEFAULT,
+  dominantFilteredWarning,
   needsDominantClear,
   needsDominantTimeoutReset,
   writeDominantMap,
@@ -96,9 +97,16 @@ const restoreSettings = async (
      * so the filter, the restore and the resets agree on it. */
     const supported = device ? await Backup.supportedCommands(device) : null;
     const original = backup.backup.map(c => c.command);
+    const holdModsTarget = await restoreHoldModsTarget(device, supported, backup.backup);
+    const dropped = dominantFilteredWarning(original, supported);
+
+    // Log what was skipped, because this flow has no toast
+    if (dropped) {
+      log.warn(dropped);
+    }
+
     let commands = Backup.keepSupportedIn(backup.backup, supported);
     commands = await Backup.adaptCombosToDevice(commands, device);
-    const holdModsTarget = holdModsTargetOf(supported);
     for (let i = 0; i < commands.length; i += 1) {
       const val = commands[i].data;
       log.info(`Going to send ${commands[i].command} to keyboard`);

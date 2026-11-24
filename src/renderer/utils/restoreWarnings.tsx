@@ -6,6 +6,7 @@ import { IconArrowDownWithLine } from "@Renderer/components/atoms/icons";
 import Backup from "../../api/backup";
 import { MACROS_NOT_RESTORED } from "../../api/parsers/macros";
 import { HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED } from "../../api/parsers/holdMods";
+import { DOMINANT_NOT_RESTORED } from "../../api/parsers/dominant";
 
 const warningText = (warning: string) => {
   const { backupFolder } = i18n.keyboardSettings;
@@ -13,6 +14,7 @@ const warningText = (warning: string) => {
     [MACROS_NOT_RESTORED]: backupFolder.macrosNotRestored,
     [HOLD_MODS_NORMALIZED]: backupFolder.holdModsNormalized,
     [HOLD_MODS_NOT_RESTORED]: backupFolder.holdModsNotRestored,
+    [DOMINANT_NOT_RESTORED]: backupFolder.dominantNotRestored,
   };
   return texts[warning] ?? warning;
 };

@@ -4,7 +4,9 @@ import {
   DOMINANT_MAP_COMMAND,
   DOMINANT_TIMEOUT_COMMAND,
   DominantDevice,
+  DOMINANT_NOT_RESTORED,
   dominantAt,
+  dominantFilteredWarning,
   dominantRefusal,
   hasDominantCommands,
   isValidDominantTimeout,
@@ -79,11 +81,9 @@ describe("parseDominantMap and serializeDominantMap", () => {
     ]);
   });
 
-  test("reads a reply split over several lines", () => {
-    expect(parseDominantMap("2\r\n3 1\r\n51 2\r\n")).toEqual([
-      { position: 3, layer: 1 },
-      { position: 51, layer: 2 },
-    ]);
+  test("rejects a reply split over several lines, as the firmware reads the map from one line", () => {
+    expect(parseDominantMap("2\r\n3 1\r\n51 2\r\n")).toBeNull();
+    expect(parseDominantMap("1 3\n2")).toBeNull();
   });
 
   test("reads and writes 0 for an empty map", () => {
@@ -182,6 +182,17 @@ describe("needsDominantClear and needsDominantTimeoutReset", () => {
   });
 });
 
+describe("dominantFilteredWarning", () => {
+  test("warns only when the snapshot lacks a command the backup has", () => {
+    const supported = new Set(["keymap.custom", DOMINANT_MAP_COMMAND]);
+
+    expect(dominantFilteredWarning(["keymap.custom", DOMINANT_TIMEOUT_COMMAND], supported)).toBe(DOMINANT_NOT_RESTORED);
+    expect(dominantFilteredWarning(["keymap.custom", DOMINANT_MAP_COMMAND], supported)).toBeUndefined();
+    expect(dominantFilteredWarning(["keymap.custom"], new Set(["keymap.custom"]))).toBeUndefined();
+    expect(dominantFilteredWarning([DOMINANT_MAP_COMMAND], null)).toBeUndefined();
+  });
+});
+
 describe("dominantRefusal", () => {
   test.each([
     ["Layer Shift 2", 17451],
@@ -260,6 +271,25 @@ describe("writeDominantMap", () => {
     });
 
     await expect(writeDominantMap({ noCacheCommand }, [{ position: 3, layer: 1 }])).rejects.toThrow("timeout");
+    expect(noCacheCommand.mock.calls).toEqual([[DOMINANT_MAP_COMMAND, "1 3 1"], [DOMINANT_MAP_COMMAND], [DOMINANT_MAP_COMMAND]]);
+  });
+
+  test.each([
+    ["an error reply", "error"],
+    ["an empty reply", ""],
+    ["a malformed reply", "1 3"],
+  ])("refreshes the cache when the read-back is %s", async (_, first) => {
+    let reads = 0;
+    const noCacheCommand = vi.fn(async (_cmd: string, ...args: string[]): Promise<unknown> => {
+      if (args.length > 0) {
+        return "";
+      }
+
+      reads += 1;
+      return reads === 1 ? first : "0";
+    });
+
+    await expect(writeDominantMap({ noCacheCommand }, [{ position: 3, layer: 1 }])).rejects.toThrow("did not store");
     expect(noCacheCommand.mock.calls).toEqual([[DOMINANT_MAP_COMMAND, "1 3 1"], [DOMINANT_MAP_COMMAND], [DOMINANT_MAP_COMMAND]]);
   });
 

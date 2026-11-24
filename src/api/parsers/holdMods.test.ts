@@ -13,7 +13,9 @@ import {
   heldMaskOf,
   holdCodeRefs,
   holdModsTargetOf,
+  hasPartialHoldsIn,
   importHoldMods,
+  restoreHoldModsTarget,
   layerHoldModsExport,
   parseHoldModsRaw,
   plainHoldOutputs,
@@ -697,5 +699,51 @@ describe("importHoldMods", () => {
       remap: new Map([[PARTIAL, PARTIAL]]),
       normalized: false,
     });
+  });
+});
+
+describe("hasPartialHoldsIn", () => {
+  test.each([
+    ["a partial code in the keymap", [{ command: "keymap.custom", data: `41 ${PARTIAL}` }], true],
+    ["a partial rule output", [{ command: "altrepeat.map", data: `1 2 23 ${0x182b} ${PARTIAL}` }], true],
+    ["a held modifiers table", [{ command: "holdmods.map", data: `1 ${PARTIAL} 16` }], true],
+    [
+      "an empty table and a plain keymap",
+      [
+        { command: "holdmods.map", data: "0" },
+        { command: "keymap.custom", data: "41 42" },
+      ],
+      false,
+    ],
+    ["other commands", [{ command: "palette", data: `${PARTIAL}` }], false],
+  ])("returns %s", (_, entries, expected) => {
+    expect(hasPartialHoldsIn(entries)).toBe(expected);
+  });
+});
+
+describe("restoreHoldModsTarget", () => {
+  const KEYMAP = [{ command: "keymap.custom", data: `41 ${PARTIAL}` }];
+
+  test("uses the snapshot without a read when it was read", async () => {
+    const noCacheCommand = vi.fn();
+
+    expect(await restoreHoldModsTarget({ noCacheCommand }, new Set(["holdmods.map"]), KEYMAP)).toBe("listed");
+    expect(noCacheCommand).not.toHaveBeenCalled();
+  });
+
+  test("reads help again for partial holds when the snapshot failed", async () => {
+    const noCacheCommand = vi.fn(async () => "keymap.custom\r\nholdmods.map");
+
+    expect(await restoreHoldModsTarget({ noCacheCommand }, null, KEYMAP)).toBe("listed");
+    expect(noCacheCommand).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not read help again without partial holds", async () => {
+    const noCacheCommand = vi.fn();
+
+    expect(await restoreHoldModsTarget({ noCacheCommand }, null, [{ command: "keymap.custom", data: "41 42" }])).toBe(
+      "unreadable",
+    );
+    expect(noCacheCommand).not.toHaveBeenCalled();
   });
 });

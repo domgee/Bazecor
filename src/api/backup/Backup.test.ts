@@ -7,6 +7,7 @@ import Backup, { backupFileName, fitCommandToDevice } from "./Backup";
 import Device from "../comms/Device";
 import { MACROS_NOT_RESTORED } from "../parsers/macros";
 import { HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED } from "../parsers/holdMods";
+import { DOMINANT_NOT_RESTORED } from "../parsers/dominant";
 
 vi.mock("electron", () => ({ ipcRenderer: { invoke: vi.fn(), send: vi.fn(), on: vi.fn() } }));
 
@@ -477,6 +478,28 @@ describe("Backup restore of partial layer holds", () => {
     expect(Backup.takeRestoreWarnings()).toEqual([HOLD_MODS_NORMALIZED, HOLD_MODS_NOT_RESTORED]);
   });
 
+  test("restoreBackup reads help again for the partial holds when the first read fails", async () => {
+    const { device, keyboard, writes } = holdSonsei({ help: [new Error("timeout"), HELP] });
+
+    const restored = await Backup.restoreBackup(
+      [],
+      "neuron",
+      [
+        { command: "keymap.custom", data: KEYMAP },
+        { command: "holdmods.map", data: TABLE },
+      ] as never,
+      device,
+    );
+
+    expect(restored).toBe(true);
+    expect(writes.filter(([cmd]) => cmd === "holdmods.map")).toEqual([
+      ["holdmods.map", "0"],
+      ["holdmods.map", TABLE],
+    ]);
+    expect(keyboard["keymap.custom"]).toBe(KEYMAP);
+    expect(Backup.takeRestoreWarnings()).toEqual([]);
+  });
+
   test("restoreVirtual counts help as unreadable for the whole restore when it fails at the start", async () => {
     const { device, keyboard, writes } = holdSonsei({ help: [new Error("timeout"), HELP] });
     const virtual = {
@@ -591,6 +614,30 @@ describe("Backup restore of the dominant layer", () => {
     expect(keyboard["dominant.map"]).toBe("1 51 1");
     expect(keyboard["dominant.timeout"]).toBe("120");
     expect(noCacheCommand.mock.calls.filter(call => call.length > 1).map(call => call[0])).toEqual(["dominant.map"]);
+  });
+
+  test.each(restoreBoth)("%s records one warning when the target does not list a backup entry", async (_, restore) => {
+    const { device } = sonsei({ help: "keymap.custom" });
+
+    const restored = await restore(device, [
+      { command: "keymap.custom", data: "1" },
+      { command: "dominant.map", data: "1 51 1" },
+      { command: "dominant.timeout", data: "80" },
+    ]);
+
+    expect(restored).toBe(true);
+    expect(Backup.takeRestoreWarnings()).toEqual([DOMINANT_NOT_RESTORED]);
+  });
+
+  test.each(restoreBoth)("%s records no warning when the target lists the entries", async (_, restore) => {
+    const { device } = sonsei(SET);
+
+    await restore(device, [
+      { command: "keymap.custom", data: "1" },
+      { command: "dominant.map", data: "1 51 1" },
+    ]);
+
+    expect(Backup.takeRestoreWarnings()).toEqual([]);
   });
 });
 

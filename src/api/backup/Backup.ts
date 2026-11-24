@@ -45,9 +45,10 @@ import {
   writeDualFunctionGlobals,
   writePerKeyOverrides,
 } from "../parsers/dualFunction";
-import { HOLD_MODS_COMMAND, holdModsTargetOf, restoreHoldMods, writeHoldMods } from "../parsers/holdMods";
+import { HOLD_MODS_COMMAND, holdModsTargetOf, restoreHoldMods, restoreHoldModsTarget, writeHoldMods } from "../parsers/holdMods";
 import {
   DOMINANT_TIMEOUT_DEFAULT,
+  dominantFilteredWarning,
   needsDominantClear,
   needsDominantTimeoutReset,
   writeDominantMap,
@@ -468,15 +469,17 @@ export default class Backup {
     // arguments overflow its serial buffer (combos.map after a downgrade), and
     // every command after it times out. Another board's backup or a newer
     // firmware's backup carries some, so only send what the target lists in `help`.
-    // Read help once, so the filter and every reset below use the same list.
+    // Read help once, so the filter and every reset below use the same list. Only partial holds read it
+    // again when this read fails.
     const supported = await Backup.supportedCommands(device);
     const original = data.map(c => c.command);
+    const holdModsTarget = await restoreHoldModsTarget(device, supported, data);
+    Backup.addRestoreWarning(dominantFilteredWarning(original, supported));
     data = Backup.keepSupportedIn(data, supported);
     data = data.filter(c => typeof c.command === "string" && c.command.trim().length > 0);
     /* Clear the rules, the key overrides, the conditional layers, the custom LED effects, the per-key dual-function overrides and the
      * dominant layers, and turn quick tap, the dual-function options and the dominant layer timeout to their defaults, when the backup
      * predates them. Decide from the backup before the filter */
-    const holdModsTarget = holdModsTargetOf(supported);
     const clearAltRepeat = needsAltRepeatClear(original, supported);
     const clearKeyOverrides = needsKeyOverridesClear(original, supported);
     const clearQuickTap = needsQuickTapClear(original, supported);
@@ -627,6 +630,7 @@ export default class Backup {
         // not know, whether they come from another board or a newer firmware.
         const supported = await Backup.supportedCommands(device);
         const holdModsTarget = holdModsTargetOf(supported);
+        Backup.addRestoreWarning(dominantFilteredWarning(Object.keys(data), supported));
         const conversionTarget = defySonseiConversion
           ? await Backup.conversionTarget(device, defySonseiConversion, data.palette?.data)
           : undefined;

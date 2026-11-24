@@ -24,6 +24,7 @@ import {
   uploadRaise,
   restoreRaise,
 } from "./actions";
+import { DOMINANT_NOT_RESTORED } from "../../../api/parsers/dominant";
 
 // Mock dependencies
 vi.mock("fs", () => ({
@@ -293,6 +294,21 @@ describe("actions", () => {
       expect(result).toBe(true);
       expect(keyboard["dominant.map"]).toBe("1 51 1");
       expect(keyboard["dominant.timeout"]).toBe("80");
+    });
+
+    it("logs one warning when the target does not list a backup entry", async () => {
+      dominantKeyboard("keymap.custom");
+      context.backup = {
+        backup: [
+          { command: "keymap.custom", data: "1" },
+          { command: "dominant.map", data: "1 51 1" },
+          { command: "dominant.timeout", data: "80" },
+        ],
+      };
+
+      await restoreDefies(context);
+
+      expect(vi.mocked(log.warn).mock.calls.filter(call => call[0] === DOMINANT_NOT_RESTORED)).toHaveLength(1);
     });
 
     it("sends and resets nothing on a target that does not list them", async () => {

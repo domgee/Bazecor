@@ -967,6 +967,8 @@ const English = {
         "Keys that hold only some modifiers until the layer changes were restored as plain shortcuts, because this firmware lacks that option. Update the firmware and restore again.",
       holdModsNotRestored:
         "The held modifiers of hold until layer change keys were not restored, because the keyboard did not list that option. Those keys send their plain shortcut. Update the firmware and restore again.",
+      dominantNotRestored:
+        "The dominant layer settings were not restored, because the keyboard did not list them. Update the firmware and restore again.",
       storeTime: "Backup storage period",
       storeTimeTip: "Determines how long a backup is stored before being deleted",
     },

@@ -17,6 +17,7 @@
 
 import { AltRepeatRule } from "@Renderer/types/altRepeat";
 import { HoldModsEntry, HoldModsTarget } from "@Renderer/types/holdMods";
+import { ALT_REPEAT_COMMAND, parseAltRepeatRaw } from "./altRepeat";
 import {
   canHoldUntilLayerChange,
   holdShortcut,
@@ -390,6 +391,27 @@ export interface HoldModsDevice {
   noCacheCommand(cmd: string, ...args: string[]): Promise<unknown>;
 }
 
+/** Return true when backup entries hold partial hold codes in the keymap or the rules, or a held modifiers table. */
+export const hasPartialHoldsIn = (entries: { command: string; data: unknown }[]): boolean =>
+  entries.some(({ command, data }) => {
+    const raw = String(data ?? "");
+
+    if (command === KEYMAP_COMMAND) {
+      return plainPartialHoldsRaw(raw) !== raw;
+    }
+
+    if (command === ALT_REPEAT_COMMAND) {
+      const rules = parseAltRepeatRaw(raw);
+      return rules !== null && plainHoldOutputs(rules) !== rules;
+    }
+
+    if (command === HOLD_MODS_COMMAND) {
+      return (parseHoldModsRaw(raw)?.length ?? 0) > 0;
+    }
+
+    return false;
+  });
+
 /** Read `help` uncached and classify the target. A failed, empty or non-text reply is "unreadable". */
 export const readHoldModsTarget = async (device: HoldModsDevice): Promise<HoldModsTarget> => {
   let help: unknown;
@@ -405,6 +427,20 @@ export const readHoldModsTarget = async (device: HoldModsDevice): Promise<HoldMo
   }
 
   return hasHoldModsCommand(help) ? "listed" : "unlisted";
+};
+
+/** Classify the target from a restore's `help` snapshot. Read `help` again when the snapshot failed and the backup has partial holds, so
+ * one failed read does not make them plain. */
+export const restoreHoldModsTarget = async (
+  device: HoldModsDevice | undefined,
+  supported: Set<string> | null,
+  entries: { command: string; data: unknown }[],
+): Promise<HoldModsTarget> => {
+  if (supported !== null || device === undefined || !hasPartialHoldsIn(entries)) {
+    return holdModsTargetOf(supported);
+  }
+
+  return readHoldModsTarget(device);
 };
 
 /** Send a write uncached and throw when it fails. Device returns undefined on a closed port and the Error itself on a failed request. */

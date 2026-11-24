@@ -114,7 +114,14 @@ export const parseDominantMap = (raw: unknown): DominantEntry[] | null => {
     return null;
   }
 
-  const tokens = raw.trim().split(/\s+/);
+  const text = raw.trim();
+
+  /* Reject a line break inside the value, since the firmware reads the map from one line */
+  if (/[\r\n]/.test(text)) {
+    return null;
+  }
+
+  const tokens = text.split(/\s+/);
 
   if (!tokens.every(token => /^\d+$/.test(token))) {
     return null;
@@ -216,6 +223,16 @@ export const needsDominantClear = (originalCommands: string[], supported: Set<st
 export const needsDominantTimeoutReset = (originalCommands: string[], supported: Set<string> | null): boolean =>
   supported !== null && supported.has(DOMINANT_TIMEOUT_COMMAND) && !originalCommands.includes(DOMINANT_TIMEOUT_COMMAND);
 
+/** Return the warning when a restore drops a dominant layer entry of the original backup, because the keyboard does not list its command. */
+export const dominantFilteredWarning = (originalCommands: string[], supported: Set<string> | null): string | undefined => {
+  const dropped = originalCommands.some(
+    command =>
+      (command === DOMINANT_MAP_COMMAND || command === DOMINANT_TIMEOUT_COMMAND) && supported !== null && !supported.has(command),
+  );
+
+  return dropped ? DOMINANT_NOT_RESTORED : undefined;
+};
+
 /* ------------------------------------------------------------------------ */
 /* Keyboard I/O                                                             */
 /* ------------------------------------------------------------------------ */
@@ -261,6 +278,11 @@ const writeChecked = async (
     }
 
     stored = readBack(reply);
+
+    /* Refresh the cache below, so an unreadable reply is not left there for the next backup */
+    if (stored === null) {
+      throw new Error(`The keyboard did not store the ${what}`);
+    }
   } catch (error) {
     /* Replace the unsent payload in the Device cache with the keyboard's, so a later backup does not record it */
     try {
