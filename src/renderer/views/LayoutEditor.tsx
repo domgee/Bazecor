@@ -77,7 +77,7 @@ import {
 } from "@Renderer/modules/MultiAction/MultiActionTab";
 import { actionText, keyFaceSlots, labelContext, superkeyFace, withGeneratedNames } from "@Renderer/modules/MultiAction/multiActionLabel";
 import { collectBlock, gcInputsKnown } from "@Renderer/modules/MultiAction/preGcGate";
-import { dominantBlock, dominantRefreshAction } from "@Renderer/modules/MultiAction/dominantCell";
+import { dominantBlock, dominantRefreshStep } from "@Renderer/modules/MultiAction/dominantCell";
 import { loadKeymapReplies } from "@Renderer/modules/MultiAction/comboSave";
 import {
   SwapCell,
@@ -3546,19 +3546,22 @@ const LayoutEditor = (props: LayoutEditorProps) => {
   }, [capabilitiesRefresh, altRepeatState, state, loadAltRepeatRules]);
 
   /* Load the dominant layers when App reads the capabilities again and support appeared, or drop them when it went away. Keep an edited
-   * draft while support is unchanged */
+   * draft while support is unchanged. A refresh during a save runs when isSaving turns off, after the save cleared saving */
   const seenDominantRefresh = useRef(capabilitiesRefresh);
 
   useEffect(() => {
-    if (capabilitiesRefresh === seenDominantRefresh.current) {
-      return;
-    }
-
-    seenDominantRefresh.current = capabilitiesRefresh;
+    const step = dominantRefreshStep({
+      refresh: capabilitiesRefresh,
+      seen: seenDominantRefresh.current,
+      saving: saving.current || isSaving,
+      listed: Boolean(store.get("capabilities.dominantLayer")),
+      state: dominantState,
+    });
     const { currentDevice } = state;
-    const action = dominantRefreshAction(Boolean(store.get("capabilities.dominantLayer")), dominantState);
+    seenDominantRefresh.current = step.seen;
+    const { action } = step;
 
-    if (action === null || saving.current) {
+    if (action === null) {
       return;
     }
 
@@ -3573,7 +3576,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
     if (currentDevice && !currentDevice.isClosed) {
       loadDominant(currentDevice);
     }
-  }, [capabilitiesRefresh, dominantState, state, loadDominant]);
+  }, [capabilitiesRefresh, dominantState, state, loadDominant, isSaving]);
 
   /* Follow the Superkey mode when App reads the capabilities again, as after a firmware update */
   useEffect(() => {
@@ -3921,7 +3924,7 @@ const LayoutEditor = (props: LayoutEditorProps) => {
       layers,
       refused: dominantRefusal(cellCode, superkeys ?? []),
       target: layer === null ? "active" : dominantTarget(codeAt(layer)),
-      swapLayers: [...layers, ...(layer === null ? [] : [layer])].filter(l => dominantTarget(codeAt(l)) === "swap"),
+      inactiveLayers: [...layers, ...(layer === null ? [] : [layer])].filter(l => ["swap", "unknown"].includes(dominantTarget(codeAt(l)))),
       disabled: isSaving,
       disabledReason,
       onChange: (next: number | null) => {

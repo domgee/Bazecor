@@ -53,6 +53,22 @@ export const dominantBlock = (input: DominantBlockInput): string | undefined => 
   return input.holdModsFailed ? i18n.editor.holdMods.loadFailed : undefined;
 };
 
+/** Decide a capabilities refresh. A refresh during a save stays pending, so it is reconciled once the save ends. Return the refresh count
+ * to mark as seen and the action to take. */
+export const dominantRefreshStep = (input: {
+  refresh: number;
+  seen: number;
+  saving: boolean;
+  listed: boolean;
+  state: DualFunctionKeysState;
+}): { seen: number; action: "load" | "unsupported" | null } => {
+  if (input.refresh === input.seen || input.saving) {
+    return { seen: input.seen, action: null };
+  }
+
+  return { seen: input.refresh, action: dominantRefreshAction(input.listed, input.state) };
+};
+
 /** What to do when App reads the capabilities again. "load" when support appeared or the last load failed, "unsupported" when it went
  * away, and null while the editor agrees with the keyboard, so an edited draft stays. */
 export const dominantRefreshAction = (listed: boolean, state: DualFunctionKeysState): "load" | "unsupported" | null => {

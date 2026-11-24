@@ -220,7 +220,7 @@ describe("dominantRefusal", () => {
 describe("dominantTarget", () => {
   test.each([
     ["a letter", 21, "active"],
-    ["a cell outside the keymap", undefined, "active"],
+    ["a cell the keymap lacks", undefined, "unknown"],
     ["Transparent", 65535, "transparent"],
     ["the first swap hands key", 54372, "swap"],
     ["the last swap tap key", 54631, "swap"],

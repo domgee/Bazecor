@@ -719,6 +719,7 @@ const English = {
       dominantRefused: "This key changes the layer, so it can't have a dominant layer.",
       dominantTransparent: "This key is Transparent on Layer {layer}, so the keyboard ignores the setting and the key acts at once.",
       dominantSwap: "This key is a swap hands key on Layer {layer}, so the keyboard ignores the setting and the key acts at once.",
+      dominantUnknownLayer: "The keymap has no Layer {layer}, so the keyboard ignores the setting. Choose None to clear it.",
       dominantKeymapUnknown: "The keymap could not be read. Reload to edit dominant layers.",
       dominantSuperkeysUnknown: "The Superkeys could not be read, so this Superkey can't get a dominant layer. Reload to edit it.",
       dominantUnreadable: "The dominant layers could not be read. Reload to edit them.",

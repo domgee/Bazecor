@@ -63,8 +63,8 @@ export interface MultiActionDominant {
   refused: boolean;
   /* How the firmware treats the cell on the chosen layer */
   target: DominantTarget;
-  /* The layers whose cell is a swap hands key, which the firmware ignores */
-  swapLayers: number[];
+  /* The layers whose cell the firmware ignores, a swap hands key or a cell the keymap lacks, listed as inactive options */
+  inactiveLayers: number[];
   /* Makes the select read-only, with the reason shown when given */
   disabled: boolean;
   disabledReason?: string;
@@ -147,6 +147,13 @@ export const multiActionStatus = (
 export const dominantOptions = ({ layer, layers, refused }: Pick<MultiActionDominant, "layer" | "layers" | "refused">): number[] => {
   const offered = refused ? [] : layers;
   return layer === null || offered.includes(layer) ? offered : [...offered, layer].sort((a, b) => a - b);
+};
+
+const IGNORED_NOTICE: Record<DominantTarget, () => string> = {
+  active: () => "",
+  transparent: () => i18n.editor.multiAction.dominantTransparent,
+  swap: () => i18n.editor.multiAction.dominantSwap,
+  unknown: () => i18n.editor.multiAction.dominantUnknownLayer,
 };
 
 /** True when the tab shows the dominant layer chip, which only a setting the firmware acts on gets. */
@@ -321,7 +328,7 @@ const MultiActionTab = ({
             >
               <option value="">{i18n.editor.multiAction.dominantNone}</option>
               {dominantOptions(dominant).map(layer => (
-                <option key={`dominant-${layer}`} value={String(layer)} disabled={dominant.refused || dominant.swapLayers.includes(layer)}>
+                <option key={`dominant-${layer}`} value={String(layer)} disabled={dominant.refused || dominant.inactiveLayers.includes(layer)}>
                   {fill(i18n.editor.multiAction.dominantLayer, { layer: layer + 1 })}
                 </option>
               ))}
@@ -337,10 +344,7 @@ const MultiActionTab = ({
           )}
           {dominant.layer !== null && dominant.target !== "active" && (
             <p className="multiActionDominantIgnored text-ssm font-semibold text-purple-200 dark:text-purple-100">
-              {fill(
-                dominant.target === "swap" ? i18n.editor.multiAction.dominantSwap : i18n.editor.multiAction.dominantTransparent,
-                { layer: dominant.layer + 1 },
-              )}
+              {fill(IGNORED_NOTICE[dominant.target](), { layer: dominant.layer + 1 })}
             </p>
           )}
           <p className="text-ssm text-gray-400 dark:text-gray-200">{i18n.editor.multiAction.dominantHint}</p>

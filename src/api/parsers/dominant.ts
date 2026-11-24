@@ -188,16 +188,21 @@ export const dominantRefusal = (code: number, superkeys: SuperkeysType[]): boole
   return isSwapHandsCode(code);
 };
 
-/** How the firmware treats the cell on the dominant layer. It ignores the entry for a Transparent or swap hands cell, so the key acts at once. */
-export type DominantTarget = "active" | "transparent" | "swap";
+/** How the firmware treats the cell on the dominant layer. It ignores the entry for a Transparent or swap hands cell, so the key acts at
+ * once. "unknown" is a layer the loaded keymap lacks. */
+export type DominantTarget = "active" | "transparent" | "swap" | "unknown";
 
 /** Return how the firmware treats a dominant layer whose cell holds `code`. */
 export const dominantTarget = (code: number | undefined): DominantTarget => {
+  if (code === undefined) {
+    return "unknown";
+  }
+
   if (code === TRANSPARENT) {
     return "transparent";
   }
 
-  return code !== undefined && isSwapHandsCode(code) ? "swap" : "active";
+  return isSwapHandsCode(code) ? "swap" : "active";
 };
 
 /* ------------------------------------------------------------------------ */

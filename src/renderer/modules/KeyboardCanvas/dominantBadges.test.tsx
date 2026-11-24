@@ -64,6 +64,10 @@ describe("dominant layer badges", () => {
     ).toEqual(new Map([[29, "L2"]]));
   });
 
+  test("skip an entry whose dominant layer the keymap lacks", () => {
+    expect(dominantBadgeLabels([{ position: 29, layer: 5 }], view).size).toBe(0);
+  });
+
   test("style each key's badge span inside the scope", () => {
     expect(dominantBadgeStyles([{ position: 15, layer: 1 }], view, ".scope")).toBe(
       '.scope [data-key-index="15"] .keyFaceBadge::after { content: "L2"; }',

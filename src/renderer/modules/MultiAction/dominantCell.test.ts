@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { dominantBlock, dominantRefreshAction } from "./dominantCell";
+import { dominantBlock, dominantRefreshAction, dominantRefreshStep } from "./dominantCell";
 
 vi.mock("electron-log/renderer", () => ({
   default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), verbose: vi.fn(), debug: vi.fn() },
@@ -51,5 +51,25 @@ describe("dominantRefreshAction", () => {
     [false, "unsupported" as const, null], // Unchanged
   ])("listed %s with state %s gives %s", (listed, state, action) => {
     expect(dominantRefreshAction(listed, state)).toBe(action);
+  });
+});
+
+describe("dominantRefreshStep", () => {
+  const step = { refresh: 2, seen: 1, saving: false, listed: true, state: "unsupported" as const };
+
+  test("a new refresh is marked seen and reconciled", () => {
+    expect(dominantRefreshStep(step)).toEqual({ seen: 2, action: "load" });
+  });
+
+  test("a refresh during a save stays pending, and runs once the save ends", () => {
+    const during = dominantRefreshStep({ ...step, saving: true });
+    const after = dominantRefreshStep({ ...step, seen: during.seen });
+
+    expect(during).toEqual({ seen: 1, action: null });
+    expect(after).toEqual({ seen: 2, action: "load" });
+  });
+
+  test("a refresh already seen does nothing", () => {
+    expect(dominantRefreshStep({ ...step, seen: 2 })).toEqual({ seen: 2, action: null });
   });
 });

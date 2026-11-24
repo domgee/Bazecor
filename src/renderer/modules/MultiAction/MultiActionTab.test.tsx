@@ -323,7 +323,7 @@ describe("dominant layer", () => {
     layers: [1, 2, 3],
     refused: false,
     target: "active",
-    swapLayers: [],
+    inactiveLayers: [],
     disabled: false,
     onChange: vi.fn(),
     ...props,
@@ -383,7 +383,7 @@ describe("dominant layer", () => {
   });
 
   test("a layer whose cell is a swap hands key is an inactive option, also when stored", () => {
-    renderTab({ dominant: dominantProps({ layer: 2, target: "swap", swapLayers: [2] }) });
+    renderTab({ dominant: dominantProps({ layer: 2, target: "swap", inactiveLayers: [2] }) });
     const select = screen.getByRole("combobox", { name: "Dominant layer" }) as HTMLSelectElement;
     const disabled = [...select.querySelectorAll("option")].filter(option => option.disabled).map(option => option.textContent);
 
@@ -391,8 +391,23 @@ describe("dominant layer", () => {
     expect(select.value).toBe("2");
   });
 
+  test("a stored layer the keymap lacks is an inactive option with a notice, and None clears it", () => {
+    const onChange = vi.fn();
+    renderTab({ dominant: dominantProps({ layer: 5, layers: [1, 2, 3], target: "unknown", inactiveLayers: [5], onChange }) });
+    const select = screen.getByRole("combobox", { name: "Dominant layer" }) as HTMLSelectElement;
+    const disabled = [...select.querySelectorAll("option")].filter(option => option.disabled).map(option => option.textContent);
+
+    fireEvent.change(select, { target: { value: "" } });
+
+    expect(disabled).toEqual(["Layer 6"]);
+    expect(select.value).toBe("5");
+    expect(screen.getByText("The keymap has no Layer 6, so the keyboard ignores the setting. Choose None to clear it.")).toBeTruthy();
+    expect(onChange.mock.calls).toEqual([[null]]);
+  });
+
   test.each([
     [{ layer: 1 }, true], // A layer the firmware acts on
+    [{ layer: 5, target: "unknown" as const }, false], // A layer the keymap lacks
     [{ layer: null }, false], // None
     [{ layer: 1, refused: true }, false], // A layer key
     [{ layer: 1, target: "transparent" as const }, false], // A Transparent target
